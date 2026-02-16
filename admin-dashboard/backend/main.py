@@ -6,8 +6,8 @@ from typing import Optional
 import asyncpg
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend" / "dist"

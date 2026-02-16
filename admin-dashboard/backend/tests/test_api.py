@@ -1,9 +1,14 @@
+import sys
+from pathlib import Path
+
+# Add backend to path so we can import main
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+import asyncpg
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-
-from main import app, pool as _pool
-import asyncpg
+from main import app
 
 
 @pytest_asyncio.fixture(autouse=True)
