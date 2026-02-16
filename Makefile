@@ -1,0 +1,25 @@
+.PHONY: test lint test-nhl test-real-estate test-polymarket test-admin setup
+
+setup:
+	python3 -m pip install pytest ruff psycopg2-binary requests --break-system-packages
+
+test:
+	pytest
+
+lint:
+	ruff check .
+
+test-nhl:
+	pytest nhl-betting/ -v
+
+test-real-estate:
+	pytest real-estate/ -v
+
+test-polymarket:
+	pytest polymarket/ -v
+
+test-admin:
+	pytest admin-dashboard/ -v
+
+ci: lint test
+	@echo "All checks passed."
