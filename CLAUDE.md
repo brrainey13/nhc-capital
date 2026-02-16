@@ -14,7 +14,7 @@ You are a coding agent working inside the NH Capital monorepo. NHC (the orchestr
 │   ├── frontend/                 ← React SPA (Vite + TypeScript)
 │   └── backend/tests/test_api.py
 ├── real-estate/                  ← Real estate analysis (placeholder)
-├── polymarket/                   ← Prediction markets (placeholder)
+├── polymarket/                   ← Prediction market analysis & trading
 ├── docs/                         ← Project docs (YAML front-matter)
 ├── scripts/
 │   ├── committer                 ← Safe commit helper (USE THIS)
