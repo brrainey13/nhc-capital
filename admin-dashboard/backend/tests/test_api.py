@@ -150,3 +150,18 @@ async def test_invalid_sql(client):
 async def test_table_data_not_found(client):
     r = await client.get("/api/tables/fake_table/data")
     assert r.status_code == 404
+
+
+# 16. Usage endpoint
+@pytest.mark.asyncio
+async def test_usage(client):
+    r = await client.get("/api/usage")
+    assert r.status_code == 200
+    data = r.json()
+    assert "sessions" in data
+    assert "totals" in data
+    assert isinstance(data["sessions"], list)
+    totals = data["totals"]
+    assert "total_tokens" in totals
+    assert "input_tokens" in totals
+    assert "output_tokens" in totals

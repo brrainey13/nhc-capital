@@ -1,326 +1,149 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
+import {
+  useReactTable,
+  getCoreRowModel,
+  getFilteredRowModel,
+  flexRender,
+  type ColumnDef,
+  type ColumnFiltersState,
+} from '@tanstack/react-table'
 
 const API = '/api'
 
+/* ── Types ── */
+
 interface TableInfo { name: string; row_count: number }
-interface ColInfo { column_name: string; data_type: string; is_nullable: string }
+interface SessionInfo {
+  key: string; label: string; total_tokens: number; input_tokens: number
+  output_tokens: number; context_window: number; model: string; updated_at: string | null
+}
+interface UsageData { sessions: SessionInfo[]; totals: { total_tokens: number; input_tokens: number; output_tokens: number } }
 
-/* ── Apple Liquid Glass Design System ── */
+type Page = 'home' | 'explorer' | 'sql'
 
-const glassPanel = {
-  background: 'rgba(255, 255, 255, 0.08)',
-  backdropFilter: 'blur(40px) saturate(180%)',
-  WebkitBackdropFilter: 'blur(40px) saturate(180%)',
-  border: '1px solid rgba(255, 255, 255, 0.12)',
-  borderRadius: 16,
-} as React.CSSProperties
+/* ── Helpers ── */
 
-const glassPanelHover = {
-  background: 'rgba(255, 255, 255, 0.12)',
-  border: '1px solid rgba(255, 255, 255, 0.18)',
+function fmtNum(n: number): string {
+  return n.toLocaleString()
 }
 
-const styles: Record<string, React.CSSProperties> = {
-  /* Root */
-  app: {
-    display: 'flex',
-    height: '100vh',
-    background: 'linear-gradient(135deg, #0a0a1a 0%, #111128 30%, #1a1040 60%, #0d1b2a 100%)',
-    color: 'rgba(255, 255, 255, 0.9)',
-    fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", system-ui, sans-serif',
-    letterSpacing: '-0.01em',
-  },
-
-  /* Sidebar */
-  sidebar: {
-    width: 260,
-    padding: 20,
-    overflowY: 'auto',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 6,
-    borderRight: '1px solid rgba(255, 255, 255, 0.06)',
-  },
-  sidebarTitle: {
-    fontSize: 13,
-    fontWeight: 600,
-    color: 'rgba(255, 255, 255, 0.45)',
-    textTransform: 'uppercase' as const,
-    letterSpacing: '0.06em',
-    padding: '0 12px',
-    marginBottom: 8,
-    marginTop: 4,
-  },
-  tableBtn: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    width: '100%',
-    padding: '10px 14px',
-    background: 'transparent',
-    color: 'rgba(255, 255, 255, 0.75)',
-    border: '1px solid transparent',
-    cursor: 'pointer',
-    textAlign: 'left' as const,
-    borderRadius: 12,
-    fontSize: 13,
-    fontWeight: 500,
-    fontFamily: 'inherit',
-    transition: 'all 0.2s ease',
-    letterSpacing: '-0.01em',
-  },
-  tableBtnActive: {
-    ...glassPanel,
-    color: 'rgba(255, 255, 255, 0.95)',
-    boxShadow: '0 2px 12px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.08)',
-  },
-  badge: {
-    fontSize: 11,
-    fontWeight: 500,
-    color: 'rgba(255, 255, 255, 0.3)',
-    fontVariantNumeric: 'tabular-nums',
-  },
-
-  /* Main content */
-  main: {
-    flex: 1,
-    padding: 32,
-    overflowY: 'auto',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 20,
-  },
-
-  /* Tabs */
-  tabBar: {
-    display: 'inline-flex',
-    gap: 2,
-    padding: 3,
-    ...glassPanel,
-    borderRadius: 12,
-    width: 'fit-content',
-  },
-  tab: {
-    padding: '8px 18px',
-    background: 'transparent',
-    color: 'rgba(255, 255, 255, 0.55)',
-    border: 'none',
-    cursor: 'pointer',
-    borderRadius: 10,
-    fontSize: 13,
-    fontWeight: 500,
-    fontFamily: 'inherit',
-    transition: 'all 0.2s ease',
-    letterSpacing: '-0.01em',
-  },
-  tabActive: {
-    background: 'rgba(255, 255, 255, 0.12)',
-    color: 'rgba(255, 255, 255, 0.95)',
-    boxShadow: '0 1px 4px rgba(0, 0, 0, 0.15)',
-  },
-
-  /* Header */
-  header: {
-    display: 'flex',
-    alignItems: 'baseline',
-    gap: 12,
-  },
-  h2: {
-    margin: 0,
-    fontSize: 22,
-    fontWeight: 600,
-    color: 'rgba(255, 255, 255, 0.95)',
-    letterSpacing: '-0.02em',
-  },
-  headerBadge: {
-    fontSize: 13,
-    fontWeight: 500,
-    color: 'rgba(255, 255, 255, 0.35)',
-  },
-
-  /* Table */
-  tableCard: {
-    ...glassPanel,
-    overflow: 'hidden',
-  },
-  table: {
-    width: '100%',
-    borderCollapse: 'collapse' as const,
-    fontSize: 13,
-  },
-  th: {
-    background: 'rgba(255, 255, 255, 0.04)',
-    padding: '10px 16px',
-    textAlign: 'left' as const,
-    borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
-    color: 'rgba(255, 255, 255, 0.5)',
-    fontWeight: 600,
-    fontSize: 11,
-    textTransform: 'uppercase' as const,
-    letterSpacing: '0.05em',
-  },
-  td: {
-    padding: '9px 16px',
-    borderBottom: '1px solid rgba(255, 255, 255, 0.04)',
-    maxWidth: 220,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap' as const,
-    color: 'rgba(255, 255, 255, 0.75)',
-    fontVariantNumeric: 'tabular-nums',
-  },
-
-  /* Pagination */
-  pagination: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 12,
-    padding: '12px 16px',
-    borderTop: '1px solid rgba(255, 255, 255, 0.06)',
-    background: 'rgba(255, 255, 255, 0.02)',
-  },
-  paginationText: {
-    fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.4)',
-    fontVariantNumeric: 'tabular-nums',
-  },
-
-  /* Buttons */
-  btn: {
-    padding: '7px 16px',
-    background: 'rgba(255, 255, 255, 0.08)',
-    color: 'rgba(255, 255, 255, 0.8)',
-    border: '1px solid rgba(255, 255, 255, 0.1)',
-    borderRadius: 10,
-    cursor: 'pointer',
-    fontSize: 12,
-    fontWeight: 500,
-    fontFamily: 'inherit',
-    transition: 'all 0.2s ease',
-    backdropFilter: 'blur(20px)',
-    WebkitBackdropFilter: 'blur(20px)',
-  },
-  btnPrimary: {
-    background: 'rgba(88, 130, 255, 0.25)',
-    border: '1px solid rgba(88, 130, 255, 0.3)',
-    color: 'rgba(160, 190, 255, 0.95)',
-  },
-
-  /* SQL area */
-  textarea: {
-    width: '100%',
-    height: 120,
-    background: 'rgba(0, 0, 0, 0.25)',
-    color: 'rgba(255, 255, 255, 0.85)',
-    border: '1px solid rgba(255, 255, 255, 0.1)',
-    borderRadius: 12,
-    padding: 16,
-    fontFamily: '"SF Mono", "Fira Code", "JetBrains Mono", monospace',
-    fontSize: 13,
-    lineHeight: 1.5,
-    resize: 'vertical' as const,
-    outline: 'none',
-    transition: 'border-color 0.2s ease',
-    boxSizing: 'border-box' as const,
-  },
-
-  /* Empty state */
-  emptyState: {
-    display: 'flex',
-    flexDirection: 'column' as const,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flex: 1,
-    gap: 12,
-    opacity: 0.4,
-  },
-  emptyIcon: {
-    fontSize: 48,
-    marginBottom: 8,
-  },
-  emptyText: {
-    fontSize: 16,
-    fontWeight: 500,
-    letterSpacing: '-0.01em',
-  },
-  emptySubtext: {
-    fontSize: 13,
-    color: 'rgba(255, 255, 255, 0.5)',
-  },
-
-  /* Error */
-  error: {
-    padding: '12px 16px',
-    background: 'rgba(255, 69, 58, 0.12)',
-    border: '1px solid rgba(255, 69, 58, 0.2)',
-    borderRadius: 12,
-    color: 'rgba(255, 120, 115, 0.95)',
-    fontSize: 13,
-  },
-
-  /* Logo area */
-  logo: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 10,
-    padding: '8px 12px',
-    marginBottom: 16,
-  },
-  logoText: {
-    fontSize: 16,
-    fontWeight: 700,
-    letterSpacing: '-0.03em',
-    color: 'rgba(255, 255, 255, 0.9)',
-  },
-  logoSub: {
-    fontSize: 11,
-    color: 'rgba(255, 255, 255, 0.3)',
-    fontWeight: 500,
-  },
+function fmtDate(iso: string | null): string {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
-/* ── Global CSS injection for scrollbar + hover + focus ── */
-const globalCSS = `
-  ::-webkit-scrollbar { width: 6px; }
-  ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
-  ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.18); }
-  * { box-sizing: border-box; }
-  body { margin: 0; overflow: hidden; }
-  button:hover { filter: brightness(1.15); }
-  button:active { transform: scale(0.98); }
-  textarea:focus { border-color: rgba(88, 130, 255, 0.4) !important; }
-  tr:hover td { background: rgba(255,255,255,0.03); }
-  ::selection { background: rgba(88, 130, 255, 0.35); }
-`
+/* ── Data Table with TanStack ── */
 
-export default function App() {
-  const [tables, setTables] = useState<TableInfo[]>([])
-  const [selected, setSelected] = useState<string | null>(null)
-  const [schema, setSchema] = useState<ColInfo[]>([])
-  const [rows, setRows] = useState<Record<string, unknown>[]>([])
+function DataTable({ tableName }: { tableName: string }) {
+  const [data, setData] = useState<Record<string, unknown>[]>([])
   const [columns, setColumns] = useState<string[]>([])
   const [total, setTotal] = useState(0)
-  const [offset, setOffset] = useState(0)
-  const [tab, setTab] = useState<'data' | 'schema' | 'query'>('data')
-  const [sql, setSql] = useState('')
-  const [queryResult, setQueryResult] = useState<{ columns: string[]; rows: Record<string, unknown>[]; error?: string } | null>(null)
-  const limit = 100
-
-  useEffect(() => { fetch(`${API}/tables`).then(r => r.json()).then(setTables) }, [])
+  const [pageIndex, setPageIndex] = useState(0)
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
+  const pageSize = 100
 
   useEffect(() => {
-    if (!selected) return
-    setOffset(0)
-    fetch(`${API}/tables/${selected}/schema`).then(r => r.json()).then(d => setSchema(d.columns))
-    loadData(selected, 0)
-  }, [selected])
+    setPageIndex(0)
+    setColumnFilters([])
+    loadPage(0)
+  }, [tableName])
 
-  function loadData(name: string, off: number) {
-    fetch(`${API}/tables/${name}/data?limit=${limit}&offset=${off}`)
+  function loadPage(page: number) {
+    fetch(`${API}/tables/${tableName}/data?limit=${pageSize}&offset=${page * pageSize}`)
       .then(r => r.json())
-      .then(d => { setRows(d.rows); setColumns(d.columns); setTotal(d.total); setOffset(off) })
+      .then(d => { setData(d.rows); setColumns(d.columns); setTotal(d.total); setPageIndex(page) })
   }
+
+  const colDefs: ColumnDef<Record<string, unknown>, unknown>[] = useMemo(
+    () => columns.map(c => ({
+      accessorKey: c,
+      header: c,
+      cell: (info: { getValue: () => unknown }) => String(info.getValue() ?? ''),
+      filterFn: 'includesString' as const,
+    })),
+    [columns]
+  )
+
+  const table = useReactTable({
+    data,
+    columns: colDefs,
+    state: { columnFilters },
+    onColumnFiltersChange: setColumnFilters,
+    getCoreRowModel: getCoreRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    manualPagination: true,
+    pageCount: Math.ceil(total / pageSize),
+  })
+
+  const totalPages = Math.ceil(total / pageSize)
+  const start = pageIndex * pageSize + 1
+  const end = Math.min((pageIndex + 1) * pageSize, total)
+
+  return (
+    <div>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <thead>
+            <tr>
+              {table.getHeaderGroups()[0]?.headers.map(h => (
+                <th key={h.id} style={thStyle}>
+                  {flexRender(h.column.columnDef.header, h.getContext())}
+                </th>
+              ))}
+            </tr>
+            <tr>
+              {table.getHeaderGroups()[0]?.headers.map(h => (
+                <th key={h.id + '-filter'} style={{ ...thStyle, padding: '4px 8px' }}>
+                  <input
+                    type="text"
+                    placeholder="Filter..."
+                    value={(h.column.getFilterValue() as string) ?? ''}
+                    onChange={e => h.column.setFilterValue(e.target.value)}
+                    style={filterInput}
+                  />
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {table.getRowModel().rows.map(row => (
+              <tr key={row.id} style={{ borderBottom: '1px solid #eee' }}>
+                {row.getVisibleCells().map(cell => (
+                  <td key={cell.id} style={tdStyle}>
+                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0' }}>
+        <button style={btnStyle} disabled={pageIndex === 0} onClick={() => loadPage(pageIndex - 1)}>Prev</button>
+        <span style={{ fontSize: 13, color: '#666' }}>
+          {total > 0 ? `${fmtNum(start)}–${fmtNum(end)} of ${fmtNum(total)}` : 'No rows'}
+        </span>
+        <button style={btnStyle} disabled={pageIndex + 1 >= totalPages} onClick={() => loadPage(pageIndex + 1)}>Next</button>
+      </div>
+    </div>
+  )
+}
+
+/* ── Main App ── */
+
+export default function App() {
+  const [page, setPage] = useState<Page>('home')
+  const [tables, setTables] = useState<TableInfo[]>([])
+  const [selected, setSelected] = useState<string | null>(null)
+  const [usage, setUsage] = useState<UsageData | null>(null)
+
+  // SQL state
+  const [sql, setSql] = useState('')
+  const [queryResult, setQueryResult] = useState<{ columns: string[]; rows: Record<string, unknown>[]; error?: string } | null>(null)
+
+  useEffect(() => { fetch(`${API}/tables`).then(r => r.json()).then(setTables) }, [])
+  useEffect(() => { fetch(`${API}/usage`).then(r => r.json()).then(setUsage) }, [])
 
   function runQuery() {
     fetch(`${API}/query`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sql }) })
@@ -329,102 +152,163 @@ export default function App() {
       .catch(e => setQueryResult({ columns: [], rows: [], error: e.message }))
   }
 
-  const renderTable = (cols: string[], data: Record<string, unknown>[]) => (
-    <div style={styles.tableCard}>
-      <table style={styles.table}>
-        <thead><tr>{cols.map(c => <th key={c} style={styles.th}>{c}</th>)}</tr></thead>
-        <tbody>{data.map((r, i) => <tr key={i}>{cols.map(c => <td key={c} style={styles.td}>{String(r[c] ?? '')}</td>)}</tr>)}</tbody>
-      </table>
-    </div>
-  )
-
   return (
-    <>
-      <style>{globalCSS}</style>
-      <div style={styles.app}>
-        {/* Sidebar */}
-        <div style={styles.sidebar}>
-          <div style={styles.logo}>
-            <div>
-              <div style={styles.logoText}>⚡ NHC</div>
-              <div style={styles.logoSub}>Admin Dashboard</div>
+    <div style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif', color: '#1a1a1a', minHeight: '100vh', background: '#f8f9fa' }}>
+      {/* Nav bar */}
+      <nav style={{ background: '#fff', borderBottom: '1px solid #e0e0e0', padding: '0 24px', display: 'flex', alignItems: 'center', height: 52 }}>
+        <span style={{ fontWeight: 700, fontSize: 16, marginRight: 32 }}>NHC Admin</span>
+        {(['home', 'explorer', 'sql'] as Page[]).map(p => (
+          <button key={p} onClick={() => setPage(p)}
+            style={{ ...navBtn, ...(page === p ? { color: '#1a1a1a', borderBottom: '2px solid #1a1a1a' } : {}) }}>
+            {p === 'home' ? 'Home' : p === 'explorer' ? 'Data Explorer' : 'SQL Query'}
+          </button>
+        ))}
+      </nav>
+
+      <div style={{ maxWidth: 1200, margin: '0 auto', padding: '24px 16px' }}>
+        {/* HOME PAGE */}
+        {page === 'home' && (
+          <div>
+            <h2 style={{ fontSize: 20, fontWeight: 600, margin: '0 0 20px' }}>Usage Statistics</h2>
+            {usage && (
+              <>
+                {/* Totals */}
+                <div style={{ display: 'flex', gap: 16, marginBottom: 24, flexWrap: 'wrap' }}>
+                  <StatCard label="Total Tokens" value={fmtNum(usage.totals.total_tokens)} />
+                  <StatCard label="Input Tokens" value={fmtNum(usage.totals.input_tokens)} />
+                  <StatCard label="Output Tokens" value={fmtNum(usage.totals.output_tokens)} />
+                  <StatCard label="Sessions" value={String(usage.sessions.length)} />
+                </div>
+                {/* Session list */}
+                <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))' }}>
+                  {usage.sessions.map(s => (
+                    <div key={s.key} style={cardStyle}>
+                      <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {s.label}
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 16px', fontSize: 13, color: '#555' }}>
+                        <span>Total tokens</span><span style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmtNum(s.total_tokens)}</span>
+                        <span>Input</span><span style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmtNum(s.input_tokens)}</span>
+                        <span>Output</span><span style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmtNum(s.output_tokens)}</span>
+                        <span>Context window</span><span style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmtNum(s.context_window)}</span>
+                        <span>Model</span><span style={{ textAlign: 'right' }}>{s.model || '—'}</span>
+                        <span>Updated</span><span style={{ textAlign: 'right' }}>{fmtDate(s.updated_at)}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+            {!usage && <p style={{ color: '#888' }}>Loading...</p>}
+          </div>
+        )}
+
+        {/* DATA EXPLORER */}
+        {page === 'explorer' && (
+          <div style={{ display: 'flex', gap: 24 }}>
+            {/* Sidebar */}
+            <div style={{ width: 220, flexShrink: 0 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#888', textTransform: 'uppercase', marginBottom: 8, letterSpacing: '0.04em' }}>Tables</div>
+              {tables.map(t => (
+                <button key={t.name} onClick={() => setSelected(t.name)}
+                  style={{ ...sideBtn, ...(selected === t.name ? { background: '#e8e8e8', fontWeight: 600 } : {}) }}>
+                  <span>{t.name}</span>
+                  <span style={{ fontSize: 11, color: '#999' }}>{t.row_count.toLocaleString()}</span>
+                </button>
+              ))}
+            </div>
+            {/* Table content */}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              {selected ? (
+                <>
+                  <h2 style={{ fontSize: 18, fontWeight: 600, margin: '0 0 12px' }}>{selected}</h2>
+                  <DataTable tableName={selected} />
+                </>
+              ) : (
+                <div style={{ color: '#888', padding: 40, textAlign: 'center' }}>Select a table to explore</div>
+              )}
             </div>
           </div>
-          <div style={styles.sidebarTitle}>Tables</div>
-          {tables.map(t => (
-            <button key={t.name} onClick={() => { setSelected(t.name); setTab('data') }}
-              style={{ ...styles.tableBtn, ...(selected === t.name ? styles.tableBtnActive : {}) }}>
-              <span>{t.name}</span>
-              <span style={styles.badge}>{t.row_count.toLocaleString()}</span>
-            </button>
-          ))}
-        </div>
+        )}
 
-        {/* Main */}
-        <div style={styles.main}>
-          {!selected ? (
-            <div style={styles.emptyState}>
-              <div style={styles.emptyIcon}>📊</div>
-              <div style={styles.emptyText}>Select a table to explore</div>
-              <div style={styles.emptySubtext}>Browse schema, data, or run SQL queries</div>
+        {/* SQL QUERY */}
+        {page === 'sql' && (
+          <div>
+            <h2 style={{ fontSize: 20, fontWeight: 600, margin: '0 0 16px' }}>SQL Query</h2>
+            <textarea
+              style={{ width: '100%', height: 120, padding: 12, fontSize: 13, fontFamily: 'monospace', border: '1px solid #ddd', borderRadius: 6, resize: 'vertical', boxSizing: 'border-box' }}
+              value={sql} onChange={e => setSql(e.target.value)}
+              placeholder="SELECT * FROM teams LIMIT 10"
+            />
+            <div style={{ margin: '12px 0' }}>
+              <button style={{ ...btnStyle, background: '#1a1a1a', color: '#fff' }} onClick={runQuery}>Run Query</button>
             </div>
-          ) : <>
-            {/* Tab bar */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={styles.tabBar}>
-                {(['data', 'schema', 'query'] as const).map(t => (
-                  <button key={t} onClick={() => setTab(t)}
-                    style={{ ...styles.tab, ...(tab === t ? styles.tabActive : {}) }}>
-                    {t === 'data' ? '📋 Data' : t === 'schema' ? '🧬 Schema' : '⚡ SQL'}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Header */}
-            <div style={styles.header}>
-              <h2 style={styles.h2}>{selected}</h2>
-              <span style={styles.headerBadge}>{total.toLocaleString()} rows</span>
-            </div>
-
-            {/* Data tab */}
-            {tab === 'data' && <>
-              {renderTable(columns, rows)}
-              <div style={{ ...styles.tableCard, ...styles.pagination }}>
-                <button style={styles.btn} disabled={offset === 0}
-                  onClick={() => loadData(selected, Math.max(0, offset - limit))}>← Prev</button>
-                <span style={styles.paginationText}>
-                  {offset + 1}–{Math.min(offset + limit, total)} of {total.toLocaleString()}
-                </span>
-                <button style={styles.btn} disabled={offset + limit >= total}
-                  onClick={() => loadData(selected, offset + limit)}>Next →</button>
-              </div>
-            </>}
-
-            {/* Schema tab */}
-            {tab === 'schema' && renderTable(
-              ['column_name', 'data_type', 'is_nullable', 'column_default'],
-              schema as unknown as Record<string, unknown>[]
+            {queryResult && (queryResult.error
+              ? <div style={{ padding: 12, background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6, color: '#dc2626', fontSize: 13 }}>{queryResult.error}</div>
+              : <>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                    <thead><tr>{queryResult.columns.map(c => <th key={c} style={thStyle}>{c}</th>)}</tr></thead>
+                    <tbody>{queryResult.rows.map((r, i) => (
+                      <tr key={i} style={{ borderBottom: '1px solid #eee' }}>
+                        {queryResult.columns.map(c => <td key={c} style={tdStyle}>{String(r[c] ?? '')}</td>)}
+                      </tr>
+                    ))}</tbody>
+                  </table>
+                </div>
+                <div style={{ fontSize: 13, color: '#666', marginTop: 8 }}>{queryResult.rows.length} rows returned</div>
+              </>
             )}
-
-            {/* Query tab */}
-            {tab === 'query' && <>
-              <textarea style={styles.textarea} value={sql} onChange={e => setSql(e.target.value)}
-                placeholder="SELECT * FROM teams LIMIT 10" />
-              <div>
-                <button style={{ ...styles.btn, ...styles.btnPrimary }} onClick={runQuery}>▶ Run Query</button>
-              </div>
-              {queryResult && (queryResult.error
-                ? <div style={styles.error}>⚠ {queryResult.error}</div>
-                : <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    {renderTable(queryResult.columns, queryResult.rows)}
-                    <span style={styles.paginationText}>{queryResult.rows.length} rows returned</span>
-                  </div>
-              )}
-            </>}
-          </>}
-        </div>
+          </div>
+        )}
       </div>
-    </>
+    </div>
   )
+}
+
+/* ── Small components ── */
+
+function StatCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ ...cardStyle, minWidth: 140, flex: '1 1 0' }}>
+      <div style={{ fontSize: 12, color: '#888', marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: 22, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{value}</div>
+    </div>
+  )
+}
+
+/* ── Shared styles ── */
+
+const cardStyle: React.CSSProperties = {
+  background: '#fff', border: '1px solid #e0e0e0', borderRadius: 8, padding: 16,
+}
+
+const navBtn: React.CSSProperties = {
+  background: 'none', border: 'none', borderBottom: '2px solid transparent',
+  padding: '14px 16px', cursor: 'pointer', fontSize: 14, color: '#666', fontFamily: 'inherit',
+}
+
+const sideBtn: React.CSSProperties = {
+  display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%',
+  padding: '8px 10px', background: 'transparent', border: 'none', cursor: 'pointer',
+  borderRadius: 6, fontSize: 13, fontFamily: 'inherit', textAlign: 'left',
+}
+
+const btnStyle: React.CSSProperties = {
+  padding: '6px 16px', background: '#fff', border: '1px solid #ddd', borderRadius: 6,
+  cursor: 'pointer', fontSize: 13, fontFamily: 'inherit',
+}
+
+const thStyle: React.CSSProperties = {
+  padding: '8px 12px', textAlign: 'left', borderBottom: '2px solid #e0e0e0',
+  fontSize: 12, fontWeight: 600, color: '#555', background: '#fafafa',
+}
+
+const tdStyle: React.CSSProperties = {
+  padding: '6px 12px', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+}
+
+const filterInput: React.CSSProperties = {
+  width: '100%', padding: '4px 6px', fontSize: 12, border: '1px solid #ddd', borderRadius: 4,
+  fontFamily: 'inherit', boxSizing: 'border-box',
 }

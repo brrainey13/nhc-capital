@@ -1,5 +1,7 @@
+import json
 import re
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -145,6 +147,54 @@ async def run_query(req: QueryRequest):
         "columns": columns,
         "rows": [dict(r) for r in rows],
         "row_count": len(rows),
+    }
+
+
+SESSIONS_FILE = Path.home() / ".openclaw/agents/main/sessions/sessions.json"
+
+
+@app.get("/api/usage")
+async def usage():
+    if not SESSIONS_FILE.exists():
+        return {"sessions": [], "totals": {"total_tokens": 0, "input_tokens": 0, "output_tokens": 0}}
+    data = json.loads(SESSIONS_FILE.read_text())
+    sessions = []
+    total_tok = 0
+    total_in = 0
+    total_out = 0
+    for key, s in data.items():
+        label = s.get("displayName") or s.get("origin", {}).get("label", key)
+        t_tokens = s.get("totalTokens", 0)
+        i_tokens = s.get("inputTokens", 0)
+        o_tokens = s.get("outputTokens", 0)
+        ctx = s.get("contextTokens", 0)
+        updated_ms = s.get("updatedAt", 0)
+        updated = (
+            datetime.fromtimestamp(updated_ms / 1000, tz=timezone.utc).isoformat()
+            if updated_ms
+            else None
+        )
+        sessions.append({
+            "key": key,
+            "label": label,
+            "total_tokens": t_tokens,
+            "input_tokens": i_tokens,
+            "output_tokens": o_tokens,
+            "context_window": ctx,
+            "model": s.get("model", ""),
+            "updated_at": updated,
+        })
+        total_tok += t_tokens
+        total_in += i_tokens
+        total_out += o_tokens
+    sessions.sort(key=lambda x: x["total_tokens"], reverse=True)
+    return {
+        "sessions": sessions,
+        "totals": {
+            "total_tokens": total_tok,
+            "input_tokens": total_in,
+            "output_tokens": total_out,
+        },
     }
 
 
