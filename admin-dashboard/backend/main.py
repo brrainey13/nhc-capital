@@ -105,24 +105,117 @@ async def table_schema(name: str):
     }
 
 
+async def _get_table_columns(name: str) -> set[str]:
+    """Return set of column names for a validated table."""
+    rows = await pool.fetch(
+        """
+        SELECT column_name FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = $1
+        """,
+        name,
+    )
+    return {r["column_name"] for r in rows}
+
+
+def _validate_column(col: str, valid_cols: set[str], param_name: str) -> str:
+    if col not in valid_cols:
+        raise HTTPException(400, f"Invalid {param_name}: '{col}'")
+    return col
+
+
 @app.get("/api/tables/{name}/data")
 async def table_data(
     name: str,
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
+    sort_by: str | None = Query(None),
+    sort_dir: str = Query("asc"),
+    filters: str | None = Query(None),
 ):
     validate_table_name(name)
-    rows = await pool.fetch(f'SELECT * FROM "{name}" LIMIT $1 OFFSET $2', limit, offset)
+    valid_cols = await _get_table_columns(name)
+
+    # Build WHERE clause from filters
+    where_parts: list[str] = []
+    params: list[object] = []
+    param_idx = 1
+
+    if filters:
+        try:
+            filter_dict = json.loads(filters)
+        except json.JSONDecodeError:
+            raise HTTPException(400, "Invalid filters JSON")
+        for col, val in filter_dict.items():
+            _validate_column(col, valid_cols, "filter column")
+            if isinstance(val, dict) and ("min" in val or "max" in val):
+                # Numeric range filter
+                if "min" in val:
+                    where_parts.append(f'"{col}" >= ${param_idx}')
+                    params.append(val["min"])
+                    param_idx += 1
+                if "max" in val:
+                    where_parts.append(f'"{col}" <= ${param_idx}')
+                    params.append(val["max"])
+                    param_idx += 1
+            else:
+                # Text ILIKE filter
+                where_parts.append(f'CAST("{col}" AS TEXT) ILIKE ${param_idx}')
+                params.append(f"%{val}%")
+                param_idx += 1
+
+    where_sql = (" WHERE " + " AND ".join(where_parts)) if where_parts else ""
+
+    # Validate and build ORDER BY
+    order_sql = ""
+    if sort_by:
+        _validate_column(sort_by, valid_cols, "sort_by column")
+        direction = "DESC" if sort_dir.lower() == "desc" else "ASC"
+        order_sql = f' ORDER BY "{sort_by}" {direction} NULLS LAST'
+
+    # Total count (unfiltered)
     total = await pool.fetchval(f'SELECT COUNT(*) FROM "{name}"')
+
+    # Filtered count
+    count_params = list(params)
+    filtered_total = await pool.fetchval(
+        f'SELECT COUNT(*) FROM "{name}"{where_sql}', *count_params
+    )
+
+    # Data query
+    data_sql = (
+        f'SELECT * FROM "{name}"{where_sql}{order_sql}'
+        f" LIMIT ${param_idx} OFFSET ${param_idx + 1}"
+    )
+    params.append(limit)
+    params.append(offset)
+
+    rows = await pool.fetch(data_sql, *params)
     columns = [str(k) for k in rows[0].keys()] if rows else []
     return {
         "table": name,
         "columns": columns,
         "rows": [dict(r) for r in rows],
         "total": total,
+        "filtered_total": filtered_total,
         "limit": limit,
         "offset": offset,
     }
+
+
+@app.get("/api/tables/{name}/grouped")
+async def table_grouped(
+    name: str,
+    group_by: str = Query(...),
+):
+    validate_table_name(name)
+    valid_cols = await _get_table_columns(name)
+    _validate_column(group_by, valid_cols, "group_by column")
+
+    rows = await pool.fetch(
+        f'SELECT "{group_by}" AS value, COUNT(*) AS count'
+        f' FROM "{name}" GROUP BY "{group_by}" ORDER BY count DESC'
+    )
+    return [{"value": r["value"], "count": r["count"]} for r in rows]
 
 
 class QueryRequest(BaseModel):
