@@ -19,8 +19,8 @@ ALLOWED_TABLES = {
     "cook_county_properties", "cook_county_sales", "cook_county_tax_rates",
     "game_team_stats", "games", "goalie_stats", "injuries", "kanban_events",
     "kanban_tasks", "live_game_snapshots", "model_runs", "period_scores",
-    "player_stats", "players", "predictions", "schedules", "sf_rentals",
-    "standings", "teams",
+    "player_stats", "players", "predictions", "saves_odds", "schedules",
+    "sf_rentals", "standings", "teams",
 }
 
 DANGEROUS_PATTERN = re.compile(
