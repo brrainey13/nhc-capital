@@ -1,37 +1,23 @@
-#!/usr/bin/env bash
+#!/bin/bash
 set -e
+cd "$(dirname "$0")"
 
-DIR="$(cd "$(dirname "$0")" && pwd)"
-
-echo "=== NH Capital Admin Dashboard ==="
-
-# Install backend deps
-echo "[backend] Installing Python dependencies..."
-pip install -q -r "$DIR/backend/requirements.txt"
-
-# Install frontend deps
-echo "[frontend] Installing npm dependencies..."
-cd "$DIR/frontend" && npm install --silent
-
-# Start backend
-echo "[backend] Starting FastAPI on :8000..."
-cd "$DIR/backend"
+echo "Starting backend..."
+cd backend
+pip install -q -r requirements.txt
 uvicorn main:app --host 0.0.0.0 --port 8000 &
 BACKEND_PID=$!
+cd ..
 
-# Start frontend
-echo "[frontend] Starting Vite dev server on :3000..."
-cd "$DIR/frontend"
+echo "Starting frontend..."
+cd frontend
+npm install --silent
 npm run dev &
 FRONTEND_PID=$!
+cd ..
 
-# Cleanup on exit
+echo "Backend: http://localhost:8000"
+echo "Frontend: http://localhost:3000"
+
 trap "kill $BACKEND_PID $FRONTEND_PID 2>/dev/null" EXIT
-
-echo ""
-echo "Dashboard: http://localhost:3000"
-echo "API:       http://localhost:8000/api/health"
-echo ""
-echo "Press Ctrl+C to stop."
-
 wait

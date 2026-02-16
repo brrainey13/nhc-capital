@@ -1,60 +1,29 @@
-# Admin Dashboard
+# NHC Admin Dashboard
 
-Internal ops dashboard for NH Capital. Browse database tables, inspect schemas, and run read-only SQL queries.
+Database explorer for the NHC Capital PostgreSQL database. Browse tables, view schemas, and run read-only SQL queries.
 
 ## Stack
-
-- **Backend:** Python / FastAPI (port 8000)
-- **Frontend:** React / Vite / TypeScript (port 3000)
+- **Backend:** FastAPI + asyncpg (Python)
+- **Frontend:** React + Vite + TypeScript
 - **Database:** PostgreSQL 17
 
 ## Quick Start
-
 ```bash
 ./run.sh
 ```
-
-This installs dependencies and starts both servers. Open http://localhost:3000.
-
-## Manual Setup
-
-### Backend
-
-```bash
-cd backend
-pip install -r requirements.txt
-uvicorn main:app --host 0.0.0.0 --port 8000
-```
-
-### Frontend
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
+- Backend: http://localhost:8000
+- Frontend: http://localhost:3000
 
 ## API Endpoints
-
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/health` | Health check |
-| GET | `/api/tables` | List all tables with row counts |
-| GET | `/api/tables/{name}/schema` | Column info for a table |
-| GET | `/api/tables/{name}/data?limit=100&offset=0` | Paginated table data |
-| GET | `/api/query?sql=SELECT...` | Run read-only SQL (SELECT only) |
+| GET | /api/health | Health check |
+| GET | /api/tables | List tables with row counts |
+| GET | /api/tables/{name}/schema | Column info |
+| GET | /api/tables/{name}/data | Paginated data (?limit=100&offset=0) |
+| POST | /api/query | Run read-only SQL |
 
 ## Tests
-
 ```bash
-cd backend
-pytest tests/ -v
+cd backend && pip install -r requirements.txt && pytest tests/ -v
 ```
-
-## Features
-
-- Sidebar listing all 22 database tables with row counts
-- Table viewer with schema inspector and pagination
-- SQL query editor with Cmd+Enter execution
-- Write protection: only SELECT queries allowed
-- Dark theme UI
