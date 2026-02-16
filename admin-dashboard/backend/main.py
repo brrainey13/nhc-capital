@@ -40,10 +40,17 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="NHC Admin Dashboard API", lifespan=lifespan)
+ALLOWED_ORIGINS = [
+    "https://alexzander-tightfisted-ambagiously.ngrok-free.dev",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+    "http://localhost:3000",  # vite dev
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
+    allow_origins=ALLOWED_ORIGINS,
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 
