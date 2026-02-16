@@ -46,6 +46,13 @@ You are a coding agent working inside the NH Capital monorepo. NHC (the orchestr
 4. `scripts/committer "feat: description" file1 file2 ...` — never `git add .`
 5. Push only when all tests pass
 
+## Deployment
+
+**Dashboard deployment uses `scripts/deploy-dashboard` ONLY.** Do NOT manually run uvicorn or ngrok.
+```bash
+scripts/deploy-dashboard --all    # Full deploy (CI + build + restart)
+```
+
 ## Rules
 
 - **Conventional Commits:** `feat|fix|refactor|build|ci|chore|docs|style|perf|test`

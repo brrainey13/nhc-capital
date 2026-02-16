@@ -34,21 +34,40 @@ Browser → ngrok (Google OAuth) → localhost:8000 → FastAPI
 | `/api/tables/{name}/data` | GET | Paginated rows (limit/offset) |
 | `/api/query` | POST | Run arbitrary read-only SQL |
 
-## Running Locally
+## Deployment (Deterministic)
+
+**The ONLY way to deploy the dashboard is via the deploy script:**
+
+```bash
+scripts/deploy-dashboard              # Build + health check (no restart)
+scripts/deploy-dashboard --all        # Build + restart server + restart ngrok
+scripts/deploy-dashboard --restart-server  # Just restart uvicorn
+scripts/deploy-dashboard --restart-ngrok   # Just restart ngrok
+```
+
+The script:
+1. Runs `make ci` (lint + test) — **aborts on failure**
+2. Builds frontend (`npm run build`)
+3. Starts/restarts uvicorn on `127.0.0.1:8000`
+4. Starts/restarts ngrok with OAuth
+5. Health checks both local and ngrok
+
+**Do NOT:**
+- Manually run `uvicorn` or `ngrok` commands
+- Restart services without running tests first
+- Deploy without building the frontend
+
+## Running Locally (Dev Only)
 
 ```bash
 cd admin-dashboard/backend
 python3 -m uvicorn main:app --host 127.0.0.1 --port 8000
 ```
 
-Frontend is pre-built into `frontend/dist/` and served by FastAPI at `/`.
-
-## Rebuilding Frontend
-
+Frontend dev server (with hot reload):
 ```bash
 cd admin-dashboard/frontend
-npm install
-npm run build
+npm run dev  # localhost:3000, proxies /api to :8000
 ```
 
 ## Security

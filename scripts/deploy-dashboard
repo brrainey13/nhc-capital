@@ -1,0 +1,120 @@
+#!/usr/bin/env bash
+# Deterministic dashboard deployment
+# Usage: scripts/deploy-dashboard [--restart-server] [--restart-ngrok]
+#
+# Steps:
+#   1. Run CI (lint + test) — fails = abort
+#   2. Build frontend
+#   3. Optionally restart uvicorn (--restart-server)
+#   4. Optionally restart ngrok (--restart-ngrok)
+#   5. Health check
+#
+# This is the ONLY way to deploy the dashboard. No ad-hoc restarts.
+
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+BACKEND_DIR="$REPO_ROOT/admin-dashboard/backend"
+FRONTEND_DIR="$REPO_ROOT/admin-dashboard/frontend"
+NGROK_DOMAIN="alexzander-tightfisted-ambagiously.ngrok-free.dev"
+NGROK_EMAILS=(
+  "yousefshahin1422@gmail.com"
+  "brrainey13@gmail.com"
+  "connorsrainey@gmail.com"
+  "pgrainey8@gmail.com"
+  "ian.rainey95@gmail.com"
+)
+
+restart_server=false
+restart_ngrok=false
+
+for arg in "$@"; do
+  case "$arg" in
+    --restart-server) restart_server=true ;;
+    --restart-ngrok) restart_ngrok=true ;;
+    --all) restart_server=true; restart_ngrok=true ;;
+    -h|--help)
+      echo "Usage: deploy-dashboard [--restart-server] [--restart-ngrok] [--all]"
+      exit 0
+      ;;
+    *) echo "Unknown arg: $arg"; exit 1 ;;
+  esac
+done
+
+echo "=== Step 1: CI (lint + test) ==="
+cd "$REPO_ROOT"
+make ci || { echo "❌ CI failed — aborting deployment"; exit 1; }
+echo "✅ CI passed"
+
+echo ""
+echo "=== Step 2: Build frontend ==="
+cd "$FRONTEND_DIR"
+npm install --silent 2>/dev/null
+npm run build 2>&1
+echo "✅ Frontend built"
+
+echo ""
+echo "=== Step 3: Server ==="
+if [ "$restart_server" = true ]; then
+  echo "Restarting uvicorn..."
+  pkill -f "uvicorn main:app" 2>/dev/null || true
+  sleep 1
+  cd "$BACKEND_DIR"
+  nohup python3 -m uvicorn main:app --host 127.0.0.1 --port 8000 > /tmp/nhc-uvicorn.log 2>&1 &
+  echo "✅ uvicorn started (PID: $!, log: /tmp/nhc-uvicorn.log)"
+  sleep 2
+else
+  if pgrep -f "uvicorn main:app" > /dev/null; then
+    echo "✅ uvicorn already running (use --restart-server to restart)"
+  else
+    echo "⚠️  uvicorn not running — starting..."
+    cd "$BACKEND_DIR"
+    nohup python3 -m uvicorn main:app --host 127.0.0.1 --port 8000 > /tmp/nhc-uvicorn.log 2>&1 &
+    echo "✅ uvicorn started (PID: $!)"
+    sleep 2
+  fi
+fi
+
+echo ""
+echo "=== Step 4: ngrok ==="
+if [ "$restart_ngrok" = true ]; then
+  echo "Restarting ngrok..."
+  pkill -f "ngrok http" 2>/dev/null || true
+  sleep 1
+fi
+
+if pgrep -f "ngrok http" > /dev/null; then
+  echo "✅ ngrok already running (use --restart-ngrok to restart)"
+else
+  echo "Starting ngrok..."
+  email_args=""
+  for email in "${NGROK_EMAILS[@]}"; do
+    email_args="$email_args --oauth-allow-email=$email"
+  done
+  nohup ngrok http 8000 --domain="$NGROK_DOMAIN" --oauth=google $email_args > /tmp/nhc-ngrok.log 2>&1 &
+  echo "✅ ngrok started (PID: $!)"
+  sleep 3
+fi
+
+echo ""
+echo "=== Step 5: Health check ==="
+health=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/api/health)
+ngrok_status=$(curl -s -o /dev/null -w "%{http_code}" "https://$NGROK_DOMAIN/" 2>/dev/null || echo "000")
+
+if [ "$health" = "200" ]; then
+  echo "✅ Local health check: OK"
+else
+  echo "❌ Local health check failed (HTTP $health)"
+  exit 1
+fi
+
+if [ "$ngrok_status" = "302" ] || [ "$ngrok_status" = "200" ]; then
+  echo "✅ ngrok tunnel: OK (HTTP $ngrok_status — OAuth redirect)"
+else
+  echo "⚠️  ngrok tunnel: HTTP $ngrok_status (may still be starting)"
+fi
+
+echo ""
+echo "=== Deployment complete ==="
+echo "Dashboard: https://$NGROK_DOMAIN"
+echo "Local:     http://localhost:8000"
