@@ -9,6 +9,20 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: connorrainey
+          POSTGRES_DB: nhl_betting
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
 
@@ -18,7 +32,16 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install pytest ruff
+        run: pip install pytest ruff httpx pytest-asyncio asyncpg fastapi uvicorn pydantic
+
+      - name: Seed test tables
+        run: |
+          psql "postgresql://connorrainey@localhost:5432/nhl_betting" -c "
+            CREATE TABLE IF NOT EXISTS teams (id serial PRIMARY KEY, name text);
+            INSERT INTO teams (name) VALUES ('Bruins'), ('Rangers'), ('Canadiens') ON CONFLICT DO NOTHING;
+          "
+        env:
+          PGPASSWORD: ""
 
       - name: Lint
         run: ruff check .
