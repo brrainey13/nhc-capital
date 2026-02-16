@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# Safe commit helper — stages only listed files, enforces non-empty messages.
+# Usage: committer "commit message" file1 [file2 ...]
+
+set -euo pipefail
+set -f
+
+usage() {
+  printf 'Usage: %s "commit message" "file" ["file" ...]\n' "$(basename "$0")" >&2
+  exit 2
+}
+
+[ "$#" -lt 2 ] && usage
+
+commit_message=$1; shift
+
+[[ "$commit_message" != *[![:space:]]* ]] && { printf 'Error: empty commit message\n' >&2; exit 1; }
+[ -e "$commit_message" ] && { printf 'Error: first arg looks like a file path\n' >&2; exit 1; }
+[ "$#" -eq 0 ] && usage
+
+files=("$@")
+
+for file in "${files[@]}"; do
+  [ "$file" = "." ] && { printf 'Error: "." not allowed; list specific paths\n' >&2; exit 1; }
+done
+
+for file in "${files[@]}"; do
+  if [ ! -e "$file" ]; then
+    if ! git cat-file -e "HEAD:$file" >/dev/null 2>&1; then
+      printf 'Error: file not found: %s\n' "$file" >&2
+      exit 1
+    fi
+  fi
+done
+
+git restore --staged :/ 2>/dev/null || true
+git add -A -- "${files[@]}"
+
+if git diff --staged --quiet; then
+  printf 'Warning: no staged changes for: %s\n' "${files[*]}" >&2
+  exit 1
+fi
+
+git commit -m "$commit_message" -- "${files[@]}"
+printf 'Committed "%s" with %d files\n' "$commit_message" "${#files[@]}"
