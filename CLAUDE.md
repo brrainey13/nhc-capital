@@ -62,6 +62,13 @@ You are a coding agent working inside the NH Capital monorepo. NHC (the orchestr
 - **Dashboard:** `admin-dashboard/`, served via ngrok with Google OAuth
 - **Discord:** NHC server, channels map to project folders
 
+## MCP Servers (Available to You)
+
+- **chrome-devtools** — 26 tools: navigate pages, take snapshots/screenshots, click/fill elements, inspect network requests, console messages, run performance traces. Use for dashboard testing and debugging.
+- **deepwiki** — Query documentation for open-source projects
+
+Call via: `mcporter call chrome-devtools.navigate_page url=http://localhost:8000 type=url`
+
 ## Team
 
 NH Capital — 5-person investment team. You're building tools for quantitative analysis, betting models, and data pipelines.
