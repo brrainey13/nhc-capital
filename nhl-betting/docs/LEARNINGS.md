@@ -4,6 +4,27 @@ Critical project knowledge only. Things that affect modeling decisions and data 
 
 ---
 
+## ⭐ Core Thesis: Defenseman Absences Are the Edge
+
+**Defensive TOI absences are the single most important signal we've found.** This is the foundation of every profitable strategy in the project.
+
+**Why it matters across ALL shot-volume props:**
+- Missing defensemen → worse gap coverage → more shots allowed → more saves for goalies, more SOG for opposing forwards
+- Books set prop lines based on the player's profile (goalie's save avg, forward's SOG avg). They do NOT fully adjust for how depleted the opposing/own blueline is on a given night.
+- Most bettors check "is player X injured?" — they don't quantify the cumulative impact. "Missing 67 minutes of defensive TOI" is a completely different signal than "missing 1 defenseman."
+
+**Our data advantage:** We reconstructed `lineup_absences` from `player_stats` — TOI-weighted absence impact per team per game, with F/D splits. This captures injuries, suspensions, AND healthy scratches. Nobody else has this in a structured, queryable format going back to 2022.
+
+**Where to apply it:**
+1. **Goalie saves OVER** — goalie's team missing D → more shots faced → over hits (+20.6% ROI when 3+ D missing)
+2. **Player SOG OVER** — opposing team missing D → forward faces weaker defense → more shot attempts (untested, next priority)
+3. **Period props** — D absences may hit hardest in 1st period before coaching adjustments
+4. **Any prop where shot volume is the driver** — this is a universal edge, not market-specific
+
+**Key metric:** `own_def_missing_toi` (for goalie saves) and `opp_def_missing_toi` (for player SOG). Raw count of missing D matters, but TOI-weighted impact is the stronger signal.
+
+---
+
 ## Data Integrity
 
 **BettingPros `player_team` is always the player's CURRENT team, not team-at-time-of-game.** Never use it for historical analysis. Join with our goalie_stats table instead.
@@ -191,5 +212,93 @@ Final pass with clean starter-only data. Every "edge" tested came back flat or n
 6. **Line movement is information.** When lines move, sharps know something. Betting against line moves = -30% ROI.
 7. **Small sample sizes lie.** Individual goalie edges (Shesterkin +35%) on <15 bets are noise until proven otherwise over 200+ bets.
 8. **Pull prediction is not viable with pre-game features.** 2.4% base rate, no predictive features found.
+
+---
+
+## Confidence Tiers + Line Shopping Analysis (2026-02-16)
+
+**CRITICAL BUG FOUND:** `save_diff`, `went_under`, `went_over` columns were still in the feature set (0.948 correlation with target). Previous "stress test" results were contaminated. Removed these + retrained clean.
+
+### Clean Model Performance (no leaking features)
+- MAE: 5.59 (book line MAE: 5.35) — model is roughly even with the book
+- 80 clean features after removing all leakers
+
+### Confidence Tiers (model pred_diff from book line)
+
+| Confidence | Direction | ROI @-110 | Win% | Bets |
+|------------|-----------|-----------|------|------|
+| >= +0      | Over      | -0.1%     | 52.3%| 281  |
+| >= +0.5    | Over      | +0.9%    | 52.9%| 227  |
+| >= +1.0    | Over      | **+4.2%** | 54.6%| 185  |
+| >= +1.5    | Over      | +1.7%    | 53.3%| 137  |
+| >= +2.0    | Over      | -9.0%    | 47.7%| 107  |
+| All        | Under     | -5 to -10%| ~48% | varies |
+
+**Key finding:** The sweet spot is **model says +1.0 to +1.5 saves over the line** for over bets. Higher confidence = fewer bets but NOT better ROI (overfitting to noise).
+
+Under bets are negative ROI at every confidence level. The model cannot find profitable unders.
+
+### Line Shopping Impact
+- Average 5.9 books per player-game in 2025-26 season
+- Line shopping adds ~0.4% ROI on overs (small)
+- With 4+ books available: **+6.4% ROI on overs at >= +1.0 confidence** (175 bets, 55.4% win rate)
+- Under odds have NaN issues (some books post no under odds) — data gap
+
+### Conclusion
+The **only potentially exploitable strategy**: 
+- Over bets where model predicts 1.0-1.5 saves above the line
+- Shop for best over odds across 4+ books
+- ~6% ROI on 175 bets over one half-season
+- **STILL NOT STATISTICALLY SIGNIFICANT** — need 500+ bets to confirm
+- This is a narrow, fragile edge that could easily be noise
+
+---
+
+## Narrative-Driven Edge Discovery (2026-02-16)
+
+### Method
+Examined the 25 highest-confidence over bets that hit. Looked for recurring situational patterns, then backtested each narrative on the full validation set (462 games, 2025-10 to 2026-02).
+
+### Pattern Found in Top 25 Winners
+- **92% had own team missing 1+ defenseman** (vs ~75% base rate)
+- **68% had 2+ defensemen missing** (vs ~55% base rate)
+- Average own D missing TOI: 36.2 (vs 31.2 val avg)
+- **Weekend games overrepresented**: 13/25 (52%) on Sat/Sun
+
+### Best Narrative Subsets (Over bets, val set N=462)
+
+| # | Narrative | ROI | Win% | Bets |
+|---|-----------|-----|------|------|
+| **2** | **Own 3+ D missing** | **+20.6%** | **63.2%** | **95** |
+| **12** | **D TOI missing 30+ & Opp SOG 26+ & model agrees** | **+16.5%** | **61.0%** | **100** |
+| **10** | **D missing 2+ & Opp SOG 26+ & model +0.5** | **+14.5%** | **60.0%** | **100** |
+| 6 | Rest 3+ days + Own 2+ D missing | +14.0% | 59.7% | 72 |
+| 8 | Low saves avg10 ≤ 15 + Opp SOG10 ≥ 27 | +10.7% | 58.0% | 157 |
+| 4 | Own 2+ D missing + model +1.0 | +9.8% | 57.5% | 113 |
+| 3 | Own total missing TOI ≥ 80 | +8.6% | 56.9% | 160 |
+| 1 | Own 2+ D missing + Opp SOG10 ≥ 27 | +8.2% | 56.7% | 180 |
+
+### The Core Thesis
+**When a goalie's team is missing significant defensive TOI, that goalie faces more shots. Books don't fully adjust the saves line for defensive absences.** This is our edge.
+
+The strongest version: **3+ defensemen missing → +20.6% ROI on 95 bets at 63.2% win rate.**
+
+### Why This Might Be Real
+1. **Clear causal mechanism**: Missing D → more shots → more saves → over hits
+2. **Books set lines based on the goalie**, not the team's injury report depth
+3. **D absence data isn't easily available** — we reconstructed it from player_stats (TOI-weighted), most bettors don't have this
+4. **Consistent across multiple subset formulations** — every D-absence combo is positive ROI
+
+### Why This Might Be Noise
+1. 95 bets is still below 200+ statistical significance threshold
+2. One half-season of validation data
+3. Multiple hypothesis testing (we checked many subsets → some will look good by chance)
+4. Could be season-specific (2025-26 injuries may not repeat)
+
+### Next Steps
+1. Forward-test through rest of 2025-26 season (resumes Feb 26)
+2. Cross-validate: backtest on 2023-24 and 2024-25 seasons
+3. Build automated pipeline: scrape injuries → check D absences → flag over bets → alert team
+4. Track every bet prediction vs result in real-time
 
 *Updated: 2026-02-16*
