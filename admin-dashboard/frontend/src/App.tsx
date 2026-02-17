@@ -777,7 +777,7 @@ export default function App() {
         placeholder="Search tables…"
         style={{ ...inputDark, width: '100%', height: 34, fontSize: 13, boxSizing: 'border-box', padding: '0 12px', marginBottom: 6 }} />
       {filteredGroups.map(g => {
-        const isCollapsed = collapsed[g.label] ?? false
+        const isCollapsed = collapsed[g.label] ?? true
         return (
           <div key={g.label}>
             <button onClick={() => toggleGroup(g.label)}
