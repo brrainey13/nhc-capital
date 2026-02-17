@@ -14,12 +14,25 @@ from main import app
 @pytest_asyncio.fixture(autouse=True)
 async def setup_pool():
     import main
-    main.pool = await asyncpg.create_pool(
+    nhl_pool = await asyncpg.create_pool(
         "postgresql://connorrainey@localhost:5432/nhl_betting",
         min_size=1, max_size=3,
     )
+    main.pool = nhl_pool
+    main.pools = {"nhl_betting": nhl_pool}
+    # Try to add polymarket pool if DB exists
+    try:
+        poly_pool = await asyncpg.create_pool(
+            "postgresql://connorrainey@localhost:5432/polymarket",
+            min_size=1, max_size=2,
+        )
+        main.pools["polymarket"] = poly_pool
+    except Exception:
+        pass
+    await main._discover_tables()
     yield
-    await main.pool.close()
+    for p in main.pools.values():
+        await p.close()
 
 
 @pytest_asyncio.fixture

@@ -19,18 +19,17 @@ load_dotenv(Path(__file__).parent.parent / ".env")
 
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend" / "dist"
 
-DATABASE_URL = "postgresql://connorrainey@localhost:5432/nhl_betting"
-
-ALLOWED_TABLES = {
-    "api_snapshots", "cook_county_appeals", "cook_county_assessments",
-    "cook_county_properties", "cook_county_sales", "cook_county_tax_rates",
-    "game_team_stats", "games", "goalie_advanced", "goalie_saves_by_strength",
-    "goalie_starts", "goalie_stats", "injuries", "injuries_live",
-    "kanban_events", "kanban_tasks", "lineup_absences",
-    "live_game_snapshots", "model_runs", "period_scores",
-    "player_stats", "players", "predictions", "saves_odds", "schedules",
-    "sf_rentals", "standings", "teams",
+DATABASE_URLS = {
+    "nhl_betting": "postgresql://connorrainey@localhost:5432/nhl_betting",
+    "polymarket": "postgresql://connorrainey@localhost:5432/polymarket",
 }
+# Default DB for backwards compatibility
+DATABASE_URL = DATABASE_URLS["nhl_betting"]
+
+# Auto-populated on startup — no more hardcoded allowlist
+ALLOWED_TABLES: set[str] = set()
+# Maps table name -> database name (for multi-DB routing)
+TABLE_DB_MAP: dict[str, str] = {}
 
 DANGEROUS_PATTERN = re.compile(
     r"\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE)\b",
@@ -39,14 +38,43 @@ DANGEROUS_PATTERN = re.compile(
 READ_ONLY_START_PATTERN = re.compile(r"^\s*(SELECT|WITH)\b", re.IGNORECASE)
 
 pool: Optional[asyncpg.Pool] = None
+pools: dict[str, asyncpg.Pool] = {}
+
+
+async def _discover_tables():
+    """Auto-discover all public tables from all configured databases."""
+    global ALLOWED_TABLES, TABLE_DB_MAP
+    ALLOWED_TABLES = set()
+    TABLE_DB_MAP = {}
+    for db_name, db_pool in pools.items():
+        rows = await db_pool.fetch(
+            "SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename"
+        )
+        for row in rows:
+            tbl = row["tablename"]
+            # If same table name in multiple DBs, first one wins
+            if tbl not in TABLE_DB_MAP:
+                ALLOWED_TABLES.add(tbl)
+                TABLE_DB_MAP[tbl] = db_name
+
+
+def _get_pool(table_name: str | None = None) -> asyncpg.Pool:
+    """Get the right connection pool for a table (or default)."""
+    if table_name and table_name in TABLE_DB_MAP:
+        return pools[TABLE_DB_MAP[table_name]]
+    return pool  # type: ignore[return-value]
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global pool
-    pool = await asyncpg.create_pool(DATABASE_URL, min_size=2, max_size=10)
+    for db_name, db_url in DATABASE_URLS.items():
+        pools[db_name] = await asyncpg.create_pool(db_url, min_size=2, max_size=5)
+    pool = pools["nhl_betting"]  # default
+    await _discover_tables()
     yield
-    await pool.close()
+    for p in pools.values():
+        await p.close()
 
 
 app = FastAPI(title="NHC Admin Dashboard API", lifespan=lifespan)
@@ -78,27 +106,20 @@ async def health():
 
 @app.get("/api/tables")
 async def list_tables():
-    rows = await pool.fetch(
-        """
-        SELECT tablename FROM pg_tables
-        WHERE schemaname = 'public'
-        ORDER BY tablename
-        """
-    )
     results = []
-    for row in rows:
-        name = row["tablename"]
-        if name not in ALLOWED_TABLES:
-            continue
-        count = await pool.fetchval(f'SELECT COUNT(*) FROM "{name}"')
-        results.append({"name": name, "row_count": count})
+    for tbl in sorted(ALLOWED_TABLES):
+        db_name = TABLE_DB_MAP.get(tbl, "nhl_betting")
+        tbl_pool = pools[db_name]
+        count = await tbl_pool.fetchval(f'SELECT COUNT(*) FROM "{tbl}"')
+        results.append({"name": tbl, "row_count": count, "database": db_name})
     return results
 
 
 @app.get("/api/tables/{name}/schema")
 async def table_schema(name: str):
     validate_table_name(name)
-    rows = await pool.fetch(
+    p = _get_pool(name)
+    rows = await p.fetch(
         """
         SELECT column_name, data_type, is_nullable, column_default
         FROM information_schema.columns
@@ -115,7 +136,8 @@ async def table_schema(name: str):
 
 async def _get_table_columns(name: str) -> set[str]:
     """Return set of column names for a validated table."""
-    rows = await pool.fetch(
+    p = _get_pool(name)
+    rows = await p.fetch(
         """
         SELECT column_name FROM information_schema.columns
         WHERE table_schema = 'public' AND table_name = $1
@@ -127,7 +149,8 @@ async def _get_table_columns(name: str) -> set[str]:
 
 async def _get_column_types(name: str) -> dict[str, str]:
     """Return mapping of column_name -> data_type for a table."""
-    rows = await pool.fetch(
+    p = _get_pool(name)
+    rows = await p.fetch(
         """
         SELECT column_name, data_type FROM information_schema.columns
         WHERE table_schema = 'public' AND table_name = $1
@@ -303,11 +326,12 @@ async def table_data(
         order_sql = f' ORDER BY "{sort_by}" {direction} NULLS LAST'
 
     # Total count (unfiltered)
-    total = await pool.fetchval(f'SELECT COUNT(*) FROM "{name}"')
+    p = _get_pool(name)
+    total = await p.fetchval(f'SELECT COUNT(*) FROM "{name}"')
 
     # Filtered count
     count_params = list(params)
-    filtered_total = await pool.fetchval(
+    filtered_total = await p.fetchval(
         f'SELECT COUNT(*) FROM "{name}"{where_sql}', *count_params
     )
 
@@ -319,7 +343,7 @@ async def table_data(
     params.append(limit)
     params.append(offset)
 
-    rows = await pool.fetch(data_sql, *params)
+    rows = await p.fetch(data_sql, *params)
     columns = [str(k) for k in rows[0].keys()] if rows else []
     return {
         "table": name,
@@ -341,7 +365,8 @@ async def table_grouped(
     valid_cols = await _get_table_columns(name)
     _validate_column(group_by, valid_cols, "group_by column")
 
-    rows = await pool.fetch(
+    p = _get_pool(name)
+    rows = await p.fetch(
         f'SELECT "{group_by}" AS value, COUNT(*) AS count'
         f' FROM "{name}" GROUP BY "{group_by}" ORDER BY count DESC'
     )
@@ -350,6 +375,13 @@ async def table_grouped(
 
 class QueryRequest(BaseModel):
     sql: str
+    db: str = "nhl_betting"
+
+
+@app.get("/api/databases")
+async def list_databases():
+    """List available databases."""
+    return [{"name": name} for name in DATABASE_URLS]
 
 
 @app.post("/api/query")
@@ -357,12 +389,14 @@ async def run_query(req: QueryRequest):
     sql = req.sql.strip()
     if not sql:
         raise HTTPException(400, "Empty query")
+    if req.db not in pools:
+        raise HTTPException(400, f"Unknown database: '{req.db}'")
     if not _is_read_only_query(sql):
         raise HTTPException(
             403, "Only read-only queries are allowed (SELECT, WITH, etc.)"
         )
     try:
-        rows = await pool.fetch(sql)
+        rows = await pools[req.db].fetch(sql)
     except Exception as e:
         raise HTTPException(400, str(e))
     columns = [str(k) for k in rows[0].keys()] if rows else []
@@ -375,6 +409,7 @@ async def run_query(req: QueryRequest):
 
 class NLQueryRequest(BaseModel):
     question: str
+    db: str = "nhl_betting"
 
 
 TYPE_SHORT = {
@@ -386,11 +421,15 @@ TYPE_SHORT = {
 }
 
 
-async def _get_db_schema_text() -> str:
+async def _get_db_schema_text(db_name: str | None = None) -> str:
     """Build a compact schema description for LLM context."""
     parts: list[str] = []
     for tbl in sorted(ALLOWED_TABLES):
-        rows = await pool.fetch(
+        tbl_db = TABLE_DB_MAP.get(tbl, "nhl_betting")
+        if db_name and tbl_db != db_name:
+            continue
+        p = pools[tbl_db]
+        rows = await p.fetch(
             """
             SELECT column_name, data_type
             FROM information_schema.columns
@@ -495,7 +534,9 @@ async def nl_query(req: NLQueryRequest):
     if not api_key:
         raise HTTPException(500, "OPENROUTER_API_KEY not configured")
 
-    schema_text = await _get_db_schema_text()
+    if req.db not in pools:
+        raise HTTPException(400, f"Unknown database: '{req.db}'")
+    schema_text = await _get_db_schema_text(req.db)
     model = os.environ.get("NL_QUERY_MODEL", "openrouter/free")
 
     # Single-pass: generate SQL and execute it
@@ -519,7 +560,7 @@ Schema:
         raise HTTPException(403, "Generated query is not read-only")
 
     try:
-        rows = await pool.fetch(generated_sql)
+        rows = await pools[req.db].fetch(generated_sql)
     except Exception as e:
         raise HTTPException(400, f"Query execution error: {e}")
 
