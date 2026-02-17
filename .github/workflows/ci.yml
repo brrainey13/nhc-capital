@@ -82,15 +82,45 @@ jobs:
 
           COMMIT_MSG=$(git log -1 --pretty=%s)
           COMMIT_SHA=$(git log -1 --pretty=%h)
+          COMMIT_FULL=$(git log -1 --pretty=%H)
           AUTHOR=$(git log -1 --pretty=%an)
+          REPO="${{ github.repository }}"
+          COMMIT_URL="https://github.com/${REPO}/commit/${COMMIT_FULL}"
+          RUN_URL="https://github.com/${REPO}/actions/runs/${{ github.run_id }}"
+
+          # Changed files summary
+          CHANGED=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "(first commit)")
+          FILE_COUNT=$(echo "$CHANGED" | grep -c . || echo 0)
+
+          # Docs changes
+          DOCS_CHANGED=$(echo "$CHANGED" | grep -E '^docs/|CLAUDE\.md' || true)
+          if [ -n "$DOCS_CHANGED" ]; then
+            DOCS_LIST=$(echo "$DOCS_CHANGED" | sed 's/^/• /' | head -10)
+            DOCS_SECTION="\\n\\n📄 **Docs updated:**\\n${DOCS_LIST}"
+          else
+            DOCS_SECTION=""
+          fi
+
+          # Files changed (compact, top 8)
+          FILES_LIST=$(echo "$CHANGED" | grep -v -E '^docs/|CLAUDE\.md' | sed 's/^/• /' | head -8)
+          if [ -n "$FILES_LIST" ]; then
+            FILES_SECTION="\\n\\n📁 **Files changed (${FILE_COUNT}):**\\n${FILES_LIST}"
+            EXTRA=$(echo "$CHANGED" | grep -v -E '^docs/|CLAUDE\.md' | tail -n +9 | wc -l | tr -d ' ')
+            if [ "$EXTRA" -gt 0 ]; then
+              FILES_SECTION="${FILES_SECTION}\\n• ...and ${EXTRA} more"
+            fi
+          else
+            FILES_SECTION=""
+          fi
+
+          DESC="**Status:** ${{ job.status }}\\n**Commit:** [\`${COMMIT_SHA}\`](${COMMIT_URL})\\n**Author:** ${AUTHOR}\\n**Run:** [View CI logs](${RUN_URL})${DOCS_SECTION}${FILES_SECTION}"
 
           curl -s -H "Content-Type: application/json" \
             -d "{
               \"embeds\": [{
                 \"title\": \"${EMOJI} CI: ${COMMIT_MSG}\",
-                \"description\": \"**Status:** ${{ job.status }}\\n**Commit:** \`${COMMIT_SHA}\`\\n**Author:** ${AUTHOR}\",
-                \"color\": ${COLOR},
-                \"url\": \"https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\"
+                \"description\": \"${DESC}\",
+                \"color\": ${COLOR}
               }]
             }" \
             "$DISCORD_WEBHOOK"
