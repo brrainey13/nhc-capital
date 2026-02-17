@@ -37,9 +37,51 @@ async def setup_pool():
 
 @pytest_asyncio.fixture
 async def client():
+    """Authenticated client (simulates ngrok OAuth user)."""
+    transport = ASGITransport(app=app)
+    headers = {"ngrok-auth-user-email": "connorsrainey@gmail.com"}
+    async with AsyncClient(transport=transport, base_url="http://test", headers=headers) as ac:
+        yield ac
+
+
+@pytest_asyncio.fixture
+async def anon_client():
+    """Unauthenticated client (no auth headers)."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
+
+
+# 0. Auth tests
+@pytest.mark.asyncio
+async def test_health_no_auth(anon_client):
+    """Health endpoint should always be accessible (for monitoring)."""
+    r = await anon_client.get("/api/health")
+    assert r.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_api_requires_auth(anon_client):
+    """API endpoints should reject unauthenticated requests."""
+    r = await anon_client.get("/api/tables")
+    assert r.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_api_rejects_wrong_email(anon_client):
+    """API should reject users not in the allowed email list."""
+    r = await anon_client.get(
+        "/api/tables",
+        headers={"ngrok-auth-user-email": "hacker@evil.com"},
+    )
+    assert r.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_api_accepts_valid_email(client):
+    """API should accept requests from allowed email addresses."""
+    r = await client.get("/api/tables")
+    assert r.status_code == 200
 
 
 # 1. Health check

@@ -13,6 +13,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import JSONResponse
 
 # Load .env from project root
 load_dotenv(Path(__file__).parent.parent / ".env")
@@ -85,12 +87,72 @@ ALLOWED_ORIGINS = [
     "http://localhost:3000",  # vite dev
 ]
 
+# Allowed email addresses (must match ngrok OAuth config)
+ALLOWED_EMAILS = {
+    "yousefshahin1422@gmail.com",
+    "brrainey13@gmail.com",
+    "connorsrainey@gmail.com",
+    "pgrainey8@gmail.com",
+    "ian.rainey95@gmail.com",
+}
+
+# API key for programmatic access (set in .env, optional)
+API_KEY = os.environ.get("DASHBOARD_API_KEY")
+
+# Paths that don't require auth (health checks, static files)
+PUBLIC_PATHS = {"/api/health"}
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
+
+
+class AuthMiddleware(BaseHTTPMiddleware):
+    """Require authentication for all /api/ endpoints (except health).
+
+    Auth methods (any one grants access):
+    1. ngrok OAuth header: ngrok-auth-user-email (must be in ALLOWED_EMAILS)
+    2. API key: X-API-Key header or ?api_key query param (matches DASHBOARD_API_KEY)
+    3. Non-API paths (frontend static files) are always allowed
+    """
+
+    async def dispatch(self, request, call_next):
+        path = request.url.path
+
+        # Non-API paths (frontend, static) — always allowed
+        if not path.startswith("/api/"):
+            return await call_next(request)
+
+        # Public API paths — always allowed
+        if path in PUBLIC_PATHS:
+            return await call_next(request)
+
+        # Check ngrok OAuth header
+        email = request.headers.get("ngrok-auth-user-email")
+        if email:
+            if email.lower() in ALLOWED_EMAILS:
+                return await call_next(request)
+            return JSONResponse(
+                status_code=403,
+                content={"detail": "Email not authorized"},
+            )
+
+        # Check API key
+        api_key = request.headers.get("x-api-key") or request.query_params.get("api_key")
+        if API_KEY and api_key == API_KEY:
+            return await call_next(request)
+
+        # No auth provided
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "Authentication required"},
+        )
+
+
+app.add_middleware(AuthMiddleware)
 
 
 def validate_table_name(name: str) -> str:

@@ -83,14 +83,26 @@ Blue-green deploy: starts standby on :8001 → health check → swaps to :8000 �
 - Restart services without running tests first
 - Deploy without building the frontend
 
-## Security
+## Security (Defense in Depth)
 
+Two layers of authentication — both must pass:
+
+### Layer 1: ngrok OAuth (network level)
+- All traffic through ngrok requires Google OAuth login
+- Only 5 team emails allowed (configured in deploy script)
+- Unauthenticated requests → 302 redirect to Google login
+
+### Layer 2: Backend AuthMiddleware (application level)
+- Every `/api/*` endpoint (except `/api/health`) requires auth
+- Auth methods (any one grants access):
+  1. **ngrok OAuth header:** `ngrok-auth-user-email` (must be in `ALLOWED_EMAILS` set)
+  2. **API key:** `X-API-Key` header or `?api_key=` query param (set `DASHBOARD_API_KEY` in `.env`)
+- Unauthenticated → 401, wrong email → 403
+- `/api/health` is public (for monitoring/health checks)
+- Frontend static files (non-`/api/` paths) are always served
+
+### Other protections
 - SQL queries regex-checked: INSERT/UPDATE/DELETE/DROP/ALTER/CREATE/TRUNCATE/GRANT/REVOKE blocked
-- Only tables in `ALLOWED_TABLES` set (28 tables) are queryable
 - Backend binds to `127.0.0.1` — only reachable via ngrok or localhost
 - CORS locked to ngrok domain + localhost origins
-- ngrok tunnel with Google OAuth for 5 team emails
-
-## Table Allowlist
-
-To add a new table, edit `ALLOWED_TABLES` in `backend/main.py`, then update this doc.
+- Tables auto-discovered — no manual allowlist to maintain
