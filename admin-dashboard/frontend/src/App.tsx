@@ -16,8 +16,16 @@ interface SchemaColumn { column_name: string; data_type: string; is_nullable: st
 interface SessionInfo {
   key: string; label: string; total_tokens: number; input_tokens: number
   output_tokens: number; context_window: number; model: string; updated_at: string | null
+  age_hours?: number | null; share_pct?: number; burn_rate_24h_est?: number
 }
-interface UsageData { sessions: SessionInfo[]; totals: { total_tokens: number; input_tokens: number; output_tokens: number } }
+interface UsageData {
+  sessions: SessionInfo[]
+  totals: { total_tokens: number; input_tokens: number; output_tokens: number; session_count: number }
+  windows: Record<string, { hours: number; session_count: number; total_tokens: number; input_tokens: number; output_tokens: number; burn_rate_tokens_per_hour: number }>
+  top_consumers: Array<{ key: string; label: string; total_tokens: number; share_pct: number; updated_at: string | null; burn_rate_24h_est: number }>
+  trend: { window_hours: number; bucket_minutes: number; buckets: Array<{ start: string | null; end: string | null; session_count: number; total_tokens: number }> }
+  freshness: { generated_at: string; latest_session_update_at: string | null; staleness_seconds: number | null }
+}
 interface GroupRow { value: unknown; count: number }
 interface ActiveFilter { id: string; column: string; operator: string; value: string; value2?: string }
 
@@ -111,6 +119,16 @@ function fmtCompact(n: number): string {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M'
   if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K'
   return String(n)
+}
+function fmtAge(seconds: number | null | undefined): string {
+  if (seconds == null) return '—'
+  if (seconds < 60) return `${seconds}s ago`
+  const mins = Math.floor(seconds / 60)
+  if (mins < 60) return `${mins}m ago`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 48) return `${hrs}h ago`
+  const days = Math.floor(hrs / 24)
+  return `${days}d ago`
 }
 
 let filterId = 0
@@ -703,28 +721,43 @@ export default function App() {
         {/* HOME */}
         {page === 'home' && (
           <div style={{ overflow: 'auto', height: '100%' }}>
-            <h2 style={{ fontSize: mobile ? 18 : 20, fontWeight: 700, margin: '0 0 16px', color: C.white }}>Dashboard</h2>
+            <h2 style={{ fontSize: mobile ? 18 : 20, fontWeight: 700, margin: '0 0 8px', color: C.white }}>Dashboard</h2>
             {usage ? (
               <>
-                <div style={{ display: 'grid', gap: 10, marginBottom: 20, gridTemplateColumns: mobile ? 'repeat(2, 1fr)' : 'repeat(auto-fill, minmax(180px, 1fr))' }}>
-                  <StatCard label="Total Tokens" value={fmtCompact(usage.totals.total_tokens)} sub={mobile ? undefined : fmtNum(usage.totals.total_tokens)} />
-                  <StatCard label="Input" value={fmtCompact(usage.totals.input_tokens)} />
-                  <StatCard label="Output" value={fmtCompact(usage.totals.output_tokens)} />
-                  <StatCard label="Sessions" value={String(usage.sessions.length)} accent />
+                <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 14 }}>
+                  Updated {fmtDate(usage.freshness.generated_at)} · latest session {fmtAge(usage.freshness.staleness_seconds)}
                 </div>
-                <h3 style={{ fontSize: 13, fontWeight: 600, color: C.textSecondary, margin: '0 0 10px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Sessions</h3>
-                <div style={{ display: 'grid', gap: 10, gridTemplateColumns: mobile ? '1fr' : 'repeat(auto-fill, minmax(340px, 1fr))' }}>
-                  {usage.sessions.map(s => (
-                    <div key={s.key} style={cardDark}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: C.white, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '65%' }}>{s.label}</div>
-                        <span style={{ fontSize: 10, color: C.textMuted, flexShrink: 0 }}>{fmtDate(s.updated_at)}</span>
-                      </div>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6, fontSize: 11 }}>
-                        <div><div style={{ color: C.textMuted, marginBottom: 2 }}>Total</div><div style={{ color: C.text, fontWeight: 500 }}>{fmtCompact(s.total_tokens)}</div></div>
-                        <div><div style={{ color: C.textMuted, marginBottom: 2 }}>In/Out</div><div style={{ color: C.text, fontWeight: 500 }}>{fmtCompact(s.input_tokens)}/{fmtCompact(s.output_tokens)}</div></div>
-                        <div><div style={{ color: C.textMuted, marginBottom: 2 }}>Model</div><div style={{ color: C.accent, fontSize: 10, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.model || '—'}</div></div>
-                      </div>
+                <div style={{ display: 'grid', gap: 10, marginBottom: 16, gridTemplateColumns: mobile ? 'repeat(2, 1fr)' : 'repeat(auto-fill, minmax(180px, 1fr))' }}>
+                  <StatCard label="Total Tokens" value={fmtCompact(usage.totals.total_tokens)} sub={mobile ? undefined : fmtNum(usage.totals.total_tokens)} />
+                  <StatCard label="Input / Output" value={`${fmtCompact(usage.totals.input_tokens)} / ${fmtCompact(usage.totals.output_tokens)}`} />
+                  <StatCard label="Active (24h)" value={String(usage.windows.last_24h?.session_count ?? 0)} />
+                  <StatCard label="Burn Rate (24h)" value={`${fmtCompact(Math.round(usage.windows.last_24h?.burn_rate_tokens_per_hour ?? 0))}/h`} accent />
+                </div>
+
+                <div style={{ ...cardDark, marginBottom: 16 }}>
+                  <div style={{ fontSize: 12, color: C.textSecondary, marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.04em' }}>24h Trend</div>
+                  <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 80 }}>
+                    {usage.trend.buckets.map((b, i) => {
+                      const max = Math.max(...usage.trend.buckets.map(x => x.total_tokens), 1)
+                      const h = Math.max(6, Math.round((b.total_tokens / max) * 72))
+                      return (
+                        <div key={i} title={`${fmtDate(b.start)} · ${fmtNum(b.total_tokens)} tokens`} style={{ flex: 1, height: h, background: C.accentBg, border: `1px solid ${C.accentDim}50`, borderRadius: 4 }} />
+                      )
+                    })}
+                  </div>
+                </div>
+
+                <h3 style={{ fontSize: 13, fontWeight: 600, color: C.textSecondary, margin: '0 0 10px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Top Consumers</h3>
+                <div style={{ ...cardDark, padding: 0, overflow: 'hidden' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: mobile ? '1.4fr 1fr 1fr' : '1.8fr 1fr 1fr 1fr 1fr', padding: '10px 12px', fontSize: 11, color: C.textMuted, borderBottom: `1px solid ${C.border}` }}>
+                    <div>Session</div><div>Total</div><div>Share</div>{!mobile && <><div>Burn/h</div><div>Updated</div></>}
+                  </div>
+                  {(usage.top_consumers.length ? usage.top_consumers : usage.sessions.slice(0, 10)).map(s => (
+                    <div key={s.key} style={{ display: 'grid', gridTemplateColumns: mobile ? '1.4fr 1fr 1fr' : '1.8fr 1fr 1fr 1fr 1fr', padding: '10px 12px', fontSize: 12, borderBottom: `1px solid ${C.border}` }}>
+                      <div style={{ color: C.white, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.label}</div>
+                      <div>{fmtCompact(s.total_tokens)}</div>
+                      <div>{(s.share_pct ?? 0).toFixed(1)}%</div>
+                      {!mobile && <><div>{fmtCompact(Math.round(s.burn_rate_24h_est ?? 0))}</div><div style={{ color: C.textMuted }}>{fmtDate(s.updated_at)}</div></>}
                     </div>
                   ))}
                 </div>

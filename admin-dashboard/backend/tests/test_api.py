@@ -1,4 +1,6 @@
+import json
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 # Add backend to path so we can import main
@@ -222,11 +224,61 @@ async def test_usage(client):
     data = r.json()
     assert "sessions" in data
     assert "totals" in data
+    assert "windows" in data
+    assert "trend" in data
+    assert "freshness" in data
     assert isinstance(data["sessions"], list)
     totals = data["totals"]
     assert "total_tokens" in totals
     assert "input_tokens" in totals
     assert "output_tokens" in totals
+    assert "session_count" in totals
+
+
+@pytest.mark.asyncio
+async def test_usage_metrics_from_fixture(client, tmp_path, monkeypatch):
+    import main
+
+    now = datetime.now(timezone.utc)
+    recent_ms = int((now - timedelta(minutes=30)).timestamp() * 1000)
+    day_old_ms = int((now - timedelta(hours=20)).timestamp() * 1000)
+
+    sample = {
+        "a": {
+            "displayName": "discord:1#admin-dashboard",
+            "totalTokens": 1000,
+            "inputTokens": 700,
+            "outputTokens": 300,
+            "contextTokens": 128000,
+            "updatedAt": recent_ms,
+            "model": "gpt-test",
+        },
+        "b": {
+            "displayName": "discord:1#nhl-betting",
+            "totalTokens": 500,
+            "inputTokens": 250,
+            "outputTokens": 250,
+            "contextTokens": 128000,
+            "updatedAt": day_old_ms,
+            "model": "gpt-test",
+        },
+    }
+
+    sessions_file = tmp_path / "sessions.json"
+    sessions_file.write_text(json.dumps(sample))
+    monkeypatch.setattr(main, "SESSIONS_FILE", sessions_file)
+
+    r = await client.get("/api/usage")
+    assert r.status_code == 200
+    data = r.json()
+
+    assert data["totals"]["total_tokens"] == 1500
+    assert data["totals"]["session_count"] == 2
+    assert data["windows"]["last_1h"]["session_count"] == 1
+    assert data["windows"]["last_1h"]["total_tokens"] == 1000
+    assert data["windows"]["last_24h"]["session_count"] == 2
+    assert data["top_consumers"][0]["label"] == "#admin-dashboard"
+    assert len(data["trend"]["buckets"]) == 12
 
 
 # 18. Sorting — sort_by valid column

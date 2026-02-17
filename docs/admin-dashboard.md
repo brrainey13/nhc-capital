@@ -36,7 +36,7 @@ Browser → ngrok (Google OAuth) → localhost:8000 → FastAPI
 | `/api/tables/{name}/grouped` | GET | Group-by aggregation (value + count) |
 | `/api/query` | POST | Run arbitrary read-only SQL |
 | `/api/nl-query` | POST | Natural language → SQL via OpenRouter |
-| `/api/usage` | GET | OpenClaw session token usage |
+| `/api/usage` | GET | OpenClaw session token usage + dashboard metrics (totals, windows, burn rate, trend, top consumers, freshness) |
 
 ### Filtering (`/api/tables/{name}/data`)
 
@@ -56,8 +56,22 @@ Operators: `contains`, `equals`, `starts_with`, `ends_with` (text); `eq`, `ne`, 
 
 Single-pass: sends schema + question to OpenRouter free model → gets SQL → executes → returns results. Fallback chain: `openrouter/free` → `qwen/qwen3-coder:free` → `llama-3.3-70b-instruct:free` → `deepseek-r1:free`.
 
+### Usage Metrics (`/api/usage`)
+
+Returns:
+- `totals` — total/input/output tokens + session count
+- `sessions` — per-session totals + token share + 24h burn estimate + updated timestamp
+- `windows` — rolling summaries (`last_1h`, `last_24h`) with burn rate (`tokens/hour`)
+- `top_consumers` — top 10 sessions by token usage
+- `trend` — 24h activity buckets for lightweight sparkline/bar visualization
+- `freshness` — payload generation timestamp + latest session update + staleness seconds
+
 ## Frontend Features
 
+- **Home usage dashboard** — KPI cards for totals, 24h activity, and burn rate
+- **Top consumers ranking** — per-session token share + burn estimate + last update
+- **24h trend bars** — simple time-bucket activity signal from real session updates
+- **Data freshness strip** — generated timestamp + "latest session updated" staleness indicator
 - **Virtualized scrolling** — @tanstack/react-virtual, infinite scroll, loads 200 rows at a time
 - **Operator-based filters** — "+ Add Filter" button → column → operator → value. Filter pills with × to remove
 - **Group-by** — in toolbar, click group value to auto-add filter

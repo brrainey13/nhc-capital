@@ -650,70 +650,152 @@ CHANNEL_LABELS: dict[str, str] = {
     "1473074663356629078": "admin-dashboard",
 }
 
+
 def _friendly_label(raw: str) -> str:
     """Turn raw session labels like 'discord:123#channel-name' into '#channel-name'."""
-    # Match discord:guild#channel-name pattern
     m = re.search(r"discord:\d+#(.+)$", raw)
     if m:
         return f"#{m.group(1)}"
-    # Match discord:guild<#channel_id> pattern
     m2 = re.search(r"<#(\d+)>", raw)
     if m2 and m2.group(1) in CHANNEL_LABELS:
         return f"#{CHANNEL_LABELS[m2.group(1)]}"
-    # Match 'Guild #name ...' pattern
     m3 = re.search(r"Guild #(\S+)", raw)
     if m3:
         return f"#{m3.group(1)}"
     return raw
 
 
-@app.get("/api/usage")
-async def usage():
+def _format_iso(ms: int | None) -> str | None:
+    if not ms:
+        return None
+    return datetime.fromtimestamp(ms / 1000, tz=timezone.utc).isoformat()
+
+
+def _load_usage_sessions(now: datetime | None = None) -> dict:
+    now = now or datetime.now(timezone.utc)
     if not SESSIONS_FILE.exists():
-        return {"sessions": [], "totals": {"total_tokens": 0, "input_tokens": 0, "output_tokens": 0}}
+        return {
+            "sessions": [],
+            "totals": {"total_tokens": 0, "input_tokens": 0, "output_tokens": 0, "session_count": 0},
+            "windows": {},
+            "top_consumers": [],
+            "trend": {"window_hours": 24, "bucket_minutes": 120, "buckets": []},
+            "freshness": {"generated_at": now.isoformat(), "latest_session_update_at": None, "staleness_seconds": None},
+        }
+
     data = json.loads(SESSIONS_FILE.read_text())
     sessions = []
-    total_tok = 0
-    total_in = 0
-    total_out = 0
     for key, s in data.items():
         raw_label = s.get("displayName") or s.get("origin", {}).get("label", key)
         label = _friendly_label(raw_label)
-        # Hide sessions for deleted channels
         if label == "#vinder":
             continue
-        t_tokens = s.get("totalTokens", 0)
-        i_tokens = s.get("inputTokens", 0)
-        o_tokens = s.get("outputTokens", 0)
-        ctx = s.get("contextTokens", 0)
+
         updated_ms = s.get("updatedAt", 0)
-        updated = (
-            datetime.fromtimestamp(updated_ms / 1000, tz=timezone.utc).isoformat()
-            if updated_ms
-            else None
+        updated_at = _format_iso(updated_ms)
+        age_hours = None
+        if updated_ms:
+            updated_dt = datetime.fromtimestamp(updated_ms / 1000, tz=timezone.utc)
+            age_hours = max((now - updated_dt).total_seconds() / 3600, 0)
+
+        sessions.append(
+            {
+                "key": key,
+                "label": label,
+                "total_tokens": int(s.get("totalTokens", 0) or 0),
+                "input_tokens": int(s.get("inputTokens", 0) or 0),
+                "output_tokens": int(s.get("outputTokens", 0) or 0),
+                "context_window": int(s.get("contextTokens", 0) or 0),
+                "model": s.get("model", ""),
+                "updated_at": updated_at,
+                "updated_at_ms": updated_ms,
+                "age_hours": age_hours,
+            }
         )
-        sessions.append({
-            "key": key,
-            "label": label,
-            "total_tokens": t_tokens,
-            "input_tokens": i_tokens,
-            "output_tokens": o_tokens,
-            "context_window": ctx,
-            "model": s.get("model", ""),
-            "updated_at": updated,
-        })
-        total_tok += t_tokens
-        total_in += i_tokens
-        total_out += o_tokens
+
+    totals = {
+        "total_tokens": sum(s["total_tokens"] for s in sessions),
+        "input_tokens": sum(s["input_tokens"] for s in sessions),
+        "output_tokens": sum(s["output_tokens"] for s in sessions),
+        "session_count": len(sessions),
+    }
+
+    for s in sessions:
+        s["share_pct"] = round((s["total_tokens"] / totals["total_tokens"] * 100), 2) if totals["total_tokens"] else 0
+        is_recent = s["age_hours"] is not None and s["age_hours"] <= 24
+        s["burn_rate_24h_est"] = round((s["total_tokens"] / 24), 2) if is_recent else 0
+
     sessions.sort(key=lambda x: x["total_tokens"], reverse=True)
+
+    windows: dict[str, dict] = {}
+    for hours in (1, 24):
+        cutoff = now.timestamp() * 1000 - (hours * 3600 * 1000)
+        recent = [s for s in sessions if s["updated_at_ms"] and s["updated_at_ms"] >= cutoff]
+        tokens = sum(s["total_tokens"] for s in recent)
+        windows[f"last_{hours}h"] = {
+            "hours": hours,
+            "session_count": len(recent),
+            "total_tokens": tokens,
+            "input_tokens": sum(s["input_tokens"] for s in recent),
+            "output_tokens": sum(s["output_tokens"] for s in recent),
+            "burn_rate_tokens_per_hour": round(tokens / hours, 2),
+        }
+
+    top_consumers = [
+        {
+            "key": s["key"],
+            "label": s["label"],
+            "total_tokens": s["total_tokens"],
+            "share_pct": s["share_pct"],
+            "updated_at": s["updated_at"],
+            "burn_rate_24h_est": s["burn_rate_24h_est"],
+        }
+        for s in sessions[:10]
+    ]
+
+    # 24h trend in 2h buckets (activity weighted by current token totals)
+    bucket_minutes = 120
+    bucket_ms = bucket_minutes * 60 * 1000
+    start_ms = int(now.timestamp() * 1000) - (24 * 3600 * 1000)
+    buckets = []
+    for i in range(12):
+        b_start = start_ms + i * bucket_ms
+        b_end = b_start + bucket_ms
+        bucket_sessions = [s for s in sessions if s["updated_at_ms"] and b_start <= s["updated_at_ms"] < b_end]
+        buckets.append(
+            {
+                "start": _format_iso(b_start),
+                "end": _format_iso(b_end),
+                "session_count": len(bucket_sessions),
+                "total_tokens": sum(s["total_tokens"] for s in bucket_sessions),
+            }
+        )
+
+    latest_update_ms = max((s["updated_at_ms"] for s in sessions if s["updated_at_ms"]), default=None)
+    staleness_seconds = None
+    if latest_update_ms:
+        staleness_seconds = max(int(now.timestamp() - (latest_update_ms / 1000)), 0)
+
+    for s in sessions:
+        s.pop("updated_at_ms", None)
+
     return {
         "sessions": sessions,
-        "totals": {
-            "total_tokens": total_tok,
-            "input_tokens": total_in,
-            "output_tokens": total_out,
+        "totals": totals,
+        "windows": windows,
+        "top_consumers": top_consumers,
+        "trend": {"window_hours": 24, "bucket_minutes": bucket_minutes, "buckets": buckets},
+        "freshness": {
+            "generated_at": now.isoformat(),
+            "latest_session_update_at": _format_iso(latest_update_ms),
+            "staleness_seconds": staleness_seconds,
         },
     }
+
+
+@app.get("/api/usage")
+async def usage():
+    return _load_usage_sessions()
 
 
 # Serve frontend static files + PWA assets
