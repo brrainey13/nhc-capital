@@ -24,8 +24,10 @@ DATABASE_URL = "postgresql://connorrainey@localhost:5432/nhl_betting"
 ALLOWED_TABLES = {
     "api_snapshots", "cook_county_appeals", "cook_county_assessments",
     "cook_county_properties", "cook_county_sales", "cook_county_tax_rates",
-    "game_team_stats", "games", "goalie_stats", "injuries", "kanban_events",
-    "kanban_tasks", "live_game_snapshots", "model_runs", "period_scores",
+    "game_team_stats", "games", "goalie_advanced", "goalie_saves_by_strength",
+    "goalie_starts", "goalie_stats", "injuries", "injuries_live",
+    "kanban_events", "kanban_tasks", "lineup_absences",
+    "live_game_snapshots", "model_runs", "period_scores",
     "player_stats", "players", "predictions", "saves_odds", "schedules",
     "sf_rentals", "standings", "teams",
 }
