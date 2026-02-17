@@ -1,0 +1,7 @@
+# Copy to database.yml and fill in. Or use env: PGHOST, PGPORT, PGDATABASE, PGUSER, PGPASSWORD.
+
+host: localhost
+port: 5432
+database: cook_county
+user: your_user
+password: your_password
