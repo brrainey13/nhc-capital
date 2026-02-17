@@ -1,7 +1,6 @@
 import json
 import os
 import re
-from asyncio import to_thread
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -398,14 +397,11 @@ async def nl_query(req: NLQueryRequest):
     if not question:
         raise HTTPException(400, "Empty question")
 
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    api_key = os.environ.get("OPENROUTER_API_KEY")
     if not api_key:
-        raise HTTPException(500, "ANTHROPIC_API_KEY not configured")
+        raise HTTPException(500, "OPENROUTER_API_KEY not configured")
 
-    try:
-        import anthropic
-    except ImportError as exc:
-        raise HTTPException(500, "anthropic package is not installed") from exc
+    import httpx
 
     schema_text = await _get_db_schema_text()
 
@@ -423,20 +419,36 @@ Rules:
 
 User question: {question}"""
 
-    client = anthropic.Anthropic(api_key=api_key)
+    model = os.environ.get("NL_QUERY_MODEL", "qwen/qwen3-coder:free")
 
-    def _generate_sql() -> str:
-        message = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=1024,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        text_blocks = [block.text for block in message.content if getattr(block, "type", "") == "text"]
-        if not text_blocks:
-            raise HTTPException(502, "Model returned no SQL text")
-        return text_blocks[0].strip()
+    async def _generate_sql() -> str:
+        async with httpx.AsyncClient(timeout=30) as client:
+            r = await client.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": model,
+                    "max_tokens": 1024,
+                    "messages": [{"role": "user", "content": prompt}],
+                },
+            )
+            r.raise_for_status()
+            data = r.json()
+            content = data["choices"][0]["message"]["content"]
+            if not content:
+                raise HTTPException(502, "Model returned no SQL text")
+            # Strip markdown fences if present
+            text = content.strip()
+            if text.startswith("```"):
+                lines = text.split("\n")
+                lines = [line for line in lines if not line.startswith("```")]
+                text = "\n".join(lines).strip()
+            return text
 
-    generated_sql = await to_thread(_generate_sql)
+    generated_sql = await _generate_sql()
 
     # Safety check
     if not _is_read_only_query(generated_sql):

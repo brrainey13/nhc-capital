@@ -280,6 +280,6 @@ async def test_numeric_range_filter(client):
 # 28. NL query requires API key
 @pytest.mark.asyncio
 async def test_nl_query_requires_api_key(client, monkeypatch):
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     r = await client.post("/api/nl-query", json={"question": "top teams by wins"})
     assert r.status_code == 500

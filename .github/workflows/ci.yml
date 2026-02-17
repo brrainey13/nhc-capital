@@ -37,8 +37,23 @@ jobs:
       - name: Seed test tables
         run: |
           psql "postgresql://connorrainey@localhost:5432/nhl_betting" -c "
-            CREATE TABLE IF NOT EXISTS teams (id serial PRIMARY KEY, name text);
-            INSERT INTO teams (name) VALUES ('Bruins'), ('Rangers'), ('Canadiens') ON CONFLICT DO NOTHING;
+            CREATE TABLE IF NOT EXISTS teams (
+              team_id integer PRIMARY KEY,
+              tri_code text UNIQUE,
+              team_name text,
+              team_name_fr text,
+              conference_name text,
+              division_name text,
+              active integer DEFAULT 1,
+              last_updated text DEFAULT 'CURRENT_TIMESTAMP'
+            );
+            INSERT INTO teams (team_id, tri_code, team_name, conference_name, division_name) VALUES
+              (1, 'BOS', 'Bruins', 'Eastern', 'Atlantic'),
+              (2, 'NYR', 'Rangers', 'Eastern', 'Metropolitan'),
+              (3, 'MTL', 'Canadiens', 'Eastern', 'Atlantic'),
+              (4, 'TOR', 'Maple Leafs', 'Eastern', 'Atlantic'),
+              (5, 'CHI', 'Blackhawks', 'Western', 'Central')
+            ON CONFLICT DO NOTHING;
           "
         env:
           PGPASSWORD: ""
