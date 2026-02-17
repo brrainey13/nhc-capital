@@ -679,6 +679,9 @@ async def usage():
     for key, s in data.items():
         raw_label = s.get("displayName") or s.get("origin", {}).get("label", key)
         label = _friendly_label(raw_label)
+        # Hide sessions for deleted channels
+        if label == "#vinder":
+            continue
         t_tokens = s.get("totalTokens", 0)
         i_tokens = s.get("inputTokens", 0)
         o_tokens = s.get("outputTokens", 0)
