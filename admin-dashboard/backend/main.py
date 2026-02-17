@@ -377,8 +377,17 @@ class NLQueryRequest(BaseModel):
     question: str
 
 
+TYPE_SHORT = {
+    "integer": "int", "bigint": "bigint", "smallint": "int",
+    "numeric": "num", "real": "float", "double precision": "float",
+    "character varying": "varchar", "text": "text", "boolean": "bool",
+    "date": "date", "timestamp with time zone": "timestamptz",
+    "timestamp without time zone": "timestamp",
+}
+
+
 async def _get_db_schema_text() -> str:
-    """Build a text description of the database schema for LLM context."""
+    """Build a compact schema description for LLM context."""
     parts: list[str] = []
     for tbl in sorted(ALLOWED_TABLES):
         rows = await pool.fetch(
@@ -392,8 +401,11 @@ async def _get_db_schema_text() -> str:
         )
         if not rows:
             continue
-        cols = ", ".join(f"{r['column_name']} ({r['data_type']})" for r in rows)
-        parts.append(f"  {tbl}: {cols}")
+        cols = ", ".join(
+            f"{r['column_name']} {TYPE_SHORT.get(r['data_type'], r['data_type'])}"
+            for r in rows
+        )
+        parts.append(f"{tbl}({cols})")
     return "\n".join(parts)
 
 
@@ -436,19 +448,31 @@ async def _openrouter_chat(
                     continue  # Empty response, try next
 
                 text = content.strip()
+                # Strip <think>...</think> blocks (reasoning models)
+                text = re.sub(
+                    r"<think>.*?</think>", "", text, flags=re.DOTALL
+                ).strip()
                 # Strip markdown fences
-                if text.startswith("```"):
+                if "```" in text:
                     lines = text.split("\n")
                     lines = [
-                        line for line in lines if not line.startswith("```")
+                        line
+                        for line in lines
+                        if not line.strip().startswith("```")
                     ]
                     text = "\n".join(lines).strip()
-                # Strip <think>...</think> blocks (reasoning models)
-                import re as _re
-
-                text = _re.sub(
-                    r"<think>.*?</think>", "", text, flags=_re.DOTALL
-                ).strip()
+                # Extract SQL: find first SELECT/WITH and take everything
+                match = re.search(
+                    r"((?:SELECT|WITH)\b.*)",
+                    text,
+                    re.IGNORECASE | re.DOTALL,
+                )
+                if match:
+                    text = match.group(1).strip()
+                # Strip trailing junk after semicolon
+                semi = text.find(";")
+                if semi > 0:
+                    text = text[: semi + 1]
                 if text:
                     return text
         except Exception:
@@ -475,23 +499,38 @@ async def nl_query(req: NLQueryRequest):
     model = os.environ.get("NL_QUERY_MODEL", "openrouter/free")
 
     # ── Pass 1: Generate SQL ──
-    sql_prompt = f"""You are a SQL expert for a PostgreSQL database.
-Given the user's question, generate a single read-only SQL query.
+    system_msg = f"""You convert questions into PostgreSQL SELECT queries.
+Output ONLY the SQL. No explanation, no markdown.
 
-Database schema:
-{schema_text}
+Schema:
+{schema_text}"""
 
-Rules:
-- Only SELECT or WITH queries. Never INSERT, UPDATE, DELETE, DROP, etc.
-- Use double-quoted identifiers for column/table names.
-- Limit results to 500 rows max unless specified otherwise.
-- Return ONLY the raw SQL query. No explanation, no markdown, no code fences.
+    few_shot = [
+        {"role": "system", "content": system_msg},
+        {"role": "user", "content": "show all teams"},
+        {"role": "assistant", "content": 'SELECT * FROM teams LIMIT 500;'},
+        {"role": "user", "content": "top 5 goalies by saves"},
+        {
+            "role": "assistant",
+            "content": (
+                "SELECT player_id, SUM(saves) AS total_saves "
+                "FROM goalie_stats GROUP BY player_id "
+                "ORDER BY total_saves DESC LIMIT 5;"
+            ),
+        },
+        {"role": "user", "content": "how many games per team"},
+        {
+            "role": "assistant",
+            "content": (
+                "SELECT home_team_id AS team_id, COUNT(*) AS games "
+                "FROM games GROUP BY home_team_id "
+                "ORDER BY games DESC LIMIT 500;"
+            ),
+        },
+        {"role": "user", "content": question},
+    ]
 
-Question: {question}"""
-
-    generated_sql = await _openrouter_chat(
-        api_key, model, [{"role": "user", "content": sql_prompt}]
-    )
+    generated_sql = await _openrouter_chat(api_key, model, few_shot)
 
     # Safety check
     if not _is_read_only_query(generated_sql):
