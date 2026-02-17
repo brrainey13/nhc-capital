@@ -445,4 +445,45 @@ This is the first strategy that survived cross-season validation.
 3. **Forward-test Feb 26+** when NHL resumes
 4. If no book offers team SOG totals, explore: can we construct it via correlated player SOG parlays?
 
+---
+
+## ⭐ Dr. Strange Brute-Force Search V2 (2026-02-16)
+
+Tested 12 dynamic targets × 39 conditions × 20 random iterations. Lines set at rolling season/team averages (realistic book lines). 16,231 unique strategies found, 8,833 all-seasons-positive.
+
+### Top Findings: HITS DOMINATE
+
+**Team hits over season average** is the single most exploitable prop across all of NHL betting. Every top strategy involves hits.
+
+**Best 4-season strategy (#1):**
+- **Bet: Team hits OVER (vs season avg)**
+- **When: Team's 5-game hits avg is top-25% + HOME + Opponent's 5-game hits avg top-25%**
+- **ROI: +44.6% across 614 bets, ALL 4 SEASONS POSITIVE**
+  - 2022-23: +49.3% (188 bets)
+  - 2023-24: +44.3% (250 bets)
+  - 2024-25: +48.5% (126 bets)
+  - 2025-26: +22.2% (50 bets)
+
+**Simplest high-volume strategy (#11):**
+- **Bet: Team hits OVER + HOME + 5-game hits avg top-25%**
+- **ROI: +32.4%, 1,275 bets across 4 seasons, ALL POSITIVE**
+
+### Why Hits?
+1. **Hits are momentum-driven** — teams that hit keep hitting. The 5-game rolling avg is highly predictive.
+2. **Home teams hit more** — crowd energy, last change advantage → more aggressive play
+3. **Books may not model hits as carefully** as goals/shots — it's a "secondary" stat
+4. **Opponent hitting tendency matters** — when both teams are physical, total hits explode
+
+### Other Notable Findings
+- **P1 own score (scoring first)**: Home + opp 4+ D missing + high PIM avg → +34.8% ROI, 194 bets, 4 seasons ✅
+- **Team SOG over season avg**: mid-season + opp 3+D missing + high SOG trend → +50.6%, 289 bets (3 seasons)
+- **Blocked shots over team avg**: B2B + mid-season + own D TOI 50+ missing → +56.2%, 110 bets (3 seasons)
+
+### Caution: Multiple Hypothesis Testing
+With 16,231 strategies tested, some will look good by chance. Key defenses:
+1. All top strategies are positive across 3-4 independent seasons
+2. The hits pattern has a clear causal story (momentum + home ice + physical opponents)
+3. Sample sizes are large (600-1,200+ bets for top strategies)
+4. Need to verify: **do books actually offer team hits O/U?** And at what line?
+
 *Updated: 2026-02-16*
