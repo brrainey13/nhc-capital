@@ -39,21 +39,21 @@ def load_matrix():
 
 
 def walk_forward_split(matrix):
-    """Walk-forward splits by season."""
+    """Walk-forward splits by season. Training STRICTLY before validation."""
     splits = [
         {
             'name': 'Train 22-23, Val 23-24',
-            'train': matrix[matrix['event_date'] < '2024-10-01'],
+            'train': matrix[matrix['event_date'] < '2023-10-01'],
             'val': matrix[(matrix['event_date'] >= '2023-10-01') & (matrix['event_date'] < '2024-10-01')],
         },
         {
             'name': 'Train 22-24, Val 24-25',
-            'train': matrix[matrix['event_date'] < '2025-10-01'],
+            'train': matrix[matrix['event_date'] < '2024-10-01'],
             'val': matrix[(matrix['event_date'] >= '2024-10-01') & (matrix['event_date'] < '2025-10-01')],
         },
         {
             'name': 'Train 22-25, Val 25-26',
-            'train': matrix[matrix['event_date'] < '2026-10-01'],
+            'train': matrix[matrix['event_date'] < '2025-10-01'],
             'val': matrix[matrix['event_date'] >= '2025-10-01'],
         },
     ]
@@ -106,11 +106,14 @@ def get_shot_params(iteration):
             'objective': 'regression',
             'metric': 'mae',
             'learning_rate': 0.05,
-            'num_leaves': 31,
-            'min_child_samples': 20,
-            'feature_fraction': 0.8,
-            'bagging_fraction': 0.8,
+            'num_leaves': 15,
+            'max_depth': 5,
+            'min_child_samples': 50,
+            'feature_fraction': 0.6,
+            'bagging_fraction': 0.7,
             'bagging_freq': 5,
+            'reg_alpha': 0.5,
+            'reg_lambda': 0.5,
             'verbose': -1,
             'n_estimators': 300,
         }
@@ -118,14 +121,15 @@ def get_shot_params(iteration):
         return {
             'objective': 'regression',
             'metric': 'mae',
-            'learning_rate': 0.03,
-            'num_leaves': 20,
-            'min_child_samples': 30,
-            'feature_fraction': 0.7,
-            'bagging_fraction': 0.7,
+            'learning_rate': 0.02,
+            'num_leaves': 10,
+            'max_depth': 4,
+            'min_child_samples': 60,
+            'feature_fraction': 0.5,
+            'bagging_fraction': 0.6,
             'bagging_freq': 5,
-            'reg_alpha': 0.1,
-            'reg_lambda': 0.1,
+            'reg_alpha': 1.0,
+            'reg_lambda': 1.0,
             'verbose': -1,
             'n_estimators': 500,
         }
@@ -174,9 +178,12 @@ def get_svpct_params(iteration):
             'objective': 'regression',
             'metric': 'mae',
             'learning_rate': 0.05,
-            'num_leaves': 20,
-            'min_child_samples': 30,
-            'feature_fraction': 0.8,
+            'num_leaves': 10,
+            'max_depth': 4,
+            'min_child_samples': 50,
+            'feature_fraction': 0.6,
+            'reg_alpha': 0.5,
+            'reg_lambda': 0.5,
             'verbose': -1,
             'n_estimators': 300,
         }
@@ -185,11 +192,12 @@ def get_svpct_params(iteration):
             'objective': 'regression',
             'metric': 'mae',
             'learning_rate': 0.02,
-            'num_leaves': 15,
-            'min_child_samples': 40,
-            'feature_fraction': 0.7,
-            'reg_alpha': 0.2,
-            'reg_lambda': 0.2,
+            'num_leaves': 8,
+            'max_depth': 3,
+            'min_child_samples': 60,
+            'feature_fraction': 0.5,
+            'reg_alpha': 1.0,
+            'reg_lambda': 1.0,
             'verbose': -1,
             'n_estimators': 500,
         }
@@ -239,10 +247,13 @@ def get_pull_params(iteration):
             'objective': 'binary',
             'metric': 'auc',
             'learning_rate': 0.05,
-            'num_leaves': 20,
-            'min_child_samples': 30,
-            'feature_fraction': 0.8,
+            'num_leaves': 10,
+            'max_depth': 4,
+            'min_child_samples': 50,
+            'feature_fraction': 0.6,
             'scale_pos_weight': 5,  # pulls are rare (~15%)
+            'reg_alpha': 0.5,
+            'reg_lambda': 0.5,
             'verbose': -1,
             'n_estimators': 300,
         }
@@ -250,13 +261,14 @@ def get_pull_params(iteration):
         return {
             'objective': 'binary',
             'metric': 'auc',
-            'learning_rate': 0.03,
-            'num_leaves': 15,
-            'min_child_samples': 40,
-            'feature_fraction': 0.7,
+            'learning_rate': 0.02,
+            'num_leaves': 8,
+            'max_depth': 3,
+            'min_child_samples': 60,
+            'feature_fraction': 0.5,
             'scale_pos_weight': 5,
-            'reg_alpha': 0.2,
-            'reg_lambda': 0.2,
+            'reg_alpha': 1.0,
+            'reg_lambda': 1.0,
             'verbose': -1,
             'n_estimators': 500,
         }
@@ -571,11 +583,12 @@ def stress_tests(matrix):
 
     # Test 1: Random feature test
     print("\n  TEST 1: Random Feature Injection")
+    rng = np.random.RandomState(42)
     X_train_rand = X_train.copy()
     X_val_rand = X_val.copy()
     for i in range(5):
-        X_train_rand[f'random_{i}'] = np.random.randn(len(X_train_rand))
-        X_val_rand[f'random_{i}'] = np.random.randn(len(X_val_rand))
+        X_train_rand[f'random_{i}'] = rng.randn(len(X_train_rand))
+        X_val_rand[f'random_{i}'] = rng.randn(len(X_val_rand))
 
     model_rand = lgb.LGBMRegressor(**{k:v for k,v in get_shot_params(5).items() if k!="n_estimators"}, n_estimators=500)
     model_rand.fit(X_train_rand, y_train)

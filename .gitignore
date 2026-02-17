@@ -30,5 +30,22 @@ Thumbs.db
 *.parquet
 !sql/**
 
+# Model artifacts
+*.pkl
+*.pickle
+*.joblib
+*.h5
+*.pt
+*.pth
+*.onnx
+*.model
+*.safetensors
+
+# Node
+node_modules/
+
+# Frontend build (rebuilt on deploy)
+admin-dashboard/frontend/dist/
+
 # Test
 .pytest_cache/

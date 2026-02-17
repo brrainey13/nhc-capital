@@ -28,8 +28,8 @@ You are a coding agent working inside the NH Capital monorepo. NHC (the orchestr
 ## Database
 
 - **PostgreSQL 17** at `localhost:5432`, user `connorrainey`, trust auth (no password)
-- **DB:** `nhl_betting` — 23 tables, ~330K rows
-- Key tables: `games`, `teams`, `players`, `player_stats` (199K), `goalie_stats` (22K), `saves_odds` (21K), `standings`, `predictions` (empty), `model_runs` (empty)
+- **DB:** `nhl_betting` — 28 tables, ~400K+ rows
+- Key tables: `games` (5.9K), `teams` (34), `players` (2.3K), `player_stats` (199K), `goalie_stats` (22K), `goalie_advanced` (9.5K), `goalie_saves_by_strength` (10K), `goalie_starts` (9.2K), `saves_odds` (44K), `standings` (7.6K), `period_scores` (36K), `api_snapshots` (26K), `lineup_absences` (11K), `injuries_live`, `predictions` (empty), `model_runs` (empty)
 - psql path: `/opt/homebrew/Cellar/postgresql@17/17.8/bin/psql`
 
 ## Before You Start

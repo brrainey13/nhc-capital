@@ -15,7 +15,7 @@ Coding agent instructions. Read this + `CLAUDE.md`. Do the task, commit, exit.
 
 | Folder | Status | Key Files |
 |---|---|---|
-| `nhl-betting/` | Active — 330K rows in DB, scrapers running | `scrapers/scrape_saves_odds.py` |
+| `nhl-betting/` | Active — 28 tables, 400K+ rows, scrapers + models | `scrapers/`, `model/` |
 | `admin-dashboard/` | Live — FastAPI + React, ngrok | `backend/main.py`, `frontend/src/App.tsx` |
 | `real-estate/` | Placeholder | — |
 | `polymarket/` | Active — prediction market analysis | `README.md` |

@@ -268,10 +268,11 @@ def build_feature_matrix(dfs):
         on=['game_id', 'player_id'], how='left'
     )
 
-    # Add pull features
-    pull_feat_cols = [c for c in pull_feats.columns if c.startswith(('pull_rate', 'high_ga_rate', 'was_pulled'))]
+    # Add pull features (only lagged rolling features, NOT current-game was_pulled/high_ga)
+    pull_feat_cols = [c for c in pull_feats.columns if c.startswith(('pull_rate', 'high_ga_rate'))]
+    # was_pulled is the TARGET for Model C — merge it separately, never as a feature
     matrix = matrix.merge(
-        pull_feats[['game_id', 'player_id'] + pull_feat_cols],
+        pull_feats[['game_id', 'player_id', 'was_pulled'] + pull_feat_cols],
         on=['game_id', 'player_id'], how='left'
     )
 
