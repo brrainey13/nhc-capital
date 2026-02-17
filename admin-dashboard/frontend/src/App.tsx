@@ -1004,7 +1004,10 @@ export default function App() {
 
         {/* MAP */}
         {page === 'map' && (
-          <div style={{ height: '100%', borderRadius: 10, overflow: 'hidden' }}>
+          <div style={{
+            height: 'calc(100vh - 100px)',
+            borderRadius: 10, overflow: 'hidden',
+          }}>
             <ForeclosureMap />
           </div>
         )}
