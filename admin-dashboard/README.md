@@ -7,6 +7,14 @@ Database explorer for the NHC Capital PostgreSQL database. Browse tables, view s
 - **Frontend:** React + Vite + TypeScript
 - **Database:** PostgreSQL 17
 
+## Setup
+```bash
+cd admin-dashboard
+python3 -m venv .venv
+.venv/bin/pip install -r backend/requirements.txt
+cd frontend && npm install
+```
+
 ## Quick Start
 ```bash
 ./run.sh
@@ -25,5 +33,5 @@ Database explorer for the NHC Capital PostgreSQL database. Browse tables, view s
 
 ## Tests
 ```bash
-cd backend && pip install -r requirements.txt && pytest tests/ -v
+cd admin-dashboard && .venv/bin/pytest backend/tests/ -v
 ```

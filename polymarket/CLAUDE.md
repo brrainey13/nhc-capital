@@ -4,6 +4,8 @@ Read `docs/polymarket.md` for full schema, scraper docs, and project status.
 
 ## Quick Context
 
+- **Python:** `polymarket/.venv/bin/python` — **always use this, never system Python**
+- **Setup:** `cd polymarket && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt`
 - **DB:** `polymarket` @ localhost:5432 (Mac Mini). Separate from `nhl_betting`.
 - **psql:** `/opt/homebrew/Cellar/postgresql@17/17.8/bin/psql -d polymarket`
 - **Data source (Pi):** Raspberry Pi (`brainey@100.111.154.65`) runs hourly crons → `clawd` DB

@@ -4,6 +4,8 @@ Read `docs/admin-dashboard.md` for full architecture, endpoints, and deploy proc
 
 ## Quick Context
 
+- **Python:** `admin-dashboard/.venv/bin/python` — **always use this, never system Python**
+- **Setup:** `cd admin-dashboard && python3 -m venv .venv && .venv/bin/pip install -r backend/requirements.txt`
 - **Backend:** `backend/main.py` — FastAPI + asyncpg, read-only SQL
 - **Frontend:** `frontend/` — React + Vite + TypeScript
 - **Tests:** `backend/tests/test_api.py` (28 tests)

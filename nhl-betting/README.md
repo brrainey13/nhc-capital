@@ -60,20 +60,27 @@ All in `scrapers/`:
 | `scrape_injuries.py --historical` | Derived from player_stats | Reconstructs lineup absences for all historical games |
 | `scrape_injuries.py --live` | ESPN API | Current injury report snapshot |
 
+### Setup
+```bash
+cd nhl-betting
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+```
+
 ### Running scrapers
 ```bash
 cd nhl-betting
 
 # Full odds backfill (takes ~1hr)
-python3 scrapers/scrape_saves_odds.py
+.venv/bin/python scrapers/scrape_saves_odds.py
 
 # Advanced goalie stats (takes ~4min)
-python3 scrapers/scrape_advanced_goalie.py
+.venv/bin/python scrapers/scrape_advanced_goalie.py
 
 # Injuries (historical + live)
-python3 scrapers/scrape_injuries.py --all
-python3 scrapers/scrape_injuries.py --live    # daily ESPN snapshot only
-python3 scrapers/scrape_injuries.py --historical  # rebuild absences only
+.venv/bin/python scrapers/scrape_injuries.py --all
+.venv/bin/python scrapers/scrape_injuries.py --live    # daily ESPN snapshot only
+.venv/bin/python scrapers/scrape_injuries.py --historical  # rebuild absences only
 ```
 
 ## Data Quality Notes

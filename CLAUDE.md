@@ -43,6 +43,26 @@ Then read the `CLAUDE.md` inside whichever project subfolder you're working in (
 
 Each project subfolder has its own `CLAUDE.md` with project-specific context. **Read it when you enter that folder.**
 
+## Virtual Environments
+
+**Every project has its own `.venv/`.** Always use the project-specific Python when running code.
+
+| Project | Python Path | Setup |
+|---|---|---|
+| `nhl-betting/` | `nhl-betting/.venv/bin/python` | `cd nhl-betting && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt` |
+| `admin-dashboard/` | `admin-dashboard/.venv/bin/python` | `cd admin-dashboard && python3 -m venv .venv && .venv/bin/pip install -r backend/requirements.txt` |
+| `polymarket/` | `polymarket/.venv/bin/python` | `cd polymarket && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt` |
+| `real-estate/` | `real-estate/.venv/bin/python` | `cd real-estate && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt` |
+
+**Or set up all at once:** `make setup-venvs`
+
+**⚠️ NEVER use the system Python to run project code.** Always use `<project>/.venv/bin/python`.
+
+If a venv doesn't exist yet, create it before running anything:
+```bash
+cd <project> && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+```
+
 ## Database
 
 - **PostgreSQL 17** at `localhost:5432`, user `connorrainey`, trust auth (no password)

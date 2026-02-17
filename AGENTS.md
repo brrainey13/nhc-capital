@@ -14,6 +14,24 @@ Coding agent instructions. Read this + `CLAUDE.md`. Do the task, commit, exit.
 - Docs: `scripts/docs-list` (read matching docs before coding)
 - Deploy: `scripts/deploy-dashboard` (the ONLY way to deploy dashboard)
 
+## ⚠️ Virtual Environments — MANDATORY
+
+**Every project has its own `.venv/`.** Never use system Python for project code.
+
+| Project | Python | Setup |
+|---|---|---|
+| `nhl-betting/` | `nhl-betting/.venv/bin/python` | `cd nhl-betting && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt` |
+| `admin-dashboard/` | `admin-dashboard/.venv/bin/python` | `cd admin-dashboard && python3 -m venv .venv && .venv/bin/pip install -r backend/requirements.txt` |
+| `polymarket/` | `polymarket/.venv/bin/python` | `cd polymarket && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt` |
+| `real-estate/` | `real-estate/.venv/bin/python` | `cd real-estate && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt` |
+
+If a venv doesn't exist, create it before running anything. Use `make setup-venvs` to create all at once.
+
+**Running scripts:** Always use the project venv:
+```bash
+cd nhl-betting && .venv/bin/python scrapers/scrape_saves_odds.py
+```
+
 ## Project Folders
 
 | Folder | Status | Key Files |

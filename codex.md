@@ -6,6 +6,12 @@ Same rules as AGENTS.md. Read that first.
 
 Also read the `CLAUDE.md` in whatever project subfolder you're working in.
 
+## Virtual Environments
+
+**Always use the project's `.venv/bin/python`**, never system Python:
+- `nhl-betting/.venv/bin/python`, `polymarket/.venv/bin/python`, etc.
+- If venv missing: `cd <project> && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt`
+
 ## Codex-Specific
 
 - You're running locally on Mac Mini (arm64, macOS)

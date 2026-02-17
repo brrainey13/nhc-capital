@@ -4,6 +4,8 @@ Read `docs/nhl-betting.md` for full schema, scraper docs, and project status.
 
 ## Quick Context
 
+- **Python:** `nhl-betting/.venv/bin/python` — **always use this, never system Python**
+- **Setup:** `cd nhl-betting && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt`
 - **DB:** `nhl_betting` @ localhost:5432, 28 tables, 400K+ rows
 - **psql:** `/opt/homebrew/Cellar/postgresql@17/17.8/bin/psql -d nhl_betting`
 - **Scrapers:** `scrapers/` — BettingPros odds, NHL API stats, injuries, advanced goalie

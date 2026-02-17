@@ -5,6 +5,10 @@ Prediction market data & trading — focused on BTC/ETH short-term "Up or Down" 
 ## Setup
 
 ```bash
+cd polymarket
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+
 # Database (Mac Mini)
 psql -d polymarket -f sql/schema.sql
 psql -d polymarket -f sql/crypto_prices.sql
@@ -13,7 +17,7 @@ psql -d polymarket -f sql/crypto_prices.sql
 scrapers/sync_from_pi.sh
 
 # Backfill crypto prices (Alpaca, free)
-python scrapers/scrape_crypto_bars.py --days 30
+.venv/bin/python scrapers/scrape_crypto_bars.py --days 30
 ```
 
 ## Data

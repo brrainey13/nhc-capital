@@ -20,10 +20,15 @@ Cook County property data ETL and investment analysis.
 
 ## Setup
 
+```bash
+cd real-estate
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+```
+
 1. **PostgreSQL**: Create a DB and set env: `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD`
 2. **SODA API**: Set `SODA_APP_TOKEN` (from https://datacatalog.cookcountyil.gov/)
 3. **Commercial CSV** (optional): Place `Assessor_-_Commercial_Valuation_Data_YYYYMMDD.csv` in project root
-4. **Python**: `pip install pandas psycopg2-binary requests`
 
 ## Run ETL
 
@@ -31,23 +36,23 @@ From the **real-estate** project root:
 
 ```bash
 # Dry run (test API connectivity, no DB writes)
-python scripts/run_etl.py --dataset all --dry-run
+.venv/bin/python scripts/run_etl.py --dataset all --dry-run
 
 # Single dataset
-python scripts/run_etl.py --dataset parcel_universe --limit 1000
-python scripts/run_etl.py --dataset parcel_sales --limit 1000
-python scripts/run_etl.py --dataset commercial_valuations
+.venv/bin/python scripts/run_etl.py --dataset parcel_universe --limit 1000
+.venv/bin/python scripts/run_etl.py --dataset parcel_sales --limit 1000
+.venv/bin/python scripts/run_etl.py --dataset commercial_valuations
 
 # Full load
-python scripts/run_etl.py --dataset all
+.venv/bin/python scripts/run_etl.py --dataset all
 ```
 
 Or run scripts directly:
 
 ```bash
-python scripts/etl_parcel_universe.py --limit 5000
-python scripts/etl_parcel_sales.py --limit 5000
-python scripts/etl_commercial_valuations.py --csv-path "path/to/Assessor_-_Commercial_Valuation_Data_20260214.csv"
+.venv/bin/python scripts/etl_parcel_universe.py --limit 5000
+.venv/bin/python scripts/etl_parcel_sales.py --limit 5000
+.venv/bin/python scripts/etl_commercial_valuations.py --csv-path "path/to/Assessor_-_Commercial_Valuation_Data_20260214.csv"
 ```
 
 Runs are recorded in `data_refresh_log`.
