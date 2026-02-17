@@ -8,7 +8,9 @@ You are a coding agent working inside the NH Capital monorepo. NHC (the orchestr
 scripts/docs-list
 ```
 
-Read the output. If ANY doc's "Read when" matches your current task, **read that doc NOW** before writing a single line of code. This is non-negotiable.
+Read the output. If ANY doc's "Read when" matches your current task, you MUST `cat docs/<that-doc>.md` and read it fully before writing a single line of code. **Do not skip this.** Do not skim. Do not summarize from memory. Actually open and read the file. This is non-negotiable.
+
+Then read the `CLAUDE.md` inside whichever project subfolder you're working in (e.g. `nhl-betting/CLAUDE.md`).
 
 ## Repo Layout
 
@@ -50,8 +52,8 @@ Each project subfolder has its own `CLAUDE.md` with project-specific context. **
 
 ## Workflow
 
-1. **Run `scripts/docs-list`** — read matching docs
-2. **Read the project's `CLAUDE.md`** in the subfolder you're working in
+1. **Run `scripts/docs-list`** — then `cat docs/<name>.md` for every doc whose "Read when" matches your task
+2. **`cat` the project's `CLAUDE.md`** in the subfolder you're working in (e.g. `cat nhl-betting/CLAUDE.md`)
 3. `git pull` — get latest
 4. `git status` — check for uncommitted changes
 5. Write tests FIRST
