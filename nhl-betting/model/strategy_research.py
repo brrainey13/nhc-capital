@@ -135,10 +135,7 @@ def derive_corsi_features(matrix):
     gts_merged = gts.merge(games[['game_id', 'game_date', 'home_team_id', 'away_team_id']], on='game_id', how='inner')
 
     # Get opponent stats for each team in each game
-    gts_merged[gts_merged['is_home']][['game_id', 'team_id', 'shots_attempted', 'shots_on_goal', 'blocked_shots',
-                                                        'faceoff_win_pct', 'takeaways', 'giveaways']].copy()
-    gts_merged[not gts_merged['is_home']][['game_id', 'team_id', 'shots_attempted', 'shots_on_goal', 'blocked_shots',
-                                                         'faceoff_win_pct', 'takeaways', 'giveaways']].copy()
+    # (home/away splits computed below via merge)
 
     # For each team, get their CF and CA per game
     team_games = gts_merged[['game_id', 'team_id', 'shots_attempted', 'shots_on_goal', 'blocked_shots',
