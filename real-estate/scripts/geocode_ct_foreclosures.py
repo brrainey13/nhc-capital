@@ -40,11 +40,10 @@ def clean_address(address: str, town: str) -> str:
     return addr
 
 
-def geocode_address(address: str) -> tuple:
+def _geocode_nominatim(address: str) -> tuple:
     """Geocode via Nominatim. Returns (lat, lng) or (None, None)."""
     encoded = quote(address)
     url = f"{NOMINATIM_URL}?q={encoded}&format=json&limit=1&countrycodes=us"
-
     try:
         result = subprocess.run(
             ["curl", "-sL", "--max-time", "10",
@@ -58,8 +57,46 @@ def geocode_address(address: str) -> tuple:
         if data and len(data) > 0:
             return float(data[0]["lat"]), float(data[0]["lon"])
     except Exception as e:
-        print(f"    Geocode error: {e}", flush=True)
+        print(f"    Nominatim error: {e}", flush=True)
     return None, None
+
+
+PHOTON_URL = "https://photon.komoot.io/api/"
+
+
+def _geocode_photon(address: str) -> tuple:
+    """Fallback geocoder via Photon (Komoot). Returns (lat, lng) or (None, None)."""
+    encoded = quote(address)
+    url = f"{PHOTON_URL}?q={encoded}&limit=1&lat=41.5&lon=-72.7"
+    try:
+        result = subprocess.run(
+            ["curl", "-sL", "--max-time", "10",
+             "-H", "User-Agent: NHCCapital/1.0 (real-estate-research)",
+             url],
+            capture_output=True, text=True
+        )
+        if result.returncode != 0:
+            return None, None
+        data = json.loads(result.stdout)
+        feats = data.get("features", [])
+        if feats:
+            coords = feats[0]["geometry"]["coordinates"]  # [lon, lat]
+            state = feats[0].get("properties", {}).get("state", "")
+            if "Connecticut" in state or abs(coords[1] - 41.5) < 2:
+                return coords[1], coords[0]
+    except Exception as e:
+        print(f"    Photon error: {e}", flush=True)
+    return None, None
+
+
+def geocode_address(address: str) -> tuple:
+    """Geocode via Nominatim, fall back to Photon. Returns (lat, lng) or (None, None)."""
+    lat, lng = _geocode_nominatim(address)
+    if lat is not None:
+        return lat, lng
+    time.sleep(0.5)
+    lat, lng = _geocode_photon(address)
+    return lat, lng
 
 
 def main():
