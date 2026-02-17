@@ -190,7 +190,7 @@ def make_row(r, side):
 
 
 def write_results(all_strat_bets):
-    lines = [f"# Test Results — Proven Strategies\n"]
+    lines = ["# Test Results — Proven Strategies\n"]
     lines.append(f"**Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M')} | **Data:** 2,795 games, 3-season walk-forward\n")
 
     for strat_name in ['MF3a', 'MF3b', 'MF2', 'MF5', 'PF1']:
@@ -207,8 +207,8 @@ def write_results(all_strat_bets):
 
         side = bets[0]['side']
         lines.append(f"## {strat_name} — {side} ({n} bets, {wr:.1f}% win, {roi:+.1f}% ROI)\n")
-        lines.append(f"| Date | Goalie | Team | Opp | H/A | Line | Saves | Pred | Gap | Corsi | Rest | Result |")
-        lines.append(f"|------|--------|------|-----|-----|------|-------|------|-----|-------|------|--------|")
+        lines.append("| Date | Goalie | Team | Opp | H/A | Line | Saves | Pred | Gap | Corsi | Rest | Result |")
+        lines.append("|------|--------|------|-----|-----|------|-------|------|-----|-------|------|--------|")
 
         season_stats = {}
         for b in bets_sorted:
@@ -220,7 +220,7 @@ def write_results(all_strat_bets):
             season_stats[s]['wins'] += int(b['won'])
             season_stats[s]['profit'] += b['profit']
 
-        lines.append(f"\n**Per-season breakdown:**")
+        lines.append("\n**Per-season breakdown:**")
         for s, st in season_stats.items():
             sr = (st['profit']/st['n'])*100 if st['n']>0 else 0
             sw = st['wins']/st['n']*100 if st['n']>0 else 0
