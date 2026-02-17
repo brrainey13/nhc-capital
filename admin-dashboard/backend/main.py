@@ -7,11 +7,15 @@ from pathlib import Path
 from typing import Optional
 
 import asyncpg
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+
+# Load .env from project root
+load_dotenv(Path(__file__).parent.parent / ".env")
 
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend" / "dist"
 
@@ -435,6 +439,8 @@ User question: {question}"""
                     "messages": [{"role": "user", "content": prompt}],
                 },
             )
+            if r.status_code == 429:
+                raise HTTPException(429, "Rate limited — free models have request limits. Try again in a few seconds.")
             r.raise_for_status()
             data = r.json()
             content = data["choices"][0]["message"]["content"]
