@@ -395,45 +395,68 @@ async def _get_db_schema_text() -> str:
     return "\n".join(parts)
 
 
-async def _openrouter_chat(api_key: str, model: str, messages: list, max_tokens: int = 1024) -> str:
-    """Call OpenRouter chat completions and return the text content."""
+FALLBACK_MODELS = [
+    "qwen/qwen3-coder:free",
+    "meta-llama/llama-3.3-70b-instruct:free",
+    "deepseek/deepseek-r1-0528:free",
+]
+
+
+async def _openrouter_chat(
+    api_key: str, model: str, messages: list, max_tokens: int = 1024
+) -> str:
+    """Call OpenRouter chat completions with automatic retry on failure."""
     import httpx
 
-    async with httpx.AsyncClient(timeout=45) as client:
-        r = await client.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": model,
-                "max_tokens": max_tokens,
-                "messages": messages,
-            },
-        )
-        if r.status_code == 429:
-            raise HTTPException(
-                429,
-                "Rate limited — free models have request limits. "
-                "Try again in a few seconds.",
-            )
-        r.raise_for_status()
-        data = r.json()
-        content = data["choices"][0]["message"]["content"]
-        if not content:
-            raise HTTPException(502, "Model returned no text")
-        # Strip markdown fences if present
-        text = content.strip()
-        if text.startswith("```"):
-            lines = text.split("\n")
-            lines = [line for line in lines if not line.startswith("```")]
-            text = "\n".join(lines).strip()
-        # Strip <think>...</think> blocks (some reasoning models emit these)
-        import re as _re
+    models_to_try = [model] + [m for m in FALLBACK_MODELS if m != model]
 
-        text = _re.sub(r"<think>.*?</think>", "", text, flags=_re.DOTALL).strip()
-        return text
+    for attempt_model in models_to_try:
+        try:
+            async with httpx.AsyncClient(timeout=45) as client:
+                r = await client.post(
+                    "https://openrouter.ai/api/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": attempt_model,
+                        "max_tokens": max_tokens,
+                        "messages": messages,
+                    },
+                )
+                if r.status_code == 429:
+                    continue  # Try next model
+                r.raise_for_status()
+                data = r.json()
+                content = data["choices"][0]["message"]["content"]
+                if not content:
+                    continue  # Empty response, try next
+
+                text = content.strip()
+                # Strip markdown fences
+                if text.startswith("```"):
+                    lines = text.split("\n")
+                    lines = [
+                        line for line in lines if not line.startswith("```")
+                    ]
+                    text = "\n".join(lines).strip()
+                # Strip <think>...</think> blocks (reasoning models)
+                import re as _re
+
+                text = _re.sub(
+                    r"<think>.*?</think>", "", text, flags=_re.DOTALL
+                ).strip()
+                if text:
+                    return text
+        except Exception:
+            continue
+
+    raise HTTPException(
+        502,
+        "All models failed to generate a response. "
+        "Try again in a few seconds.",
+    )
 
 
 @app.post("/api/nl-query")
