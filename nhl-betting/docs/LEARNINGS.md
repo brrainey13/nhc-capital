@@ -295,10 +295,64 @@ The strongest version: **3+ defensemen missing → +20.6% ROI on 95 bets at 63.2
 3. Multiple hypothesis testing (we checked many subsets → some will look good by chance)
 4. Could be season-specific (2025-26 injuries may not repeat)
 
-### Next Steps
-1. Forward-test through rest of 2025-26 season (resumes Feb 26)
-2. Cross-validate: backtest on 2023-24 and 2024-25 seasons
-3. Build automated pipeline: scrape injuries → check D absences → flag over bets → alert team
-4. Track every bet prediction vs result in real-time
+---
+
+## Cross-Season Validation: D-Absence Thesis FAILED (2026-02-16)
+
+### The Brutal Truth
+The D-absence over thesis only worked in 2025-26. It was negative ROI in both prior seasons:
+
+| Season | 3+ D missing (over) ROI | N | Blind over ROI |
+|--------|------------------------|---|----------------|
+| 2023-24 | **-5.9%** | 278 | -10.7% |
+| 2024-25 | **-7.6%** | 285 | -15.0% |
+| 2025-26 | **+20.6%** | 95 | +0.4% |
+| **Combined** | **-2.8%** | **658** | **-10.1%** |
+
+Every D-absence subset was negative across all 3 seasons combined.
+
+### Why It Seemed to Work
+**The saves-line gap shifts year to year.** 2025-26 was the only season where overs were generally profitable (52.6% over rate). The D-absence signal just amplified an existing tailwind.
+
+### What IS True (and useful)
+D absences DO cause more saves — consistently across all seasons:
+
+| Season | 3+ D missing avg saves | 0-1 D missing avg saves | Δ saves |
+|--------|----------------------|------------------------|---------|
+| 2022-23 | 27.7 | 26.9 | +0.8 |
+| 2023-24 | 27.1 | 25.7 | +1.5 |
+| 2024-25 | 25.2 | 23.8 | +1.4 |
+| 2025-26 | 26.3 | 24.3 | **+2.0** |
+
+**But books partially price this in.** The line adjustment (Δ line) is about +0.6 to +1.0 saves when 3+ D are missing — covering about half of the actual impact. The question is whether the ~0.5-1.0 save gap between the line adjustment and reality is enough to overcome vig. Based on 3 seasons: **no.**
+
+### Leading Indicators for D Absences
+
+**Best predictors of D absence (correlation with current game):**
+1. **Recent D absence avg (3-game): r=0.832** — by far the strongest. If a team was missing D last 3 games, they'll be missing D tonight.
+2. D absence TOI avg (3-game): r=0.807
+3. D absence avg (5-game): r=0.791
+4. D missing streak: r=0.423
+5. Schedule density: r=-0.165 (fewer games = MORE absences, counterintuitively)
+
+**Rule-based prediction accuracy:**
+- avg_3 ≥ 2.5 → 84.9% precision for predicting 3+ D missing (3,834 games flagged)
+- avg_3 ≥ 3.0 → 89.2% precision (3,291 flagged)
+- TOI_avg_3 ≥ 50 → 86.6% precision (2,938 flagged)
+
+**D absences are highly persistent within a season** — once a team starts losing D, they keep losing D. But team injury-proneness does NOT persist across seasons (r=0.05-0.27).
+
+**Key insight: Back-to-backs DON'T matter for D absences.** B2B: 34.5% 3+ rate vs non-B2B: 33.5%. Negligible difference.
+
+**Season progression matters:** Games 1-20 have 50.2% rate of 3+ D missing vs 23.3% for games 41-60. Early season and late season (injuries pile up) have more D absences.
+
+### Most Injury-Prone D Corps (2025-26)
+MIN (3.3/gm, 97% 3+ rate), CGY (3.2, 100%), TBL (3.2, 90%), SJS (3.2, 97%), PIT (3.0, 51%)
+
+### Revised Conclusion
+The D-absence signal is **real but not exploitable through goalie saves O/U.** Books price in about half the impact, and the vig eats the rest. The signal might be more valuable for:
+1. **Player SOG props** (opposing forwards, not yet tested)
+2. **In-game/live betting** where books react slowly to shot pace
+3. **As one input in a multi-factor model** rather than a standalone strategy
 
 *Updated: 2026-02-16*
