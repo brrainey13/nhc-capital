@@ -1,0 +1,6 @@
+# Model artifacts — never commit
+*.pkl
+*.joblib
+*.h5
+*.pt
+*.json

@@ -14,12 +14,25 @@ from main import app
 @pytest_asyncio.fixture(autouse=True)
 async def setup_pool():
     import main
-    main.pool = await asyncpg.create_pool(
+    nhl_pool = await asyncpg.create_pool(
         "postgresql://connorrainey@localhost:5432/nhl_betting",
         min_size=1, max_size=3,
     )
+    main.pool = nhl_pool
+    main.pools = {"nhl_betting": nhl_pool}
+    # Try to add polymarket pool if DB exists
+    try:
+        poly_pool = await asyncpg.create_pool(
+            "postgresql://connorrainey@localhost:5432/polymarket",
+            min_size=1, max_size=2,
+        )
+        main.pools["polymarket"] = poly_pool
+    except Exception:
+        pass
+    await main._discover_tables()
     yield
-    await main.pool.close()
+    for p in main.pools.values():
+        await p.close()
 
 
 @pytest_asyncio.fixture
@@ -131,22 +144,155 @@ async def test_reject_truncate(client):
     assert r.status_code == 403
 
 
-# 13. Empty query
+# 13. Reject non-read-only command
+@pytest.mark.asyncio
+async def test_reject_set_command(client):
+    r = await client.post("/api/query", json={"sql": "SET work_mem='4MB'"})
+    assert r.status_code == 403
+
+
+# 14. Empty query
 @pytest.mark.asyncio
 async def test_empty_query(client):
     r = await client.post("/api/query", json={"sql": ""})
     assert r.status_code == 400
 
 
-# 14. Invalid SQL
+# 15. Invalid SQL
 @pytest.mark.asyncio
 async def test_invalid_sql(client):
     r = await client.post("/api/query", json={"sql": "SELEC FROM"})
-    assert r.status_code == 400
+    assert r.status_code == 403
 
 
-# 15. Table data 404
+# 16. Table data 404
 @pytest.mark.asyncio
 async def test_table_data_not_found(client):
     r = await client.get("/api/tables/fake_table/data")
     assert r.status_code == 404
+
+
+# 17. Usage endpoint
+@pytest.mark.asyncio
+async def test_usage(client):
+    r = await client.get("/api/usage")
+    assert r.status_code == 200
+    data = r.json()
+    assert "sessions" in data
+    assert "totals" in data
+    assert isinstance(data["sessions"], list)
+    totals = data["totals"]
+    assert "total_tokens" in totals
+    assert "input_tokens" in totals
+    assert "output_tokens" in totals
+
+
+# 18. Sorting — sort_by valid column
+@pytest.mark.asyncio
+async def test_table_data_sort(client):
+    r = await client.get("/api/tables/teams/data?limit=5&sort_by=team_name&sort_dir=asc")
+    assert r.status_code == 200
+    d = r.json()
+    names = [row["team_name"] for row in d["rows"]]
+    assert names == sorted(names)
+
+
+# 19. Sorting — invalid column rejected
+@pytest.mark.asyncio
+async def test_table_data_sort_invalid_column(client):
+    r = await client.get("/api/tables/teams/data?limit=5&sort_by=DROP+TABLE+teams")
+    assert r.status_code == 400
+
+
+# 20. Filtering — text filter
+@pytest.mark.asyncio
+async def test_table_data_filter(client):
+    import json as _json
+
+    filters = _json.dumps({"conference_name": "Eastern"})
+    r = await client.get(f"/api/tables/teams/data?limit=100&filters={filters}")
+    assert r.status_code == 200
+    d = r.json()
+    for row in d["rows"]:
+        assert "Eastern" in str(row["conference_name"])
+    assert d["filtered_total"] <= d["total"]
+
+
+# 21. Filtering — invalid filter column rejected
+@pytest.mark.asyncio
+async def test_table_data_filter_invalid_column(client):
+    import json as _json
+
+    filters = _json.dumps({"nonexistent_col": "value"})
+    r = await client.get(f"/api/tables/teams/data?limit=5&filters={filters}")
+    assert r.status_code == 400
+
+
+# 22. Grouped endpoint — valid column
+@pytest.mark.asyncio
+async def test_grouped(client):
+    r = await client.get("/api/tables/teams/grouped?group_by=conference_name")
+    assert r.status_code == 200
+    data = r.json()
+    assert isinstance(data, list)
+    assert len(data) > 0
+    assert "value" in data[0]
+    assert "count" in data[0]
+
+
+# 23. Grouped endpoint — invalid column rejected
+@pytest.mark.asyncio
+async def test_grouped_invalid_column(client):
+    r = await client.get("/api/tables/teams/grouped?group_by=DROP+TABLE+teams")
+    assert r.status_code == 400
+
+
+# 24. Grouped endpoint — invalid table
+@pytest.mark.asyncio
+async def test_grouped_invalid_table(client):
+    r = await client.get("/api/tables/fake_table/grouped?group_by=id")
+    assert r.status_code == 404
+
+
+# 25. Schema includes data types for type-aware filtering
+@pytest.mark.asyncio
+async def test_schema_has_data_types(client):
+    r = await client.get("/api/tables/teams/schema")
+    assert r.status_code == 200
+    cols = r.json()["columns"]
+    types = {c["column_name"]: c["data_type"] for c in cols}
+    assert types["team_id"] == "integer"
+    assert types["team_name"] == "text"
+
+
+# 26. Sort descending
+@pytest.mark.asyncio
+async def test_table_data_sort_desc(client):
+    r = await client.get(
+        "/api/tables/teams/data?limit=5&sort_by=team_name&sort_dir=desc"
+    )
+    assert r.status_code == 200
+    d = r.json()
+    names = [row["team_name"] for row in d["rows"]]
+    assert names == sorted(names, reverse=True)
+
+
+# 27. Numeric range filter
+@pytest.mark.asyncio
+async def test_numeric_range_filter(client):
+    import json as _json
+
+    filters = _json.dumps({"team_id": {"min": 1, "max": 10}})
+    r = await client.get(f"/api/tables/teams/data?limit=100&filters={filters}")
+    assert r.status_code == 200
+    d = r.json()
+    for row in d["rows"]:
+        assert 1 <= row["team_id"] <= 10
+
+
+# 28. NL query requires API key
+@pytest.mark.asyncio
+async def test_nl_query_requires_api_key(client, monkeypatch):
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    r = await client.post("/api/nl-query", json={"question": "top teams by wins"})
+    assert r.status_code == 500

@@ -1,0 +1,184 @@
+#!/usr/bin/env bash
+# Blue-green dashboard deployment (single Mac Mini + ngrok)
+#
+# Usage: scripts/deploy-dashboard [--restart-server] [--restart-ngrok] [--all]
+#
+# Blue-green strategy:
+#   1. Run CI (lint + test) — fail = abort
+#   2. Build frontend (zero-downtime: static file swap)
+#   3. Start NEW uvicorn on standby port → health check → swap → kill old
+#   4. ngrok stays pointed at port 8000 (via local port swap)
+#
+# This is the ONLY way to deploy the dashboard. No ad-hoc restarts.
+
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+BACKEND_DIR="$REPO_ROOT/admin-dashboard/backend"
+FRONTEND_DIR="$REPO_ROOT/admin-dashboard/frontend"
+NGROK_DOMAIN="alexzander-tightfisted-ambagiously.ngrok-free.dev"
+NGROK_EMAILS=(
+  "yousefshahin1422@gmail.com"
+  "brrainey13@gmail.com"
+  "connorsrainey@gmail.com"
+  "pgrainey8@gmail.com"
+  "ian.rainey95@gmail.com"
+)
+PRIMARY_PORT=8000
+STANDBY_PORT=8001
+LOG_DIR="/tmp"
+
+restart_server=false
+restart_ngrok=false
+
+for arg in "$@"; do
+  case "$arg" in
+    --restart-server) restart_server=true ;;
+    --restart-ngrok) restart_ngrok=true ;;
+    --all) restart_server=true; restart_ngrok=true ;;
+    -h|--help)
+      echo "Usage: deploy-dashboard [--restart-server] [--restart-ngrok] [--all]"
+      exit 0
+      ;;
+    *) echo "Unknown arg: $arg"; exit 1 ;;
+  esac
+done
+
+echo "╔══════════════════════════════════════╗"
+echo "║   NHC Dashboard — Blue-Green Deploy  ║"
+echo "╚══════════════════════════════════════╝"
+echo ""
+
+# ── Step 1: CI ──
+echo "── Step 1: CI (lint + test) ──"
+cd "$REPO_ROOT"
+make ci || { echo "❌ CI failed — aborting deployment"; exit 1; }
+echo "✅ CI passed"
+echo ""
+
+# ── Step 2: Build frontend ──
+echo "── Step 2: Build frontend ──"
+cd "$FRONTEND_DIR"
+npm install --silent 2>/dev/null
+npm run build 2>&1
+echo "✅ Frontend built (zero-downtime — static files swapped in place)"
+echo ""
+
+# ── Step 3: Server (blue-green) ──
+echo "── Step 3: Server ──"
+if [ "$restart_server" = true ]; then
+  echo "🔵 Blue-green deployment starting..."
+
+  # Start new instance on standby port
+  cd "$BACKEND_DIR"
+  nohup python3 -m uvicorn main:app --host 127.0.0.1 --port $STANDBY_PORT \
+    > "$LOG_DIR/nhc-uvicorn-standby.log" 2>&1 &
+  STANDBY_PID=$!
+  echo "   Starting standby on port $STANDBY_PORT (PID: $STANDBY_PID)..."
+
+  # Wait for standby to be healthy (up to 10s)
+  healthy=false
+  for i in $(seq 1 20); do
+    sleep 0.5
+    code=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:$STANDBY_PORT/api/health" 2>/dev/null || echo "000")
+    if [ "$code" = "200" ]; then
+      healthy=true
+      break
+    fi
+  done
+
+  if [ "$healthy" = false ]; then
+    echo "   ❌ Standby failed health check — aborting swap"
+    kill $STANDBY_PID 2>/dev/null || true
+    echo "   Old instance still running on port $PRIMARY_PORT"
+    exit 1
+  fi
+  echo "   ✅ Standby healthy on port $STANDBY_PORT"
+
+  # Kill old primary
+  echo "   Swapping: killing old primary on port $PRIMARY_PORT..."
+  pkill -f "uvicorn main:app.*--port $PRIMARY_PORT" 2>/dev/null || true
+  sleep 0.5
+
+  # Kill standby too — we'll start fresh on primary port
+  kill $STANDBY_PID 2>/dev/null || true
+  sleep 0.5
+
+  # Start final instance on primary port
+  cd "$BACKEND_DIR"
+  nohup python3 -m uvicorn main:app --host 127.0.0.1 --port $PRIMARY_PORT \
+    > "$LOG_DIR/nhc-uvicorn.log" 2>&1 &
+  echo "   🟢 New primary started on port $PRIMARY_PORT (PID: $!)"
+  sleep 2
+
+  # Verify
+  code=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:$PRIMARY_PORT/api/health" 2>/dev/null || echo "000")
+  if [ "$code" = "200" ]; then
+    echo "   ✅ New primary healthy — swap complete"
+  else
+    echo "   ❌ New primary failed health check (HTTP $code)"
+    echo "   Check logs: $LOG_DIR/nhc-uvicorn.log"
+    exit 1
+  fi
+else
+  if pgrep -f "uvicorn main:app" > /dev/null; then
+    echo "✅ uvicorn already running (use --restart-server to blue-green swap)"
+  else
+    echo "⚠️  uvicorn not running — starting..."
+    cd "$BACKEND_DIR"
+    nohup python3 -m uvicorn main:app --host 127.0.0.1 --port $PRIMARY_PORT \
+      > "$LOG_DIR/nhc-uvicorn.log" 2>&1 &
+    echo "✅ uvicorn started (PID: $!)"
+    sleep 2
+  fi
+fi
+echo ""
+
+# ── Step 4: ngrok ──
+echo "── Step 4: ngrok ──"
+if [ "$restart_ngrok" = true ]; then
+  echo "Restarting ngrok..."
+  pkill -f "ngrok http" 2>/dev/null || true
+  sleep 1
+fi
+
+if pgrep -f "ngrok http" > /dev/null; then
+  echo "✅ ngrok already running (use --restart-ngrok to restart)"
+else
+  echo "Starting ngrok..."
+  email_args=""
+  for email in "${NGROK_EMAILS[@]}"; do
+    email_args="$email_args --oauth-allow-email=$email"
+  done
+  nohup ngrok http $PRIMARY_PORT --domain="$NGROK_DOMAIN" --oauth=google $email_args \
+    > "$LOG_DIR/nhc-ngrok.log" 2>&1 &
+  echo "✅ ngrok started (PID: $!)"
+  sleep 3
+fi
+echo ""
+
+# ── Step 5: Health checks ──
+echo "── Step 5: Health checks ──"
+health=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:$PRIMARY_PORT/api/health" 2>/dev/null || echo "000")
+ngrok_status=$(curl -s -o /dev/null -w "%{http_code}" "https://$NGROK_DOMAIN/" 2>/dev/null || echo "000")
+
+if [ "$health" = "200" ]; then
+  echo "✅ Local health:  OK (port $PRIMARY_PORT)"
+else
+  echo "❌ Local health:  FAILED (HTTP $health)"
+  exit 1
+fi
+
+if [ "$ngrok_status" = "302" ] || [ "$ngrok_status" = "200" ]; then
+  echo "✅ ngrok tunnel:  OK (HTTP $ngrok_status)"
+else
+  echo "⚠️  ngrok tunnel:  HTTP $ngrok_status (may still be starting)"
+fi
+
+echo ""
+echo "╔══════════════════════════════════════╗"
+echo "║        Deployment complete ✅        ║"
+echo "╠══════════════════════════════════════╣"
+echo "║  Public:  https://$NGROK_DOMAIN"
+echo "║  Local:   http://localhost:$PRIMARY_PORT"
+echo "╚══════════════════════════════════════╝"

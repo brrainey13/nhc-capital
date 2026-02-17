@@ -62,6 +62,13 @@ ngrok http 8000 \
 - Table allowlist: only approved tables are queryable
 - CORS: Should be locked to ngrok domain (TODO: currently `allow_origins=["*"]`)
 
+## Deployment
+
+**Use `scripts/deploy-dashboard` for ALL deployments.** No ad-hoc restarts.
+
+The script runs CI, builds frontend, restarts services, and health checks — in that order.
+Agents must NOT manually start uvicorn or ngrok. See `docs/admin-dashboard.md`.
+
 ## Checklist Before Exposing Anything
 
 1. Is it going through ngrok? If no, stop.
@@ -69,3 +76,4 @@ ngrok http 8000 \
 3. Is the service read-only or appropriately permissioned?
 4. Are credentials/secrets excluded from responses?
 5. Is CORS locked down to the ngrok domain?
+6. Did you deploy via `scripts/deploy-dashboard`? If no, stop.
