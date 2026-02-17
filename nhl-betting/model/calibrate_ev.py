@@ -61,6 +61,11 @@ def run_calibrated_ev():
         if len(val_df) < 20 or len(cal_df) < 50:
             continue
 
+        # --- Recency weights (half-life 365 days) ---
+        max_train_date = train_df_inner["event_date"].max()
+        days_ago = (max_train_date - train_df_inner["event_date"]).dt.days
+        train_weights = np.exp(-days_ago * np.log(2) / 365)
+
         # --- Train Model A: shots ---
         sp = get_shot_params(5)
         sp.pop("n_estimators", None)
@@ -69,6 +74,7 @@ def run_calibrated_ev():
         model_a.fit(
             train_df_inner[shot_features].fillna(-999),
             train_df_inner["shots_against"],
+            sample_weight=train_weights,
         )
 
         # --- Train Model B: save% ---
@@ -79,6 +85,7 @@ def run_calibrated_ev():
         model_b.fit(
             train_df_inner[svpct_features].fillna(-999),
             train_df_inner["save_pct"],
+            sample_weight=train_weights,
         )
 
         # --- Calibration set predictions ---
