@@ -640,6 +640,33 @@ Schema:
 
 SESSIONS_FILE = Path.home() / ".openclaw/agents/main/sessions/sessions.json"
 
+# Map Discord channel IDs to friendly names
+CHANNEL_LABELS: dict[str, str] = {
+    "1473042410614292746": "general",
+    "1473073236253212804": "nhl-betting",
+    "1473074661016338545": "real-estate",
+    "1473074662312513597": "polymarket",
+    "1473074663356629078": "admin-dashboard",
+}
+
+def _friendly_label(raw: str) -> str:
+    """Turn raw session labels like 'discord:123<#456>' into '#channel-name'."""
+    # Match discord:guild<#channel> pattern
+    m = re.search(r"<#(\d+)>", raw)
+    if m:
+        cid = m.group(1)
+        if cid in CHANNEL_LABELS:
+            return f"#{CHANNEL_LABELS[cid]}"
+    # Match 'Guild #name channel id:...' pattern
+    m2 = re.search(r"Guild #(\S+)", raw)
+    if m2:
+        return f"#{m2.group(1)}"
+    # Match bare channel IDs
+    for cid, name in CHANNEL_LABELS.items():
+        if cid in raw:
+            return f"#{name}"
+    return raw
+
 
 @app.get("/api/usage")
 async def usage():
@@ -651,7 +678,8 @@ async def usage():
     total_in = 0
     total_out = 0
     for key, s in data.items():
-        label = s.get("displayName") or s.get("origin", {}).get("label", key)
+        raw_label = s.get("displayName") or s.get("origin", {}).get("label", key)
+        label = _friendly_label(raw_label)
         t_tokens = s.get("totalTokens", 0)
         i_tokens = s.get("inputTokens", 0)
         o_tokens = s.get("outputTokens", 0)
