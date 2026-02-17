@@ -1,16 +1,44 @@
 # CLAUDE.md — Polymarket
 
-Read `docs/polymarket.md` for project status and data sources.
+Read `docs/polymarket.md` for full schema, scraper docs, and project status.
 
 ## Quick Context
 
-- **Stage:** Placeholder — needs scoping
-- **Discord:** #polymarket
-- **Folder:** `polymarket/`
-- **Database:** TBD (will use Postgres on localhost:5432)
-- **Data sources:** [Polymarket API](https://docs.polymarket.com/)
+- **DB:** `polymarket` @ localhost:5432 (Mac Mini). Separate from `nhl_betting`.
+- **psql:** `/opt/homebrew/Cellar/postgresql@17/17.8/bin/psql -d polymarket`
+- **Data source (Pi):** Raspberry Pi (`brainey@100.111.154.65`) runs hourly crons → `clawd` DB
+- **Sync:** `scrapers/sync_from_pi.sh` pulls Pi data to local `polymarket` DB
+
+## Key Tables
+
+| Table | Rows | Source | Notes |
+|---|---|---|---|
+| `markets` | 20K+ | Pi scanner (Gamma API) | Active Polymarket markets |
+| `market_snapshots` | 870K+ | Pi scanner (hourly) | Price/volume history |
+| `crypto_bars_5min` | 17K+ | Alpaca (free, no key) | BTC/USD + ETH/USD 5-min candles |
+| `positions` | 0 | — | Trade tracking (future) |
+| `theses` | 0 | — | Investment theses (future) |
+| `agent_log` | 0 | — | Agent action log (future) |
+| `human_notes` | 0 | — | Team notes (future) |
+
+## Scrapers
+
+| Script | Runs | Source | Target |
+|---|---|---|---|
+| `scrapers/scanner.py` | Pi hourly cron | Gamma API | markets + snapshots |
+| `scrapers/hockey_scanner.py` | Pi hourly cron | QuantHockey | Reports only |
+| `scrapers/daily_report.py` | Pi 9AM UTC cron | Local DB | stdout |
+| `scrapers/scrape_crypto_bars.py` | Mac Mini (manual/cron) | Alpaca free API | crypto_bars_5min |
+| `scrapers/sync_from_pi.sh` | Manual | Pi → Mac Mini | markets + snapshots |
+
+## Focus: BTC 5-Min Up/Down Markets
+
+Polymarket has high-volume "Bitcoin Up or Down" markets resolving on hourly/daily timeframes.
+The edge: combine 5-min Alpaca price bars with Polymarket odds to find mispriced short-term markets.
 
 ## Rules
 
-- **Update `docs/polymarket.md`** when you add tables, scrapers, or pipelines
+- **Never commit model artifacts** — gitignored
+- **Update `docs/polymarket.md`** when you add tables, scrapers, or change schema
+- **Pi scripts are the source of truth** — edit on Pi or in this repo (then deploy to Pi)
 - **`make ci` before commit** — always

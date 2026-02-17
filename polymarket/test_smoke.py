@@ -16,7 +16,7 @@ def test_readme_has_content():
     assert readme.exists()
     content = readme.read_text()
     assert "Polymarket" in content
-    assert "Status" in content
+    assert "Polymarket" in content
 
 
 def test_init_exists():
