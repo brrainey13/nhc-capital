@@ -32,7 +32,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install pytest ruff httpx pytest-asyncio asyncpg fastapi uvicorn pydantic
+        run: pip install pytest ruff httpx pytest-asyncio asyncpg fastapi uvicorn pydantic python-dotenv
 
       - name: Seed test tables
         run: |
