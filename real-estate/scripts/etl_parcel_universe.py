@@ -52,43 +52,51 @@ def run(limit: int = None, where: str = None, dry_run: bool = False) -> dict:
         print(f"[dry run] Would upsert {fetched} rows into parcel_universe")
         return {"rows_fetched": fetched, "rows_inserted": 0, "rows_updated": 0, "data": data}
 
+    from psycopg2.extras import execute_values as _exec_vals
+
+    # Initial schema setup
     with get_connection() as conn:
         ensure_schema(conn)
-        offset = 0
-        batch_size = 50000
-        while True:
-            data = fetch_batch(limit=batch_size, where=where, offset=offset)
-            if not data:
-                break
-            fetched += len(data)
-            rows = []
-            for rec in data:
-                row = [rec.get(c) for c in COLS]
-                row.append(json.dumps(rec) if isinstance(rec, dict) else None)
-                rows.append(tuple(row))
-            cols_sql = ", ".join(COLS) + ", raw_json"
+
+    offset = 0
+    batch_size = 10000
+    cols_sql = ", ".join(COLS) + ", raw_json"
+    upsert_sql = f"""
+        INSERT INTO parcel_universe ({cols_sql})
+        VALUES %s
+        ON CONFLICT (pin, year) DO UPDATE SET
+            pin10 = EXCLUDED.pin10, class = EXCLUDED.class,
+            triad_name = EXCLUDED.triad_name, triad_code = EXCLUDED.triad_code,
+            township_name = EXCLUDED.township_name, township_code = EXCLUDED.township_code,
+            nbhd_code = EXCLUDED.nbhd_code, tax_code = EXCLUDED.tax_code, zip_code = EXCLUDED.zip_code,
+            lon = EXCLUDED.lon, lat = EXCLUDED.lat, cook_municipality_name = EXCLUDED.cook_municipality_name,
+            row_id = EXCLUDED.row_id, raw_json = EXCLUDED.raw_json, updated_at = NOW()
+    """
+
+    while True:
+        print(f"  Fetching offset={offset} batch_size={batch_size}...", flush=True)
+        data = fetch_batch(limit=batch_size, where=where, offset=offset)
+        if not data:
+            break
+        fetched += len(data)
+        print(f"  Got {len(data)} rows (total: {fetched})", flush=True)
+        rows = []
+        for rec in data:
+            row = [rec.get(c) for c in COLS]
+            row.append(json.dumps(rec) if isinstance(rec, dict) else None)
+            rows.append(tuple(row))
+        # Commit each batch independently to avoid memory buildup
+        with get_connection() as conn:
             with conn.cursor() as cur:
-                from psycopg2.extras import execute_values
-                execute_values(
-                    cur,
-                    f"""
-                    INSERT INTO parcel_universe ({cols_sql})
-                    VALUES %s
-                    ON CONFLICT (pin, year) DO UPDATE SET
-                        pin10 = EXCLUDED.pin10, class = EXCLUDED.class,
-                        triad_name = EXCLUDED.triad_name, triad_code = EXCLUDED.triad_code,
-                        township_name = EXCLUDED.township_name, township_code = EXCLUDED.township_code,
-                        nbhd_code = EXCLUDED.nbhd_code, tax_code = EXCLUDED.tax_code, zip_code = EXCLUDED.zip_code,
-                        lon = EXCLUDED.lon, lat = EXCLUDED.lat, cook_municipality_name = EXCLUDED.cook_municipality_name,
-                        row_id = EXCLUDED.row_id, raw_json = EXCLUDED.raw_json, updated_at = NOW()
-                    """,
-                    rows,
-                    page_size=1000,
-                )
+                _exec_vals(cur, upsert_sql, rows, page_size=1000)
                 inserted += cur.rowcount
-            if len(data) < batch_size:
-                break
-            offset += len(data)
+        batch_len = len(rows)
+        del data, rows  # free memory
+        if limit and fetched >= limit:
+            break
+        if batch_len < batch_size:
+            break
+        offset += batch_size
 
     duration = time.perf_counter() - start
     return {"rows_fetched": fetched, "rows_inserted": inserted, "rows_updated": updated, "duration_sec": duration}
