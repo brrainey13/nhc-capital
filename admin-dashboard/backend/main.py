@@ -650,21 +650,19 @@ CHANNEL_LABELS: dict[str, str] = {
 }
 
 def _friendly_label(raw: str) -> str:
-    """Turn raw session labels like 'discord:123<#456>' into '#channel-name'."""
-    # Match discord:guild<#channel> pattern
-    m = re.search(r"<#(\d+)>", raw)
+    """Turn raw session labels like 'discord:123#channel-name' into '#channel-name'."""
+    # Match discord:guild#channel-name pattern
+    m = re.search(r"discord:\d+#(.+)$", raw)
     if m:
-        cid = m.group(1)
-        if cid in CHANNEL_LABELS:
-            return f"#{CHANNEL_LABELS[cid]}"
-    # Match 'Guild #name channel id:...' pattern
-    m2 = re.search(r"Guild #(\S+)", raw)
-    if m2:
-        return f"#{m2.group(1)}"
-    # Match bare channel IDs
-    for cid, name in CHANNEL_LABELS.items():
-        if cid in raw:
-            return f"#{name}"
+        return f"#{m.group(1)}"
+    # Match discord:guild<#channel_id> pattern
+    m2 = re.search(r"<#(\d+)>", raw)
+    if m2 and m2.group(1) in CHANNEL_LABELS:
+        return f"#{CHANNEL_LABELS[m2.group(1)]}"
+    # Match 'Guild #name ...' pattern
+    m3 = re.search(r"Guild #(\S+)", raw)
+    if m3:
+        return f"#{m3.group(1)}"
     return raw
 
 

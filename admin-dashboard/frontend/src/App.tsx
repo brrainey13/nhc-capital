@@ -668,7 +668,8 @@ export default function App() {
       <nav style={{
         background: C.surface, borderBottom: `1px solid ${C.border}`,
         padding: mobile ? '0 12px' : '0 24px',
-        display: 'flex', alignItems: 'center', height: mobile ? 48 : 52, flexShrink: 0, gap: mobile ? 2 : 4,
+        paddingTop: 'env(safe-area-inset-top)',
+        display: 'flex', alignItems: 'center', minHeight: mobile ? 48 : 52, flexShrink: 0, gap: mobile ? 2 : 4,
       }}>
         <span style={{ fontWeight: 700, fontSize: mobile ? 15 : 16, marginRight: mobile ? 12 : 28, color: C.white, letterSpacing: '-0.02em', whiteSpace: 'nowrap' }}>
           NHC{!mobile && <span style={{ fontWeight: 400, color: C.textMuted }}> Admin</span>}
@@ -697,7 +698,7 @@ export default function App() {
       </nav>
 
       {/* Content */}
-      <div style={{ flex: 1, overflow: 'hidden', padding: mobile ? 12 : 20, minHeight: 0 }}>
+      <div style={{ flex: 1, overflow: 'hidden', padding: mobile ? 12 : 20, paddingBottom: mobile ? 'max(12px, env(safe-area-inset-bottom))' : 20, minHeight: 0 }}>
 
         {/* HOME */}
         {page === 'home' && (
