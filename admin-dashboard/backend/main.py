@@ -714,10 +714,17 @@ async def usage():
     }
 
 
-# Serve frontend static files
+# Serve frontend static files + PWA assets
+PUBLIC_DIR = Path(__file__).parent.parent / "frontend" / "public"
+
 if FRONTEND_DIR.exists():
     app.mount("/assets", StaticFiles(directory=FRONTEND_DIR / "assets"), name="assets")
 
     @app.get("/{full_path:path}")
     async def serve_frontend(full_path: str):
+        # Serve PWA files from public/
+        if full_path in ("manifest.json", "sw.js", "icon-192.png", "icon-512.png"):
+            public_file = PUBLIC_DIR / full_path
+            if public_file.exists():
+                return FileResponse(public_file)
         return FileResponse(FRONTEND_DIR / "index.html")
