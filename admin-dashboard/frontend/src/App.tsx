@@ -21,6 +21,21 @@ interface SessionInfo {
 interface UsageData {
   sessions: SessionInfo[]
   totals: { total_tokens: number; input_tokens: number; output_tokens: number; session_count: number }
+  models: Array<{
+    model: string
+    total_tokens: number
+    input_tokens: number
+    output_tokens: number
+    session_count: number
+    top_sessions: Array<{ key: string; label: string; total_tokens: number; updated_at: string | null; share_within_model_pct: number }>
+  }>
+  claude_rate_limit: {
+    status: 'active' | 'limited' | 'unknown'
+    reset_at: string | null
+    seconds_until_reset: number | null
+    reason: string | null
+    source: string
+  }
   windows: Record<string, { hours: number; session_count: number; total_tokens: number; input_tokens: number; output_tokens: number; burn_rate_tokens_per_hour: number }>
   top_consumers: Array<{ key: string; label: string; total_tokens: number; share_pct: number; updated_at: string | null; burn_rate_24h_est: number }>
   trend: { window_hours: number; bucket_minutes: number; buckets: Array<{ start: string | null; end: string | null; session_count: number; total_tokens: number }> }
@@ -129,6 +144,15 @@ function fmtAge(seconds: number | null | undefined): string {
   if (hrs < 48) return `${hrs}h ago`
   const days = Math.floor(hrs / 24)
   return `${days}d ago`
+}
+function fmtCountdown(seconds: number): string {
+  const safe = Math.max(seconds, 0)
+  const days = Math.floor(safe / 86400)
+  const hours = Math.floor((safe % 86400) / 3600)
+  const mins = Math.floor((safe % 3600) / 60)
+  const secs = safe % 60
+  if (days > 0) return `${days}d ${hours}h ${mins}m`
+  return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
 }
 
 let filterId = 0
@@ -624,9 +648,11 @@ export default function App() {
   const [tables, setTables] = useState<TableInfo[]>([])
   const [selected, setSelected] = useState<string | null>(null)
   const [usage, setUsage] = useState<UsageData | null>(null)
+  const [usageLoadFailed, setUsageLoadFailed] = useState(false)
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
   const [sidebarSearch, setSidebarSearch] = useState('')
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [nowMs, setNowMs] = useState(Date.now())
 
   const grouped = useMemo(() => groupTables(tables), [tables])
   const filteredGroups = useMemo(() => {
@@ -638,8 +664,35 @@ export default function App() {
   function toggleGroup(label: string) { setCollapsed(prev => ({ ...prev, [label]: !prev[label] })) }
   function selectTable(name: string) { setSelected(name); setDrawerOpen(false) }
 
-  useEffect(() => { fetch(`${API}/tables`).then(r => r.json()).then(setTables) }, [])
-  useEffect(() => { fetch(`${API}/usage`).then(r => r.json()).then(setUsage) }, [])
+  useEffect(() => {
+    fetch(`${API}/tables`)
+      .then(r => (r.ok ? r.json() : []))
+      .then(data => setTables(Array.isArray(data) ? data : []))
+      .catch(() => setTables([]))
+  }, [])
+
+  useEffect(() => {
+    const t = window.setInterval(() => setNowMs(Date.now()), 1000)
+    return () => window.clearInterval(t)
+  }, [])
+
+  useEffect(() => {
+    fetch(`${API}/usage`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => {
+        if (data && data.freshness && data.totals) {
+          setUsage(data as UsageData)
+          setUsageLoadFailed(false)
+        } else {
+          setUsage(null)
+          setUsageLoadFailed(true)
+        }
+      })
+      .catch(() => {
+        setUsage(null)
+        setUsageLoadFailed(true)
+      })
+  }, [])
 
   const totalRows = useMemo(() => tables.reduce((s, t) => s + t.row_count, 0), [tables])
 
@@ -727,6 +780,37 @@ export default function App() {
                 <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 14 }}>
                   Updated {fmtDate(usage.freshness.generated_at)} · latest session {fmtAge(usage.freshness.staleness_seconds)}
                 </div>
+                <div style={{ ...cardDark, marginBottom: 16 }}>
+                  <div style={{ fontSize: 12, color: C.textSecondary, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Claude Rate Limit</div>
+                  <div style={{ display: 'flex', alignItems: mobile ? 'flex-start' : 'center', justifyContent: 'space-between', gap: 10, flexDirection: mobile ? 'column' : 'row' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 12, color: C.textMuted }}>Status</span>
+                      <span style={{
+                        fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em',
+                        color: usage.claude_rate_limit.status === 'limited' ? C.danger : usage.claude_rate_limit.status === 'active' ? C.success : C.textMuted,
+                      }}>
+                        {usage.claude_rate_limit.status}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 12, color: C.textSecondary }}>
+                      {usage.claude_rate_limit.reset_at ? `Resets ${fmtDate(usage.claude_rate_limit.reset_at)}` : 'reset time unavailable from current telemetry'}
+                    </div>
+                  </div>
+                  {usage.claude_rate_limit.reset_at ? (
+                    <div style={{ marginTop: 8, fontSize: 20, fontWeight: 700, color: C.white, fontVariantNumeric: 'tabular-nums' }}>
+                      {fmtCountdown(
+                        Math.max(
+                          Math.floor((new Date(usage.claude_rate_limit.reset_at).getTime() - nowMs) / 1000),
+                          0
+                        )
+                      )}
+                    </div>
+                  ) : (
+                    <div style={{ marginTop: 8, fontSize: 12, color: C.textMuted }}>
+                      {usage.claude_rate_limit.reason || 'Reset time unavailable from current telemetry.'}
+                    </div>
+                  )}
+                </div>
                 <div style={{ display: 'grid', gap: 10, marginBottom: 16, gridTemplateColumns: mobile ? 'repeat(2, 1fr)' : 'repeat(auto-fill, minmax(180px, 1fr))' }}>
                   <StatCard label="Total Tokens" value={fmtCompact(usage.totals.total_tokens)} sub={mobile ? undefined : fmtNum(usage.totals.total_tokens)} />
                   <StatCard label="Input / Output" value={`${fmtCompact(usage.totals.input_tokens)} / ${fmtCompact(usage.totals.output_tokens)}`} />
@@ -761,8 +845,44 @@ export default function App() {
                     </div>
                   ))}
                 </div>
+
+                <h3 style={{ fontSize: 13, fontWeight: 600, color: C.textSecondary, margin: '16px 0 10px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Model Usage</h3>
+                <div style={{ ...cardDark, padding: 0, overflow: 'hidden' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: mobile ? '1.6fr 1fr' : '1.8fr 1fr 1fr 1fr', padding: '10px 12px', fontSize: 11, color: C.textMuted, borderBottom: `1px solid ${C.border}` }}>
+                    <div>Model</div><div>Total</div>{!mobile && <><div>Input / Output</div><div>Sessions</div></>}
+                  </div>
+                  {(usage.models ?? []).slice().sort((a, b) => b.total_tokens - a.total_tokens).map((m) => (
+                    <div key={m.model} style={{ padding: '10px 12px', borderBottom: `1px solid ${C.border}` }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: mobile ? '1.6fr 1fr' : '1.8fr 1fr 1fr 1fr', fontSize: 12 }}>
+                        <div style={{ color: C.white, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.model}</div>
+                        <div>{fmtCompact(m.total_tokens)}</div>
+                        {!mobile && <><div>{fmtCompact(m.input_tokens)} / {fmtCompact(m.output_tokens)}</div><div>{m.session_count}</div></>}
+                      </div>
+                      {m.top_sessions.length > 0 && (
+                        <div style={{ marginTop: 6, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                          {m.top_sessions.map(ts => (
+                            <span key={ts.key} style={{ fontSize: 11, color: C.textMuted }}>
+                              {ts.label} {Math.round(ts.share_within_model_pct)}%
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  {(!usage.models || usage.models.length === 0) && (
+                    <div style={{ padding: 12, fontSize: 12, color: C.textMuted }}>No model usage found in current telemetry.</div>
+                  )}
+                </div>
               </>
-            ) : <p style={{ color: C.textMuted }}>Loading…</p>}
+            ) : (
+              <div style={{ ...cardDark }}>
+                <div style={{ color: C.textMuted, fontSize: 13 }}>
+                  {usageLoadFailed
+                    ? 'Unable to load usage data. Your auth session may have expired — refresh and sign in again.'
+                    : 'Loading usage data…'}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
