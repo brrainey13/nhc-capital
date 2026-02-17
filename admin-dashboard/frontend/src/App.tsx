@@ -24,6 +24,49 @@ interface ActiveFilter { id: string; column: string; operator: string; value: st
 type Page = 'home' | 'explorer' | 'query'
 type SortDir = 'asc' | 'desc' | null
 
+/* ── Table → Project grouping ── */
+
+const PROJECT_GROUPS: { label: string; match: (name: string) => boolean }[] = [
+  {
+    label: 'NHL Betting',
+    match: (n) => [
+      'games', 'game_team_stats', 'player_stats', 'players', 'teams', 'standings',
+      'schedules', 'injuries', 'injuries_live', 'lineup_absences', 'period_scores',
+      'goalie_advanced', 'goalie_saves_by_strength', 'goalie_starts', 'goalie_stats',
+      'saves_odds', 'sog_odds', 'predictions', 'model_runs', 'theses',
+      'live_game_snapshots', 'positions',
+    ].includes(n),
+  },
+  {
+    label: 'Polymarket',
+    match: (n) => ['markets', 'market_snapshots'].includes(n),
+  },
+  {
+    label: 'Real Estate',
+    match: (n) => n.startsWith('cook_county_') || n === 'sf_rentals',
+  },
+  {
+    label: 'Crypto',
+    match: (n) => n.startsWith('crypto_'),
+  },
+  {
+    label: 'Dashboard',
+    match: (n) => ['kanban_events', 'kanban_tasks', 'agent_log', 'api_snapshots', 'human_notes'].includes(n),
+  },
+]
+
+function groupTables(tables: TableInfo[]): { label: string; tables: TableInfo[] }[] {
+  const groups: { label: string; tables: TableInfo[] }[] = PROJECT_GROUPS.map(g => ({ label: g.label, tables: [] }))
+  const other: TableInfo[] = []
+  for (const t of tables) {
+    const g = PROJECT_GROUPS.findIndex(g => g.match(t.name))
+    if (g >= 0) groups[g].tables.push(t)
+    else other.push(t)
+  }
+  if (other.length > 0) groups.push({ label: 'Other', tables: other })
+  return groups.filter(g => g.tables.length > 0)
+}
+
 const NUMERIC_TYPES = new Set(['integer', 'bigint', 'smallint', 'numeric', 'real', 'double precision'])
 const DATE_TYPES = new Set(['date', 'timestamp without time zone', 'timestamp with time zone'])
 
@@ -590,6 +633,13 @@ export default function App() {
   const [tables, setTables] = useState<TableInfo[]>([])
   const [selected, setSelected] = useState<string | null>(null)
   const [usage, setUsage] = useState<UsageData | null>(null)
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
+
+  const grouped = useMemo(() => groupTables(tables), [tables])
+
+  function toggleGroup(label: string) {
+    setCollapsed(prev => ({ ...prev, [label]: !prev[label] }))
+  }
 
   useEffect(() => { fetch(`${API}/tables`).then(r => r.json()).then(setTables) }, [])
   useEffect(() => { fetch(`${API}/usage`).then(r => r.json()).then(setUsage) }, [])
@@ -657,15 +707,37 @@ export default function App() {
         {page === 'explorer' && (
           <div style={{ display: 'flex', gap: 16, height: '100%', minHeight: 0 }}>
             {/* Sidebar */}
-            <div style={{ width: 200, flexShrink: 0, overflowY: 'auto', paddingRight: 4 }}>
+            <div style={{ width: 220, flexShrink: 0, overflowY: 'auto', paddingRight: 4 }}>
               <div style={{ fontSize: 11, fontWeight: 600, color: '#888', textTransform: 'uppercase', marginBottom: 6, letterSpacing: '0.04em' }}>Tables</div>
-              {tables.map(t => (
-                <button key={t.name} onClick={() => setSelected(t.name)}
-                  style={{ ...sideBtn, ...(selected === t.name ? { background: '#e8e8e8', fontWeight: 600 } : {}) }}>
-                  <span>{t.name}</span>
-                  <span style={{ fontSize: 10, color: '#999' }}>{fmtNum(t.row_count)}</span>
-                </button>
-              ))}
+              {grouped.map(g => {
+                const isCollapsed = collapsed[g.label] ?? false
+                const groupTotal = g.tables.reduce((s, t) => s + t.row_count, 0)
+                return (
+                  <div key={g.label} style={{ marginBottom: 4 }}>
+                    <button onClick={() => toggleGroup(g.label)}
+                      style={{
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                        width: '100%', padding: '6px 8px', background: '#f0f0f0', border: 'none',
+                        cursor: 'pointer', borderRadius: 5, fontSize: 12, fontFamily: 'inherit',
+                        fontWeight: 600, textAlign: 'left', color: '#333',
+                      }}>
+                      <span>{isCollapsed ? '▶' : '▼'} {g.label}</span>
+                      <span style={{ fontSize: 10, color: '#888', fontWeight: 400 }}>{fmtNum(groupTotal)}</span>
+                    </button>
+                    {!isCollapsed && g.tables.map(t => (
+                      <button key={t.name} onClick={() => setSelected(t.name)}
+                        style={{
+                          ...sideBtn,
+                          paddingLeft: 20,
+                          ...(selected === t.name ? { background: '#e8e8e8', fontWeight: 600 } : {}),
+                        }}>
+                        <span>{t.name}</span>
+                        <span style={{ fontSize: 10, color: '#999' }}>{fmtNum(t.row_count)}</span>
+                      </button>
+                    ))}
+                  </div>
+                )
+              })}
             </div>
             {/* Table area — flex column fills height */}
             <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
