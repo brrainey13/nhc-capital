@@ -1,5 +1,7 @@
 import json
+import os
 import re
+from asyncio import to_thread
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -29,6 +31,7 @@ DANGEROUS_PATTERN = re.compile(
     r"\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE)\b",
     re.IGNORECASE,
 )
+READ_ONLY_START_PATTERN = re.compile(r"^\s*(SELECT|WITH)\b", re.IGNORECASE)
 
 pool: Optional[asyncpg.Pool] = None
 
@@ -117,10 +120,115 @@ async def _get_table_columns(name: str) -> set[str]:
     return {r["column_name"] for r in rows}
 
 
+async def _get_column_types(name: str) -> dict[str, str]:
+    """Return mapping of column_name -> data_type for a table."""
+    rows = await pool.fetch(
+        """
+        SELECT column_name, data_type FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = $1
+        """,
+        name,
+    )
+    return {r["column_name"]: r["data_type"] for r in rows}
+
+
 def _validate_column(col: str, valid_cols: set[str], param_name: str) -> str:
     if col not in valid_cols:
         raise HTTPException(400, f"Invalid {param_name}: '{col}'")
     return col
+
+
+def _is_read_only_query(sql: str) -> bool:
+    stripped = sql.strip()
+    if not stripped:
+        return False
+    # Allow a trailing semicolon but reject multiple statements.
+    without_trailing = stripped[:-1] if stripped.endswith(";") else stripped
+    if ";" in without_trailing:
+        return False
+    if not READ_ONLY_START_PATTERN.match(without_trailing):
+        return False
+    if DANGEROUS_PATTERN.search(without_trailing):
+        return False
+    return True
+
+
+NUMERIC_PG_TYPES = {"integer", "bigint", "smallint", "numeric", "real", "double precision"}
+DATE_PG_TYPES = {"date", "timestamp without time zone", "timestamp with time zone"}
+
+TEXT_OPERATORS = {"contains", "equals", "starts_with", "ends_with"}
+NUMERIC_OPERATORS = {"eq", "ne", "gt", "lt", "gte", "lte", "between"}
+DATE_OPERATORS = {"before", "after", "between"}
+
+
+def _build_operator_filter(
+    col: str, operator: str, value, col_type: str, params: list, param_idx: int
+) -> tuple[list[str], int]:
+    """Build WHERE clause parts for an operator-based filter. Returns (clauses, new_param_idx)."""
+    clauses: list[str] = []
+
+    if col_type in NUMERIC_PG_TYPES:
+        if operator == "between":
+            if not isinstance(value, list) or len(value) != 2:
+                raise HTTPException(400, f"'between' operator requires [min, max] array for '{col}'")
+            clauses.append(f'"{col}" >= ${param_idx}')
+            params.append(value[0])
+            param_idx += 1
+            clauses.append(f'"{col}" <= ${param_idx}')
+            params.append(value[1])
+            param_idx += 1
+        else:
+            op_map = {"eq": "=", "ne": "!=", "gt": ">", "lt": "<", "gte": ">=", "lte": "<="}
+            sql_op = op_map.get(operator)
+            if not sql_op:
+                raise HTTPException(400, f"Invalid numeric operator: '{operator}'")
+            clauses.append(f'"{col}" {sql_op} ${param_idx}')
+            params.append(value)
+            param_idx += 1
+
+    elif col_type in DATE_PG_TYPES:
+        if operator == "between":
+            if not isinstance(value, list) or len(value) != 2:
+                raise HTTPException(400, f"'between' operator requires [min, max] array for '{col}'")
+            clauses.append(f'"{col}" >= ${param_idx}')
+            params.append(value[0])
+            param_idx += 1
+            clauses.append(f'"{col}" <= ${param_idx}')
+            params.append(value[1])
+            param_idx += 1
+        elif operator == "before":
+            clauses.append(f'"{col}" < ${param_idx}')
+            params.append(value)
+            param_idx += 1
+        elif operator == "after":
+            clauses.append(f'"{col}" > ${param_idx}')
+            params.append(value)
+            param_idx += 1
+        else:
+            raise HTTPException(400, f"Invalid date operator: '{operator}'")
+
+    else:
+        # Text operators
+        if operator == "contains":
+            clauses.append(f'CAST("{col}" AS TEXT) ILIKE ${param_idx}')
+            params.append(f"%{value}%")
+            param_idx += 1
+        elif operator == "equals":
+            clauses.append(f'CAST("{col}" AS TEXT) ILIKE ${param_idx}')
+            params.append(str(value))
+            param_idx += 1
+        elif operator == "starts_with":
+            clauses.append(f'CAST("{col}" AS TEXT) ILIKE ${param_idx}')
+            params.append(f"{value}%")
+            param_idx += 1
+        elif operator == "ends_with":
+            clauses.append(f'CAST("{col}" AS TEXT) ILIKE ${param_idx}')
+            params.append(f"%{value}")
+            param_idx += 1
+        else:
+            raise HTTPException(400, f"Invalid text operator: '{operator}'")
+
+    return clauses, param_idx
 
 
 @app.get("/api/tables/{name}/data")
@@ -134,6 +242,7 @@ async def table_data(
 ):
     validate_table_name(name)
     valid_cols = await _get_table_columns(name)
+    col_types = await _get_column_types(name)
 
     # Build WHERE clause from filters
     where_parts: list[str] = []
@@ -142,26 +251,42 @@ async def table_data(
 
     if filters:
         try:
-            filter_dict = json.loads(filters)
+            parsed = json.loads(filters)
         except json.JSONDecodeError:
             raise HTTPException(400, "Invalid filters JSON")
-        for col, val in filter_dict.items():
-            _validate_column(col, valid_cols, "filter column")
-            if isinstance(val, dict) and ("min" in val or "max" in val):
-                # Numeric range filter
-                if "min" in val:
-                    where_parts.append(f'"{col}" >= ${param_idx}')
-                    params.append(val["min"])
+
+        # New format: array of {column, operator, value}
+        if isinstance(parsed, list):
+            for f in parsed:
+                if not isinstance(f, dict) or "column" not in f or "operator" not in f:
+                    raise HTTPException(400, "Each filter must have 'column' and 'operator'")
+                col = f["column"]
+                _validate_column(col, valid_cols, "filter column")
+                operator = f["operator"]
+                value = f.get("value", "")
+                col_type = col_types.get(col, "text")
+                clauses, param_idx = _build_operator_filter(col, operator, value, col_type, params, param_idx)
+                where_parts.extend(clauses)
+
+        # Legacy format: dict of {col: val} or {col: {min, max}}
+        elif isinstance(parsed, dict):
+            for col, val in parsed.items():
+                _validate_column(col, valid_cols, "filter column")
+                if isinstance(val, dict) and ("min" in val or "max" in val):
+                    if "min" in val:
+                        where_parts.append(f'"{col}" >= ${param_idx}')
+                        params.append(val["min"])
+                        param_idx += 1
+                    if "max" in val:
+                        where_parts.append(f'"{col}" <= ${param_idx}')
+                        params.append(val["max"])
+                        param_idx += 1
+                else:
+                    where_parts.append(f'CAST("{col}" AS TEXT) ILIKE ${param_idx}')
+                    params.append(f"%{val}%")
                     param_idx += 1
-                if "max" in val:
-                    where_parts.append(f'"{col}" <= ${param_idx}')
-                    params.append(val["max"])
-                    param_idx += 1
-            else:
-                # Text ILIKE filter
-                where_parts.append(f'CAST("{col}" AS TEXT) ILIKE ${param_idx}')
-                params.append(f"%{val}%")
-                param_idx += 1
+        else:
+            raise HTTPException(400, "Filters must be a JSON array or object")
 
     where_sql = (" WHERE " + " AND ".join(where_parts)) if where_parts else ""
 
@@ -227,7 +352,7 @@ async def run_query(req: QueryRequest):
     sql = req.sql.strip()
     if not sql:
         raise HTTPException(400, "Empty query")
-    if DANGEROUS_PATTERN.search(sql):
+    if not _is_read_only_query(sql):
         raise HTTPException(
             403, "Only read-only queries are allowed (SELECT, WITH, etc.)"
         )
@@ -237,6 +362,94 @@ async def run_query(req: QueryRequest):
         raise HTTPException(400, str(e))
     columns = [str(k) for k in rows[0].keys()] if rows else []
     return {
+        "columns": columns,
+        "rows": [dict(r) for r in rows],
+        "row_count": len(rows),
+    }
+
+
+class NLQueryRequest(BaseModel):
+    question: str
+
+
+async def _get_db_schema_text() -> str:
+    """Build a text description of the database schema for LLM context."""
+    parts: list[str] = []
+    for tbl in sorted(ALLOWED_TABLES):
+        rows = await pool.fetch(
+            """
+            SELECT column_name, data_type
+            FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = $1
+            ORDER BY ordinal_position
+            """,
+            tbl,
+        )
+        if not rows:
+            continue
+        cols = ", ".join(f"{r['column_name']} ({r['data_type']})" for r in rows)
+        parts.append(f"  {tbl}: {cols}")
+    return "\n".join(parts)
+
+
+@app.post("/api/nl-query")
+async def nl_query(req: NLQueryRequest):
+    question = req.question.strip()
+    if not question:
+        raise HTTPException(400, "Empty question")
+
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise HTTPException(500, "ANTHROPIC_API_KEY not configured")
+
+    try:
+        import anthropic
+    except ImportError as exc:
+        raise HTTPException(500, "anthropic package is not installed") from exc
+
+    schema_text = await _get_db_schema_text()
+
+    prompt = f"""You are a SQL assistant for a PostgreSQL database.
+Given the user's question, generate a single read-only SQL query.
+
+Database schema:
+{schema_text}
+
+Rules:
+- Only generate SELECT or WITH queries. Never INSERT, UPDATE, DELETE, DROP, etc.
+- Use double-quoted column/table names if they contain special characters.
+- Limit results to 500 rows max unless the user specifies otherwise.
+- Return ONLY the SQL query, no explanation, no markdown fences.
+
+User question: {question}"""
+
+    client = anthropic.Anthropic(api_key=api_key)
+
+    def _generate_sql() -> str:
+        message = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=1024,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        text_blocks = [block.text for block in message.content if getattr(block, "type", "") == "text"]
+        if not text_blocks:
+            raise HTTPException(502, "Model returned no SQL text")
+        return text_blocks[0].strip()
+
+    generated_sql = await to_thread(_generate_sql)
+
+    # Safety check
+    if not _is_read_only_query(generated_sql):
+        raise HTTPException(403, "Generated query is not read-only")
+
+    try:
+        rows = await pool.fetch(generated_sql)
+    except Exception as e:
+        raise HTTPException(400, f"Query execution error: {e}")
+
+    columns = [str(k) for k in rows[0].keys()] if rows else []
+    return {
+        "sql": generated_sql,
         "columns": columns,
         "rows": [dict(r) for r in rows],
         "row_count": len(rows),
