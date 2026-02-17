@@ -97,6 +97,9 @@ scripts/deploy-dashboard --restart-server  # Backend swap only
 - Run `ngrok` directly
 - Kill server processes manually
 - Start servers with `nohup` or any ad-hoc method
+- Deploy with arbitrary bash commands
+
+You CAN run `scripts/deploy-dashboard` yourself — that's the whole point. Just always use the script.
 
 **The deploy script handles everything:** CI validation, frontend build, blue-green server swap, ngrok tunnel, and health checks. If you bypass it, you WILL break the production dashboard.
 
