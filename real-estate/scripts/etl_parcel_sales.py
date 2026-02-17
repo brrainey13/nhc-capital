@@ -17,6 +17,34 @@ if ROOT not in sys.path:
 
 from utils.db import ensure_schema, get_connection, log_refresh
 
+# Type coercion map: column name → cast function
+INT_COLS = {"year", "num_parcels_sale"}
+BOOL_COLS = {"is_mydec_date", "is_multisale", "sale_filter_same_sale_within_365",
+             "sale_filter_less_than_10k", "sale_filter_deed_type"}
+NUMERIC_COLS = {"sale_price"}
+
+
+def _cast(col: str, val):
+    """Cast SODA API string values to proper Python types for Postgres."""
+    if val is None:
+        return None
+    if col in INT_COLS:
+        try:
+            return int(float(val))
+        except (ValueError, TypeError):
+            return None
+    if col in BOOL_COLS:
+        if isinstance(val, bool):
+            return val
+        return str(val).lower() in ("true", "1", "yes")
+    if col in NUMERIC_COLS:
+        try:
+            return float(val)
+        except (ValueError, TypeError):
+            return None
+    return val
+
+
 BASE = "https://datacatalog.cookcountyil.gov/resource"
 DATASET_ID = "wvhk-k5uv"
 COLS = [
@@ -83,7 +111,7 @@ def run(limit: int = None, where: str = None, dry_run: bool = False) -> dict:
         print(f"  Got {len(data)} rows (total: {fetched})", flush=True)
         rows = []
         for rec in data:
-            row = [rec.get(c) for c in COLS]
+            row = [_cast(c, rec.get(c)) for c in COLS]
             row.append(json.dumps(rec) if isinstance(rec, dict) else None)
             rows.append(tuple(row))
         with get_connection() as conn:
