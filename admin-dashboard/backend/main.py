@@ -395,6 +395,47 @@ async def _get_db_schema_text() -> str:
     return "\n".join(parts)
 
 
+async def _openrouter_chat(api_key: str, model: str, messages: list, max_tokens: int = 1024) -> str:
+    """Call OpenRouter chat completions and return the text content."""
+    import httpx
+
+    async with httpx.AsyncClient(timeout=45) as client:
+        r = await client.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": model,
+                "max_tokens": max_tokens,
+                "messages": messages,
+            },
+        )
+        if r.status_code == 429:
+            raise HTTPException(
+                429,
+                "Rate limited — free models have request limits. "
+                "Try again in a few seconds.",
+            )
+        r.raise_for_status()
+        data = r.json()
+        content = data["choices"][0]["message"]["content"]
+        if not content:
+            raise HTTPException(502, "Model returned no text")
+        # Strip markdown fences if present
+        text = content.strip()
+        if text.startswith("```"):
+            lines = text.split("\n")
+            lines = [line for line in lines if not line.startswith("```")]
+            text = "\n".join(lines).strip()
+        # Strip <think>...</think> blocks (some reasoning models emit these)
+        import re as _re
+
+        text = _re.sub(r"<think>.*?</think>", "", text, flags=_re.DOTALL).strip()
+        return text
+
+
 @app.post("/api/nl-query")
 async def nl_query(req: NLQueryRequest):
     question = req.question.strip()
@@ -405,56 +446,27 @@ async def nl_query(req: NLQueryRequest):
     if not api_key:
         raise HTTPException(500, "OPENROUTER_API_KEY not configured")
 
-    import httpx
-
     schema_text = await _get_db_schema_text()
+    model = os.environ.get("NL_QUERY_MODEL", "openrouter/free")
 
-    prompt = f"""You are a SQL assistant for a PostgreSQL database.
+    # ── Pass 1: Generate SQL ──
+    sql_prompt = f"""You are a SQL expert for a PostgreSQL database.
 Given the user's question, generate a single read-only SQL query.
 
 Database schema:
 {schema_text}
 
 Rules:
-- Only generate SELECT or WITH queries. Never INSERT, UPDATE, DELETE, DROP, etc.
-- Use double-quoted column/table names if they contain special characters.
-- Limit results to 500 rows max unless the user specifies otherwise.
-- Return ONLY the SQL query, no explanation, no markdown fences.
+- Only SELECT or WITH queries. Never INSERT, UPDATE, DELETE, DROP, etc.
+- Use double-quoted identifiers for column/table names.
+- Limit results to 500 rows max unless specified otherwise.
+- Return ONLY the raw SQL query. No explanation, no markdown, no code fences.
 
-User question: {question}"""
+Question: {question}"""
 
-    model = os.environ.get("NL_QUERY_MODEL", "qwen/qwen3-coder:free")
-
-    async def _generate_sql() -> str:
-        async with httpx.AsyncClient(timeout=30) as client:
-            r = await client.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": model,
-                    "max_tokens": 1024,
-                    "messages": [{"role": "user", "content": prompt}],
-                },
-            )
-            if r.status_code == 429:
-                raise HTTPException(429, "Rate limited — free models have request limits. Try again in a few seconds.")
-            r.raise_for_status()
-            data = r.json()
-            content = data["choices"][0]["message"]["content"]
-            if not content:
-                raise HTTPException(502, "Model returned no SQL text")
-            # Strip markdown fences if present
-            text = content.strip()
-            if text.startswith("```"):
-                lines = text.split("\n")
-                lines = [line for line in lines if not line.startswith("```")]
-                text = "\n".join(lines).strip()
-            return text
-
-    generated_sql = await _generate_sql()
+    generated_sql = await _openrouter_chat(
+        api_key, model, [{"role": "user", "content": sql_prompt}]
+    )
 
     # Safety check
     if not _is_read_only_query(generated_sql):
@@ -466,11 +478,44 @@ User question: {question}"""
         raise HTTPException(400, f"Query execution error: {e}")
 
     columns = [str(k) for k in rows[0].keys()] if rows else []
+    row_dicts = [dict(r) for r in rows]
+    row_count = len(row_dicts)
+
+    # ── Pass 2: Summarize results ──
+    # Build a compact preview of the data (first 20 rows) for the summary model
+    preview_rows = row_dicts[:20]
+    preview_text = json.dumps(preview_rows, default=str, indent=None)[:3000]
+
+    summary_prompt = f"""You are a data analyst. The user asked: "{question}"
+
+This SQL was run:
+{generated_sql}
+
+It returned {row_count} rows with columns: {', '.join(columns)}.
+
+Here is a preview of the data (up to 20 rows):
+{preview_text}
+
+Write a clear, concise summary (2-4 sentences) that:
+1. Directly answers the user's question
+2. Highlights key findings, patterns, or notable values
+3. Mentions the total row count if relevant
+
+Be specific — use actual numbers and names from the data. No SQL explanation needed."""
+
+    try:
+        summary = await _openrouter_chat(
+            api_key, model, [{"role": "user", "content": summary_prompt}], max_tokens=512
+        )
+    except Exception:
+        summary = None  # Non-fatal — we still have the data
+
     return {
         "sql": generated_sql,
         "columns": columns,
-        "rows": [dict(r) for r in rows],
-        "row_count": len(rows),
+        "rows": row_dicts,
+        "row_count": row_count,
+        "summary": summary,
     }
 
 

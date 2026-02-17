@@ -452,6 +452,7 @@ function QueryPage() {
   const [mode, setMode] = useState<'ask' | 'sql'>('ask')
   const [input, setInput] = useState('')
   const [generatedSql, setGeneratedSql] = useState<string | null>(null)
+  const [summary, setSummary] = useState<string | null>(null)
   const [result, setResult] = useState<{ columns: string[]; rows: Record<string, unknown>[]; error?: string } | null>(null)
   const [loading, setLoading] = useState(false)
   const [showSql, setShowSql] = useState(false)
@@ -461,6 +462,7 @@ function QueryPage() {
     setLoading(true)
     setResult(null)
     setGeneratedSql(null)
+    setSummary(null)
     fetch(`${API}/nl-query`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -469,6 +471,7 @@ function QueryPage() {
       .then(async r => { const d = await r.json(); if (!r.ok) throw new Error(d.detail); return d })
       .then(d => {
         setGeneratedSql(d.sql)
+        setSummary(d.summary || null)
         setResult({ columns: d.columns, rows: d.rows })
       })
       .catch(e => setResult({ columns: [], rows: [], error: e.message }))
@@ -527,6 +530,17 @@ function QueryPage() {
           {loading ? '…' : 'Run'}
         </button>
       </div>
+
+      {/* Summary */}
+      {summary && (
+        <div style={{
+          padding: '12px 14px', marginBottom: 12, background: '#f0f7ff',
+          border: '1px solid #d0e3f7', borderRadius: 6, fontSize: 13, lineHeight: 1.5, color: '#1a3a5c',
+        }}>
+          <div style={{ fontWeight: 600, fontSize: 11, color: '#4a8bc2', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.03em' }}>Summary</div>
+          {summary}
+        </div>
+      )}
 
       {/* Generated SQL (collapsible) */}
       {generatedSql && (
