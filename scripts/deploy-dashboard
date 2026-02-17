@@ -16,6 +16,14 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BACKEND_DIR="$REPO_ROOT/admin-dashboard/backend"
 FRONTEND_DIR="$REPO_ROOT/admin-dashboard/frontend"
+VENV_PYTHON="$REPO_ROOT/admin-dashboard/.venv/bin/python"
+
+# Ensure venv exists
+if [ ! -f "$VENV_PYTHON" ]; then
+  echo "❌ admin-dashboard venv not found at $VENV_PYTHON"
+  echo "   Run: cd admin-dashboard && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt"
+  exit 1
+fi
 NGROK_DOMAIN="alexzander-tightfisted-ambagiously.ngrok-free.dev"
 NGROK_EMAILS=(
   "yousefshahin1422@gmail.com"
@@ -71,7 +79,7 @@ if [ "$restart_server" = true ]; then
 
   # Start new instance on standby port
   cd "$BACKEND_DIR"
-  nohup python3 -m uvicorn main:app --host 127.0.0.1 --port $STANDBY_PORT \
+  nohup $VENV_PYTHON -m uvicorn main:app --host 127.0.0.1 --port $STANDBY_PORT \
     > "$LOG_DIR/nhc-uvicorn-standby.log" 2>&1 &
   STANDBY_PID=$!
   echo "   Starting standby on port $STANDBY_PORT (PID: $STANDBY_PID)..."
@@ -106,7 +114,7 @@ if [ "$restart_server" = true ]; then
 
   # Start final instance on primary port
   cd "$BACKEND_DIR"
-  nohup python3 -m uvicorn main:app --host 127.0.0.1 --port $PRIMARY_PORT \
+  nohup $VENV_PYTHON -m uvicorn main:app --host 127.0.0.1 --port $PRIMARY_PORT \
     > "$LOG_DIR/nhc-uvicorn.log" 2>&1 &
   echo "   🟢 New primary started on port $PRIMARY_PORT (PID: $!)"
   sleep 2
@@ -126,7 +134,7 @@ else
   else
     echo "⚠️  uvicorn not running — starting..."
     cd "$BACKEND_DIR"
-    nohup python3 -m uvicorn main:app --host 127.0.0.1 --port $PRIMARY_PORT \
+    nohup $VENV_PYTHON -m uvicorn main:app --host 127.0.0.1 --port $PRIMARY_PORT \
       > "$LOG_DIR/nhc-uvicorn.log" 2>&1 &
     echo "✅ uvicorn started (PID: $!)"
     sleep 2
