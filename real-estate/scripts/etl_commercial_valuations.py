@@ -60,8 +60,34 @@ def run(csv_path: str = None, dry_run: bool = False) -> dict:
     if missing:
         print(f"Note: CSV has no column for: {missing}")
     df = df[cols].copy()
+    # Deduplicate on primary key — keep last occurrence
+    if "keypin_normalized" in df.columns and "year" in df.columns:
+        df = df.drop_duplicates(subset=["keypin_normalized", "year"], keep="last")
+    # Cast integer columns to int (avoid float overflow into PG INTEGER)
+    int_cols_cv = {"studiounits", "_1brunits", "_2brunits", "_3brunits", "_4brunits",
+                   "tot_units", "apt", "category", "nbhd", "parking", "sap", "saptier", "year"}
+    for c in int_cols_cv:
+        if c in df.columns:
+            df[c] = pd.to_numeric(df[c], errors="coerce")
+            mask = df[c].notna()
+            df.loc[mask, c] = df.loc[mask, c].astype(float).astype(int)
+    # Replace all NaN/NaT with None for psycopg2
+    import numpy as np
     df = df.where(pd.notnull(df), None)
-    rows = [tuple(r) for r in df.to_numpy()]
+    # numpy NaN can survive .where — force None
+    rows = []
+    for r in df.to_numpy():
+        row = []
+        for v in r:
+            if v is None or (isinstance(v, float) and np.isnan(v)):
+                row.append(None)
+            elif isinstance(v, (np.integer,)):
+                row.append(int(v))
+            elif isinstance(v, (np.floating,)):
+                row.append(float(v))
+            else:
+                row.append(v)
+        rows.append(tuple(row))
     fetched = len(rows)
 
     if dry_run:
