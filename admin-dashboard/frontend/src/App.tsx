@@ -448,7 +448,7 @@ function DataTable({ tableName, mobile }: { tableName: string; mobile: boolean }
         <MobileCardList data={displayData} columns={columns} />
       ) : (
         <div ref={tableContainerRef} style={{ flex: 1, overflow: 'auto', border: `1px solid ${C.border}`, borderRadius: 8, background: C.surface, minHeight: 0 }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, tableLayout: 'fixed' }}>
+          <table style={{ minWidth: columns.length * 160, borderCollapse: 'collapse', fontSize: 12 }}>
             <thead style={{ position: 'sticky', top: 0, zIndex: 1 }}>
               <tr>
                 {table.getHeaderGroups()[0]?.headers.map(h => (
