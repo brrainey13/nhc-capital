@@ -25,7 +25,7 @@ Read `docs/admin-dashboard.md` for full architecture, endpoints, and deploy proc
 | `/api/tables/{name}/grouped` | GET | Group-by aggregation |
 | `/api/query` | POST | Run arbitrary read-only SQL (`db` param selects database) |
 | `/api/nl-query` | POST | Natural language → SQL (`db` param selects database) |
-| `/api/usage` | GET | OpenClaw session token usage |
+| `/api/usage` | GET | OpenClaw session token usage + model aggregates + Claude rate-limit telemetry |
 
 ## Multi-Database
 

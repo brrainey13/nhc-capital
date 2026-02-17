@@ -436,6 +436,36 @@ async def table_grouped(
     return [{"value": r["value"], "count": r["count"]} for r in rows]
 
 
+@app.get("/api/tables/{name}/distinct")
+async def table_distinct(
+    name: str,
+    column: str = Query(...),
+    limit: int = Query(200, ge=1, le=1000),
+    q: str = Query("", description="Optional prefix/substring filter"),
+):
+    """Return distinct values for a column (for filter dropdowns)."""
+    validate_table_name(name)
+    valid_cols = await _get_table_columns(name)
+    _validate_column(column, valid_cols, "column")
+
+    p = _get_pool(name)
+    if q.strip():
+        rows = await p.fetch(
+            f'SELECT DISTINCT "{column}" AS value FROM "{name}"'
+            f' WHERE CAST("{column}" AS TEXT) ILIKE $1'
+            f' ORDER BY "{column}" LIMIT $2',
+            f"%{q}%",
+            limit,
+        )
+    else:
+        rows = await p.fetch(
+            f'SELECT DISTINCT "{column}" AS value FROM "{name}"'
+            f' ORDER BY "{column}" LIMIT $1',
+            limit,
+        )
+    return [r["value"] for r in rows]
+
+
 class QueryRequest(BaseModel):
     sql: str
     db: str = "nhl_betting"
@@ -671,12 +701,130 @@ def _format_iso(ms: int | None) -> str | None:
     return datetime.fromtimestamp(ms / 1000, tz=timezone.utc).isoformat()
 
 
+def _safe_int(value: object) -> int:
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _parse_timestamp_ms(value: object) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        if value <= 0:
+            return None
+        numeric = float(value)
+        if numeric >= 1_000_000_000_000:
+            return int(numeric)
+        if numeric >= 1_000_000_000:
+            return int(numeric * 1000)
+        return None
+    if isinstance(value, str):
+        raw = value.strip()
+        if not raw:
+            return None
+        if raw.isdigit():
+            return _parse_timestamp_ms(int(raw))
+        normalized = raw.replace("Z", "+00:00")
+        try:
+            dt = datetime.fromisoformat(normalized)
+        except ValueError:
+            return None
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return int(dt.timestamp() * 1000)
+    return None
+
+
+def _iter_fields(obj: object, prefix: str = ""):
+    if isinstance(obj, dict):
+        for key, value in obj.items():
+            path = f"{prefix}.{key}" if prefix else str(key)
+            yield (path, value)
+            yield from _iter_fields(value, path)
+    elif isinstance(obj, list):
+        for i, value in enumerate(obj):
+            path = f"{prefix}[{i}]"
+            yield (path, value)
+            yield from _iter_fields(value, path)
+
+
+def _detect_claude_rate_limit(sessions: list[dict], now: datetime) -> dict:
+    now_ms = int(now.timestamp() * 1000)
+    claude_sessions = []
+    for session in sessions:
+        model = str(session.get("model", "")).lower()
+        provider = str(session.get("model_provider", "")).lower()
+        if "claude" in model or provider == "anthropic":
+            claude_sessions.append(session)
+
+    if not claude_sessions:
+        return {
+            "status": "unknown",
+            "reset_at": None,
+            "seconds_until_reset": None,
+            "reason": "No Claude sessions found in current telemetry.",
+            "source": "none",
+        }
+
+    timestamp_candidates: list[tuple[int, str]] = []
+    for session in claude_sessions:
+        raw_meta = session.get("raw_session")
+        if not isinstance(raw_meta, dict):
+            continue
+        for path, value in _iter_fields(raw_meta):
+            lower_path = path.lower()
+            if not re.search(r"(rate|limit|reset|throttle|cooldown|retry)", lower_path):
+                continue
+            parsed_ms = _parse_timestamp_ms(value)
+            if parsed_ms:
+                timestamp_candidates.append((parsed_ms, path))
+
+    if not timestamp_candidates:
+        return {
+            "status": "unknown",
+            "reset_at": None,
+            "seconds_until_reset": None,
+            "reason": (
+                "Reset time unavailable from current telemetry: "
+                "no explicit Claude reset timestamp in session metadata."
+            ),
+            "source": "session_metadata",
+        }
+
+    future_candidates = [c for c in timestamp_candidates if c[0] > now_ms]
+    chosen_ms, chosen_path = (
+        min(future_candidates, key=lambda c: c[0])
+        if future_candidates
+        else max(timestamp_candidates, key=lambda c: c[0])
+    )
+    seconds_until_reset = max(int((chosen_ms - now_ms) / 1000), 0)
+
+    return {
+        "status": "limited" if chosen_ms > now_ms else "active",
+        "reset_at": _format_iso(chosen_ms),
+        "seconds_until_reset": seconds_until_reset,
+        "reason": None,
+        "source": "session_metadata",
+        "source_field": chosen_path,
+    }
+
+
 def _load_usage_sessions(now: datetime | None = None) -> dict:
     now = now or datetime.now(timezone.utc)
     if not SESSIONS_FILE.exists():
         return {
             "sessions": [],
             "totals": {"total_tokens": 0, "input_tokens": 0, "output_tokens": 0, "session_count": 0},
+            "models": [],
+            "claude_rate_limit": {
+                "status": "unknown",
+                "reset_at": None,
+                "seconds_until_reset": None,
+                "reason": "Session telemetry file not found.",
+                "source": "none",
+            },
             "windows": {},
             "top_consumers": [],
             "trend": {"window_hours": 24, "bucket_minutes": 120, "buckets": []},
@@ -691,25 +839,38 @@ def _load_usage_sessions(now: datetime | None = None) -> dict:
         if label == "#vinder":
             continue
 
-        updated_ms = s.get("updatedAt", 0)
+        updated_ms = (
+            _parse_timestamp_ms(s.get("updatedAt"))
+            or _parse_timestamp_ms(s.get("updated_at"))
+            or 0
+        )
         updated_at = _format_iso(updated_ms)
         age_hours = None
         if updated_ms:
             updated_dt = datetime.fromtimestamp(updated_ms / 1000, tz=timezone.utc)
             age_hours = max((now - updated_dt).total_seconds() / 3600, 0)
 
+        model_name = str(
+            s.get("model")
+            or s.get("modelOverride")
+            or s.get("providerModel")
+            or ""
+        )
+
         sessions.append(
             {
                 "key": key,
                 "label": label,
-                "total_tokens": int(s.get("totalTokens", 0) or 0),
-                "input_tokens": int(s.get("inputTokens", 0) or 0),
-                "output_tokens": int(s.get("outputTokens", 0) or 0),
-                "context_window": int(s.get("contextTokens", 0) or 0),
-                "model": s.get("model", ""),
+                "total_tokens": _safe_int(s.get("totalTokens")),
+                "input_tokens": _safe_int(s.get("inputTokens")),
+                "output_tokens": _safe_int(s.get("outputTokens")),
+                "context_window": _safe_int(s.get("contextTokens")),
+                "model": model_name,
+                "model_provider": str(s.get("modelProvider", "") or ""),
                 "updated_at": updated_at,
                 "updated_at_ms": updated_ms,
                 "age_hours": age_hours,
+                "raw_session": s,
             }
         )
 
@@ -753,6 +914,47 @@ def _load_usage_sessions(now: datetime | None = None) -> dict:
         for s in sessions[:10]
     ]
 
+    model_rollup: dict[str, dict] = {}
+    for session in sessions:
+        model_name = session["model"] or "(unknown)"
+        bucket = model_rollup.setdefault(
+            model_name,
+            {
+                "model": model_name,
+                "total_tokens": 0,
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "session_count": 0,
+                "top_sessions": [],
+            },
+        )
+        bucket["total_tokens"] += session["total_tokens"]
+        bucket["input_tokens"] += session["input_tokens"]
+        bucket["output_tokens"] += session["output_tokens"]
+        bucket["session_count"] += 1
+        bucket["top_sessions"].append(
+            {
+                "key": session["key"],
+                "label": session["label"],
+                "total_tokens": session["total_tokens"],
+                "updated_at": session["updated_at"],
+            }
+        )
+
+    models = list(model_rollup.values())
+    for model in models:
+        top_sessions = sorted(
+            model["top_sessions"], key=lambda item: item["total_tokens"], reverse=True
+        )[:3]
+        for ts in top_sessions:
+            ts["share_within_model_pct"] = round(
+                (ts["total_tokens"] / model["total_tokens"] * 100), 2
+            ) if model["total_tokens"] else 0
+        model["top_sessions"] = top_sessions
+    models.sort(key=lambda m: m["total_tokens"], reverse=True)
+
+    claude_rate_limit = _detect_claude_rate_limit(sessions, now)
+
     # 24h trend in 2h buckets (activity weighted by current token totals)
     bucket_minutes = 120
     bucket_ms = bucket_minutes * 60 * 1000
@@ -778,10 +980,13 @@ def _load_usage_sessions(now: datetime | None = None) -> dict:
 
     for s in sessions:
         s.pop("updated_at_ms", None)
+        s.pop("raw_session", None)
 
     return {
         "sessions": sessions,
         "totals": totals,
+        "models": models,
+        "claude_rate_limit": claude_rate_limit,
         "windows": windows,
         "top_consumers": top_consumers,
         "trend": {"window_hours": 24, "bucket_minutes": bucket_minutes, "buckets": buckets},

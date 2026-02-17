@@ -224,10 +224,13 @@ async def test_usage(client):
     data = r.json()
     assert "sessions" in data
     assert "totals" in data
+    assert "models" in data
+    assert "claude_rate_limit" in data
     assert "windows" in data
     assert "trend" in data
     assert "freshness" in data
     assert isinstance(data["sessions"], list)
+    assert isinstance(data["models"], list)
     totals = data["totals"]
     assert "total_tokens" in totals
     assert "input_tokens" in totals
@@ -262,6 +265,19 @@ async def test_usage_metrics_from_fixture(client, tmp_path, monkeypatch):
             "updatedAt": day_old_ms,
             "model": "gpt-test",
         },
+        "c": {
+            "displayName": "discord:1#general",
+            "totalTokens": 2000,
+            "inputTokens": 1200,
+            "outputTokens": 800,
+            "contextTokens": 200000,
+            "updatedAt": recent_ms,
+            "model": "claude-opus-4-6",
+            "modelProvider": "anthropic",
+            "rateLimit": {
+                "resetAt": (now + timedelta(minutes=20)).isoformat(),
+            },
+        },
     }
 
     sessions_file = tmp_path / "sessions.json"
@@ -272,13 +288,54 @@ async def test_usage_metrics_from_fixture(client, tmp_path, monkeypatch):
     assert r.status_code == 200
     data = r.json()
 
-    assert data["totals"]["total_tokens"] == 1500
-    assert data["totals"]["session_count"] == 2
-    assert data["windows"]["last_1h"]["session_count"] == 1
-    assert data["windows"]["last_1h"]["total_tokens"] == 1000
-    assert data["windows"]["last_24h"]["session_count"] == 2
-    assert data["top_consumers"][0]["label"] == "#admin-dashboard"
+    assert data["totals"]["total_tokens"] == 3500
+    assert data["totals"]["session_count"] == 3
+    assert data["windows"]["last_1h"]["session_count"] == 2
+    assert data["windows"]["last_1h"]["total_tokens"] == 3000
+    assert data["windows"]["last_24h"]["session_count"] == 3
+    assert data["top_consumers"][0]["label"] == "#general"
     assert len(data["trend"]["buckets"]) == 12
+    assert data["models"][0]["model"] == "claude-opus-4-6"
+    assert data["models"][0]["total_tokens"] == 2000
+    assert data["models"][0]["session_count"] == 1
+    assert data["models"][0]["top_sessions"][0]["label"] == "#general"
+    assert data["claude_rate_limit"]["status"] == "limited"
+    assert data["claude_rate_limit"]["reset_at"] is not None
+    assert data["claude_rate_limit"]["seconds_until_reset"] is not None
+    assert data["claude_rate_limit"]["source"] == "session_metadata"
+
+
+@pytest.mark.asyncio
+async def test_usage_claude_rate_limit_unknown_without_reset(
+    client, tmp_path, monkeypatch
+):
+    import main
+
+    now = datetime.now(timezone.utc)
+    sample = {
+        "c": {
+            "displayName": "discord:1#general",
+            "totalTokens": 500,
+            "inputTokens": 250,
+            "outputTokens": 250,
+            "contextTokens": 200000,
+            "updatedAt": int(now.timestamp() * 1000),
+            "model": "claude-opus-4-6",
+            "modelProvider": "anthropic",
+        }
+    }
+
+    sessions_file = tmp_path / "sessions.json"
+    sessions_file.write_text(json.dumps(sample))
+    monkeypatch.setattr(main, "SESSIONS_FILE", sessions_file)
+
+    r = await client.get("/api/usage")
+    assert r.status_code == 200
+    data = r.json()
+
+    assert data["claude_rate_limit"]["status"] == "unknown"
+    assert data["claude_rate_limit"]["reset_at"] is None
+    assert data["claude_rate_limit"]["reason"] is not None
 
 
 # 18. Sorting — sort_by valid column

@@ -158,11 +158,81 @@ function fmtCountdown(seconds: number): string {
 let filterId = 0
 function nextFilterId() { return `f${++filterId}` }
 
+/* ── Combo Box (dropdown + free text) ── */
+
+function ComboBox({ value, onChange, tableName, column, placeholder, inputType, style: outerStyle }: {
+  value: string; onChange: (v: string) => void; tableName: string; column: string
+  placeholder?: string; inputType?: string; style?: React.CSSProperties
+}) {
+  const [open, setOpen] = useState(false)
+  const [options, setOptions] = useState<string[]>([])
+  const [loading, setLoading] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  function fetchOptions(q: string) {
+    setLoading(true)
+    const params = new URLSearchParams({ column, limit: '50' })
+    if (q.trim()) params.set('q', q)
+    fetch(`${API}/tables/${tableName}/distinct?${params}`)
+      .then(r => r.ok ? r.json() : [])
+      .then(data => setOptions((data as unknown[]).map(v => String(v ?? 'NULL'))))
+      .catch(() => setOptions([]))
+      .finally(() => setLoading(false))
+  }
+
+  useEffect(() => {
+    if (!open) return
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => fetchOptions(value), 200)
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
+  }, [open, value, column, tableName])
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
+
+  return (
+    <div ref={ref} style={{ position: 'relative', ...outerStyle }}>
+      <input type={inputType || 'text'} value={value} placeholder={placeholder || 'Value'}
+        onFocus={() => setOpen(true)}
+        onChange={e => { onChange(e.target.value); setOpen(true) }}
+        style={{ ...inputDark, width: '100%', boxSizing: 'border-box' }} />
+      {open && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 2, zIndex: 30,
+          background: C.surface, border: `1px solid ${C.border}`, borderRadius: 6,
+          boxShadow: '0 6px 20px rgba(0,0,0,0.4)', maxHeight: 200, overflowY: 'auto',
+        }}>
+          {loading && <div style={{ padding: '8px 12px', fontSize: 11, color: C.textMuted }}>Loading…</div>}
+          {!loading && options.length === 0 && <div style={{ padding: '8px 12px', fontSize: 11, color: C.textMuted }}>No values</div>}
+          {options.map((opt, i) => (
+            <button key={i} onClick={() => { onChange(opt); setOpen(false) }}
+              style={{
+                width: '100%', padding: '7px 12px', background: 'transparent', border: 'none',
+                borderBottom: i < options.length - 1 ? `1px solid ${C.border}` : 'none',
+                cursor: 'pointer', fontSize: 12, fontFamily: 'inherit', color: C.text, textAlign: 'left',
+              }}
+              onMouseEnter={e => (e.currentTarget.style.background = C.surfaceHover)}
+              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+              {opt}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 /* ── Filter Bar ── */
 
-function FilterBar({ columns, typeMap, filters, onChange, mobile }: {
+function FilterBar({ columns, typeMap, filters, onChange, mobile, tableName }: {
   columns: string[]; typeMap: Record<string, string>; filters: ActiveFilter[]
-  onChange: (filters: ActiveFilter[]) => void; mobile?: boolean
+  onChange: (filters: ActiveFilter[]) => void; mobile?: boolean; tableName: string
 }) {
   function addFilter() {
     const col = columns[0] || ''
@@ -201,15 +271,17 @@ function FilterBar({ columns, typeMap, filters, onChange, mobile }: {
               style={{ ...selectDark, width: mobile ? 90 : 110 }}>
               {ops.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
-            <input type={inputType} value={f.value} placeholder={isBetween ? 'Min' : 'Value'}
-              onChange={e => updateFilter(f.id, { value: e.target.value })}
-              style={{ ...inputDark, flex: mobile ? '1 1 100%' : undefined, width: mobile ? 'auto' : isBetween ? 100 : 160 }} />
+            <ComboBox value={f.value} onChange={v => updateFilter(f.id, { value: v })}
+              tableName={tableName} column={f.column} placeholder={isBetween ? 'Min' : 'Value'}
+              inputType={inputType}
+              style={{ flex: mobile ? '1 1 100%' : undefined, width: mobile ? 'auto' : isBetween ? 100 : 160 }} />
             {isBetween && (
               <>
                 <span style={{ fontSize: 12, color: C.textMuted }}>to</span>
-                <input type={inputType} value={f.value2 ?? ''} placeholder="Max"
-                  onChange={e => updateFilter(f.id, { value2: e.target.value })}
-                  style={{ ...inputDark, width: mobile ? '100%' : 100, flex: mobile ? '1 1 100%' : undefined }} />
+                <ComboBox value={f.value2 ?? ''} onChange={v => updateFilter(f.id, { value2: v })}
+                  tableName={tableName} column={f.column} placeholder="Max"
+                  inputType={inputType}
+                  style={{ width: mobile ? '100%' : 100, flex: mobile ? '1 1 100%' : undefined }} />
               </>
             )}
             <button onClick={() => removeFilter(f.id)}
@@ -447,7 +519,7 @@ function DataTable({ tableName, mobile }: { tableName: string; mobile: boolean }
       {/* Expandable filter panel */}
       {showFilters && (
         <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: 12 }}>
-          <FilterBar columns={columns} typeMap={typeMap} filters={filters} onChange={onFiltersChange} mobile={mobile} />
+          <FilterBar columns={columns} typeMap={typeMap} filters={filters} onChange={onFiltersChange} mobile={mobile} tableName={tableName} />
           {mobile && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 10 }}>
               <span style={{ fontSize: 12, color: C.textMuted }}>Group:</span>
