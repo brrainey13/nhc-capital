@@ -36,7 +36,7 @@ export default function ForeclosureMap() {
           return;
         }
         const json = await res.json();
-        const withCoords = (json.data || []).filter(
+        const withCoords = (json.rows || json.data || []).filter(
           (r: Foreclosure) => r.lat != null && r.lng != null
         );
         setData(withCoords);
@@ -71,21 +71,21 @@ export default function ForeclosureMap() {
     <div style={{ height: '100%', width: '100%', position: 'relative' }}>
       <div style={{
         position: 'absolute', top: 12, left: 60, zIndex: 1000,
-        background: 'rgba(20,20,20,0.9)', padding: '8px 16px', borderRadius: 8,
+        background: 'rgba(30,60,90,0.9)', padding: '8px 16px', borderRadius: 8,
         color: '#fff', fontSize: 13, fontWeight: 600,
-        border: '1px solid rgba(255,255,255,0.1)',
+        border: '1px solid rgba(0,0,0,0.15)', boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
       }}>
         🏠 {data.length} CT Foreclosures
       </div>
       <MapContainer
         center={CT_CENTER}
         zoom={9}
-        style={{ height: '100%', width: '100%', background: '#1a1a2e' }}
+        style={{ height: '100%', width: '100%', background: '#e8f4f8' }}
         scrollWheelZoom={true}
       >
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>'
-          url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+          url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
         />
         {data.map((f) => (
           <CircleMarker
