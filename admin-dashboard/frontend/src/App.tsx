@@ -62,7 +62,7 @@ const C = {
 const PROJECT_GROUPS: { label: string; icon: string; match: (name: string) => boolean }[] = [
   { label: 'NHL Betting', icon: '🏒', match: (n) => ['games','game_team_stats','player_stats','players','teams','standings','schedules','injuries','injuries_live','lineup_absences','period_scores','goalie_advanced','goalie_saves_by_strength','goalie_starts','goalie_stats','saves_odds','sog_odds','predictions','model_runs','theses','live_game_snapshots','positions'].includes(n) },
   { label: 'Polymarket', icon: '📊', match: (n) => ['markets','market_snapshots'].includes(n) },
-  { label: 'Real Estate', icon: '🏠', match: (n) => n.startsWith('cook_county_') || n === 'sf_rentals' },
+  { label: 'Real Estate', icon: '🏠', match: (n) => n.startsWith('cook_county_') || n === 'sf_rentals' || ['commercial_valuations','parcel_sales','parcel_universe','data_refresh_log'].includes(n) },
   { label: 'Crypto', icon: '₿', match: (n) => n.startsWith('crypto_') },
   { label: 'Dashboard', icon: '⚙️', match: (n) => ['kanban_events','kanban_tasks','agent_log','api_snapshots','human_notes'].includes(n) },
 ]

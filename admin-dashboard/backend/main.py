@@ -24,6 +24,7 @@ FRONTEND_DIR = Path(__file__).parent.parent / "frontend" / "dist"
 DATABASE_URLS = {
     "nhl_betting": "postgresql://connorrainey@localhost:5432/nhl_betting",
     "polymarket": "postgresql://connorrainey@localhost:5432/polymarket",
+    "cook_county": "postgresql://connorrainey@localhost:5432/cook_county",
 }
 # Default DB for backwards compatibility
 DATABASE_URL = DATABASE_URLS["nhl_betting"]
