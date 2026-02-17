@@ -1,4 +1,4 @@
-.PHONY: test lint test-nhl test-real-estate test-polymarket test-admin setup
+.PHONY: test lint docs-guard test-nhl test-real-estate test-polymarket test-admin setup
 
 setup:
 	python3 -m pip install pytest ruff psycopg2-binary requests --break-system-packages
@@ -21,5 +21,8 @@ test-polymarket:
 test-admin:
 	pytest admin-dashboard/ -v
 
-ci: lint test
+docs-guard:
+	python3 scripts/docs-guard
+
+ci: lint docs-guard test
 	@echo "All checks passed."

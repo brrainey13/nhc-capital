@@ -249,10 +249,11 @@ def build_feature_matrix(dfs):
     )
     print(f"  Odds matched to games: {len(matrix)}")
 
-    # Add actual saves (target)
+    # Add actual saves (target) — filter to goalies who actually played (shots_against > 0)
     gs = dfs['goalie_stats'][['game_id', 'player_id', 'saves', 'shots_against', 'goals_against', 'save_pct']].copy()
+    gs = gs[gs['shots_against'] > 0]  # Exclude backup goalies who didn't play
     matrix = matrix.merge(gs, on=['game_id', 'player_id'], how='inner')
-    print(f"  With actual saves: {len(matrix)}")
+    print(f"  With actual saves (starters only): {len(matrix)}")
 
     # Add goalie rolling features
     goalie_feat_cols = [c for c in goalie_feats.columns if c.startswith(('saves_avg', 'sa_avg', 'svpct_avg', 'ga_avg', 'saves_season', 'svpct_season', 'starts_last', 'days_rest'))]
@@ -381,7 +382,7 @@ def build_feature_matrix(dfs):
 def get_feature_columns(matrix):
     """Return the list of feature columns for modeling."""
     exclude = {
-        'game_id', 'player_id', 'team_id', 'home_team_id', 'away_team_id',
+        'id', 'game_id', 'player_id', 'team_id', 'home_team_id', 'away_team_id',
         'opponent_team_id', 'event_id', 'event_date', 'game_date', 'game_date_str',
         'game_date_dt', 'player_name', 'player_team', 'home_team', 'away_team',
         'book_id', 'book_name', 'opening_created', 'updated_at', 'scraped_at',
@@ -389,6 +390,8 @@ def get_feature_columns(matrix):
         # Targets / leakage
         'saves', 'shots_against', 'goals_against', 'save_pct',
         'went_over', 'went_under', 'save_diff', 'was_pulled',
+        # Post-game / derived from actuals
+        'fair_probability', 'market_ev',
         # ID columns with _opp, _own suffixes
         'team_id_opp', 'team_id_own', 'team_id_oppabs', 'team_id_ownabs', 'team_id_opprest',
     }

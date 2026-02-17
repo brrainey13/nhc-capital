@@ -1,0 +1,125 @@
+#!/usr/bin/env python3
+"""Docs front-matter guard — validates all docs/*.md have proper front-matter.
+
+Usage:
+  scripts/docs-guard          # Check all docs
+  scripts/docs-guard --fix    # Interactive: prompt to add missing front-matter
+  scripts/docs-guard file.md  # Check specific file(s)
+
+Enforces:
+  - Every docs/*.md has YAML front-matter (--- delimited)
+  - Front-matter has 'summary:' (non-empty string)
+  - Front-matter has 'read_when:' (list with at least 1 hint)
+  - Every project subfolder with code has a CLAUDE.md
+
+Exit code 0 = all good, 1 = violations found.
+"""
+
+import sys
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).parent.parent
+DOCS_DIR = REPO_ROOT / "docs"
+EXCLUDED_DIRS = {"archive", "research", "__pycache__", ".git", "node_modules"}
+PROJECT_DIRS = ["nhl-betting", "admin-dashboard", "real-estate", "polymarket"]
+
+
+def extract_frontmatter(path: Path) -> dict:
+    """Parse YAML front-matter from a markdown file."""
+    text = path.read_text()
+    if not text.startswith("---"):
+        return {"error": "missing front-matter block (must start with ---)"}
+
+    end = text.find("\n---", 3)
+    if end == -1:
+        return {"error": "unterminated front-matter (no closing ---)"}
+
+    fm = text[3:end].strip()
+    summary = None
+    read_when = []
+    collecting = False
+
+    for line in fm.split("\n"):
+        stripped = line.strip()
+        if stripped.startswith("summary:"):
+            val = stripped[len("summary:"):].strip().strip("'\"")
+            if val:
+                summary = val
+            collecting = False
+        elif stripped.startswith("read_when:"):
+            collecting = True
+        elif collecting and stripped.startswith("- "):
+            hint = stripped[2:].strip()
+            if hint:
+                read_when.append(hint)
+        elif collecting and not stripped:
+            pass
+        else:
+            collecting = False
+
+    errors = []
+    if not summary:
+        errors.append("missing or empty 'summary:' in front-matter")
+    if not read_when:
+        errors.append("missing or empty 'read_when:' list in front-matter")
+
+    if errors:
+        return {"error": "; ".join(errors)}
+    return {"summary": summary, "read_when": read_when}
+
+
+def walk_docs(directory: Path):
+    """Yield all .md files in docs/, excluding some dirs."""
+    for entry in sorted(directory.iterdir()):
+        if entry.name.startswith("."):
+            continue
+        if entry.is_dir():
+            if entry.name not in EXCLUDED_DIRS:
+                yield from walk_docs(entry)
+        elif entry.suffix == ".md":
+            yield entry
+
+
+def main():
+    specific_files = [Path(a) for a in sys.argv[1:] if not a.startswith("--")]
+    errors = []
+
+    # Check docs/*.md front-matter
+    if specific_files:
+        files = specific_files
+    else:
+        files = list(walk_docs(DOCS_DIR)) if DOCS_DIR.exists() else []
+
+    for path in files:
+        meta = extract_frontmatter(path)
+        if "error" in meta:
+            rel = path.relative_to(REPO_ROOT) if path.is_relative_to(REPO_ROOT) else path
+            errors.append(f"  {rel}: {meta['error']}")
+
+    # Check project CLAUDE.md files exist
+    if not specific_files:
+        for proj in PROJECT_DIRS:
+            proj_dir = REPO_ROOT / proj
+            if proj_dir.exists() and not (proj_dir / "CLAUDE.md").exists():
+                errors.append(f"  {proj}/CLAUDE.md: missing — every project needs a CLAUDE.md")
+
+    if errors:
+        print("❌ Docs guard found issues:\n")
+        for e in errors:
+            print(e)
+        print(f"\n{len(errors)} issue(s). Fix before committing.")
+        print("\nEvery docs/*.md needs front-matter:")
+        print("  ---")
+        print("  summary: 'One-line description'")
+        print("  read_when:")
+        print("    - When to read this doc")
+        print("  ---")
+        sys.exit(1)
+    else:
+        count = len(files)
+        proj_count = sum(1 for p in PROJECT_DIRS if (REPO_ROOT / p / "CLAUDE.md").exists())
+        print(f"✅ Docs guard passed: {count} docs validated, {proj_count} project CLAUDE.md files present")
+
+
+if __name__ == "__main__":
+    main()

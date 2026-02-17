@@ -12,7 +12,7 @@ REQUIRED_PROJECTS = ["nhl-betting", "admin-dashboard", "real-estate", "polymarke
 REQUIRED_DOCS = [
     "admin-dashboard.md", "ci-pipeline.md", "coding-agents.md",
     "infrastructure.md", "networking-security.md", "nhl-betting.md",
-    "polymarket.md", "subagents.md",
+    "polymarket.md", "real-estate.md", "subagents.md",
 ]
 REQUIRED_ROOT_FILES = [
     "CLAUDE.md", "AGENTS.md", "codex.md", "Makefile", "pyproject.toml",
@@ -83,6 +83,22 @@ def test_committer_rejects_dot():
         cwd=ROOT, capture_output=True, text=True, timeout=10,
     )
     assert result.returncode != 0, "committer should reject '.'"
+
+
+def test_docs_guard_passes():
+    """scripts/docs-guard must pass — all docs have proper front-matter."""
+    result = subprocess.run(
+        ["python3", "scripts/docs-guard"], cwd=ROOT, capture_output=True, text=True, timeout=10,
+    )
+    assert result.returncode == 0, f"docs-guard failed:\n{result.stdout}"
+    assert "passed" in result.stdout, "docs-guard output looks wrong"
+
+
+def test_project_claude_md_exists():
+    """Every project subfolder must have a CLAUDE.md."""
+    for proj in REQUIRED_PROJECTS:
+        claude_md = ROOT / proj / "CLAUDE.md"
+        assert claude_md.exists(), f"Missing {proj}/CLAUDE.md — agents need project context"
 
 
 def test_committer_rejects_empty_message():
