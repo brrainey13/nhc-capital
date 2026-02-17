@@ -447,7 +447,7 @@ function DataTable({ tableName, mobile }: { tableName: string; mobile: boolean }
       {mobile ? (
         <MobileCardList data={displayData} columns={columns} />
       ) : (
-        <div ref={tableContainerRef} style={{ flex: 1, overflow: 'auto', border: `1px solid ${C.border}`, borderRadius: 8, background: C.surface, minHeight: 0, WebkitOverflowScrolling: 'touch' }}>
+        <div ref={tableContainerRef} className="scroll-visible" style={{ flex: 1, overflow: 'auto', border: `1px solid ${C.border}`, borderRadius: 8, background: C.surface, minHeight: 0 }}>
           <table style={{ minWidth: columns.length * 160, borderCollapse: 'collapse', fontSize: 12 }}>
             <thead style={{ position: 'sticky', top: 0, zIndex: 1 }}>
               <tr>
@@ -558,7 +558,7 @@ function QueryPage({ mobile }: { mobile: boolean }) {
       ) : mobile ? (
         <MobileCardList data={result.rows} columns={result.columns} />
       ) : (
-        <div style={{ flex: 1, overflow: 'auto', border: `1px solid ${C.border}`, borderRadius: 8, minHeight: 0, background: C.surface, WebkitOverflowScrolling: 'touch' }}>
+        <div className="scroll-visible" style={{ flex: 1, overflow: 'auto', border: `1px solid ${C.border}`, borderRadius: 8, minHeight: 0, background: C.surface }}>
           <table style={{ minWidth: result.columns.length * 160, borderCollapse: 'collapse', fontSize: 12 }}>
             <thead style={{ position: 'sticky', top: 0 }}>
               <tr>{result.columns.map(c => <th key={c} style={thDark}>{c}</th>)}</tr>

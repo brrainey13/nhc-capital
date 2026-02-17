@@ -17,12 +17,13 @@
       @media (min-width: 768px) {
         input, select, textarea, button { font-size: inherit; }
       }
-      /* Visible scrollbars */
-      ::-webkit-scrollbar { width: 8px; height: 8px; }
-      ::-webkit-scrollbar-track { background: #181a20; }
-      ::-webkit-scrollbar-thumb { background: #3a3d48; border-radius: 4px; }
-      ::-webkit-scrollbar-thumb:hover { background: #4f5360; }
-      ::-webkit-scrollbar-corner { background: #181a20; }
+      /* Visible scrollbars — force always-on for all browsers */
+      .scroll-visible { overflow: auto !important; scrollbar-width: thin; scrollbar-color: #3a3d48 #181a20; }
+      .scroll-visible::-webkit-scrollbar { width: 10px; height: 10px; display: block; }
+      .scroll-visible::-webkit-scrollbar-track { background: #181a20; }
+      .scroll-visible::-webkit-scrollbar-thumb { background: #3a3d48; border-radius: 5px; min-height: 30px; min-width: 30px; }
+      .scroll-visible::-webkit-scrollbar-thumb:hover { background: #5f6370; }
+      .scroll-visible::-webkit-scrollbar-corner { background: #181a20; }
     </style>
   </head>
   <body>
