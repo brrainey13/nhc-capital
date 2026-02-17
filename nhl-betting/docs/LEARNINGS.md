@@ -355,4 +355,50 @@ The D-absence signal is **real but not exploitable through goalie saves O/U.** B
 2. **In-game/live betting** where books react slowly to shot pace
 3. **As one input in a multi-factor model** rather than a standalone strategy
 
+---
+
+## Player SOG vs D-Absence: Thesis Tested (2026-02-16)
+
+### The Test
+If opposing D absences create more shots for goalies, do individual forwards also get more SOG? Tested on 101K forward-game rows across 4 seasons.
+
+### Results: Effect is REAL but TINY
+
+| Opposing D missing | Avg forward SOG | N |
+|-------------------|----------------|--------|
+| 0-1 D missing | 2.277 | 32,529 |
+| 2 D missing | 2.308 | 34,606 |
+| 3+ D missing | 2.333 | 33,847 |
+
+**Delta: +0.056 SOG per forward** when facing 3+ depleted D (2.5% increase).
+
+For **top-line players (18+ min TOI)**: +0.13 SOG (+4.5%), pushing from 2.91 to 3.04 avg.
+- Over 2.5 SOG rate: 52.0% → 54.8% (+2.8 pp)
+- Over 3.5 SOG rate: 30.7% → 33.6% (+2.9 pp)
+
+### Consistent Across 3 of 4 Seasons
+| Season | Δ SOG (3+ vs 0-1) |
+|--------|------------------|
+| 2022-23 | +0.056 |
+| 2023-24 | +0.079 |
+| 2024-25 | +0.050 |
+| 2025-26 | +0.004 (anomaly?) |
+
+Statistically significant (p=0.000001) across the full dataset.
+
+### Why This Is NOT Enough for Betting
+- +0.056 SOG per forward is noise vs a 2.5 or 3.5 line
+- Even for elite players, the 2.9pp boost in over-2.5 rate doesn't overcome ~4.5% vig
+- SOG has massive game-to-game variance — a player with 2.9 avg has games with 0 and 8
+- The effect aggregates across ~12 forwards per team into the +1.5 team-level shots boost we already found in goalie saves
+
+### Key Insight
+**D absences affect TEAM shot volume, not individual players enough to bet on.** The +1.5 extra shots get spread across the whole forward group. No single player captures enough of that boost to create a betting edge on player SOG props.
+
+### SOG Scrape Status
+- Scraper built: `scrapers/scrape_sog_odds.py`
+- Market ID 321 on BettingPros API
+- Table: `sog_odds` — 2,536 test rows loaded, full 4-season scrape running (~60-90 min)
+- Will join with actual SOG data once complete to verify against real lines
+
 *Updated: 2026-02-16*
