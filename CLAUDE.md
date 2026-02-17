@@ -82,12 +82,25 @@ cd <project> && python3 -m venv .venv && .venv/bin/pip install -r requirements.t
 8. `scripts/committer "feat: description" file1 file2 ...` — never `git add .`
 9. Push only when all tests pass
 
-## Deployment
+## Deployment — CRITICAL RULE
 
-**Dashboard deployment uses `scripts/deploy-dashboard` ONLY.** Do NOT manually run uvicorn or ngrok.
+**ALL deployment MUST go through `scripts/deploy-dashboard`.** This is non-negotiable.
+
 ```bash
-scripts/deploy-dashboard --all    # Full deploy (CI + build + restart)
+scripts/deploy-dashboard --all    # Full deploy (CI + build + restart backend + restart ngrok)
+scripts/deploy-dashboard          # Frontend-only (no server restart)
+scripts/deploy-dashboard --restart-server  # Backend swap only
 ```
+
+**You MUST NOT:**
+- Run `uvicorn` directly
+- Run `ngrok` directly
+- Kill server processes manually
+- Start servers with `nohup` or any ad-hoc method
+
+**The deploy script handles everything:** CI validation, frontend build, blue-green server swap, ngrok tunnel, and health checks. If you bypass it, you WILL break the production dashboard.
+
+If the deploy script itself is broken, fix the script — don't work around it.
 
 ## Rules
 

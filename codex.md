@@ -20,6 +20,7 @@ Also read the `CLAUDE.md` in whatever project subfolder you're working in.
 - Run `make ci` before committing
 - No model artifacts in git (`.pkl`, `.joblib`, `.h5`, `.pt` are gitignored)
 - **Update docs when you change things** — stale docs waste everyone's time
+- **NEVER run uvicorn or ngrok directly** — use `scripts/deploy-dashboard --all` for ALL deployment
 - If you finish, exit cleanly
 
 ## If Running in Cloud Mode

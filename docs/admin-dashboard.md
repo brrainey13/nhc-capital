@@ -92,10 +92,13 @@ scripts/deploy-dashboard --all             # Full deploy (CI + build + restart a
 
 Blue-green deploy: starts standby on :8001 → health check → swaps to :8000 → kills old. Near-zero downtime.
 
-**Do NOT:**
-- Manually run `uvicorn` or `ngrok` commands
+**Do NOT (non-negotiable):**
+- Manually run `uvicorn` or `ngrok` commands — EVER
+- Kill server processes directly (`pkill`, `kill`, etc.)
+- Start servers with `nohup` or any ad-hoc method
 - Restart services without running tests first
 - Deploy without building the frontend
+- Work around the deploy script — if it's broken, fix the script
 
 ## Security (Defense in Depth)
 

@@ -9,7 +9,9 @@ Read `docs/admin-dashboard.md` for full architecture, endpoints, and deploy proc
 - **Backend:** `backend/main.py` — FastAPI + asyncpg, read-only SQL
 - **Frontend:** `frontend/` — React + Vite + TypeScript
 - **Tests:** `backend/tests/test_api.py` (28 tests)
-- **Deploy:** `scripts/deploy-dashboard` — blue-green on ports 8000/8001. **The ONLY way to deploy.**
+- **Deploy:** `scripts/deploy-dashboard --all` — blue-green on ports 8000/8001. **The ONLY way to deploy.**
+  - ⚠️ **NEVER run uvicorn or ngrok directly.** NEVER kill server processes manually. The deploy script handles everything.
+  - If the deploy script is broken, fix the script — don't work around it.
 - **Public URL:** `https://alexzander-tightfisted-ambagiously.ngrok-free.dev`
 - **Auth:** ngrok Google OAuth (5 team emails)
 
