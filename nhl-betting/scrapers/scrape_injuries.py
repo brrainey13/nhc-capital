@@ -138,14 +138,14 @@ def build_historical_absences(conn):
                         WHEN g.game_date::date >= '2024-10-01' THEN '2024'
                         WHEN g.game_date::date >= '2023-10-01' THEN '2023'
                         ELSE '2022' END as season
-            FROM games g WHERE g.home_score IS NOT NULL
+            FROM games g WHERE g.home_score IS NOT NULL AND g.game_type IN (2, 3) AND g.game_state = 'OFF'
             UNION ALL
             SELECT g.game_id, g.game_date::text, g.away_team_id,
                    CASE WHEN g.game_date::date >= '2025-10-01' THEN '2025'
                         WHEN g.game_date::date >= '2024-10-01' THEN '2024'
                         WHEN g.game_date::date >= '2023-10-01' THEN '2023'
                         ELSE '2022' END
-            FROM games g WHERE g.home_score IS NOT NULL
+            FROM games g WHERE g.home_score IS NOT NULL AND g.game_type IN (2, 3) AND g.game_state = 'OFF'
         ),
         absences AS (
             SELECT gt.game_id, gt.team_id, gt.game_date,

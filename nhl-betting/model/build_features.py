@@ -18,7 +18,7 @@ def load_tables():
     tables = {
         'saves_odds': "SELECT * FROM saves_odds WHERE book_name = 'consensus'",
         'goalie_stats': "SELECT * FROM goalie_stats",
-        'games': "SELECT * FROM games WHERE home_score IS NOT NULL",
+        'games': "SELECT * FROM games WHERE home_score IS NOT NULL AND game_type IN (2, 3) AND game_state = 'OFF'",
         'game_team_stats': "SELECT * FROM game_team_stats",
         'goalie_strength': "SELECT * FROM goalie_saves_by_strength",
         'goalie_advanced': "SELECT * FROM goalie_advanced",

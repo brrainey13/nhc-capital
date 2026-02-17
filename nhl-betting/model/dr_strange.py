@@ -26,7 +26,7 @@ def load_all_data():
     print("Loading all data...")
 
     # Games
-    psql_copy("SELECT game_id, game_date, season, home_team_id, away_team_id FROM games", '/tmp/ds_games.csv')
+    psql_copy("SELECT game_id, game_date, season, home_team_id, away_team_id FROM games WHERE game_type IN (2, 3) AND game_state = 'OFF'", '/tmp/ds_games.csv')
     games = pd.read_csv('/tmp/ds_games.csv')
     games['game_date'] = pd.to_datetime(games['game_date'])
     games['dow'] = games['game_date'].dt.dayofweek
