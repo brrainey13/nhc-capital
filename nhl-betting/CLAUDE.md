@@ -10,7 +10,10 @@ Read `docs/nhl-betting.md` for full schema, scraper docs, and project status.
 - **psql:** `/opt/homebrew/Cellar/postgresql@17/17.8/bin/psql -d nhl_betting`
 - **Scrapers:** `scrapers/` — BettingPros odds, NHL API stats, injuries, advanced goalie
 - **Models:** `model/` — feature engineering + training (artifacts are gitignored: `.pkl`, `.joblib`, etc.)
-- **Empty tables:** `predictions`, `model_runs` — model pipeline not yet built
+- **Status:** Strategy #1 work exists; player-odds expansion/backfill is next
+- **Player odds note:** `player_odds` currently has partial historical coverage in DB; run fast backfill to extend
+- **Backfill command:** `cd ~/nhc-capital/nhl-betting && .venv/bin/python scrapers/scrape_player_odds_fast.py`
+- **Empty tables:** `predictions`, `model_runs` — full model pipeline still in progress
 
 ## Key Tables
 
