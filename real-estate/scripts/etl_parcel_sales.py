@@ -49,48 +49,54 @@ def run(limit: int = None, where: str = None, dry_run: bool = False) -> dict:
         print(f"[dry run] Would upsert {fetched} rows into parcel_sales")
         return {"rows_fetched": fetched, "rows_inserted": 0, "duration_sec": 0, "data": data}
 
+    from psycopg2.extras import execute_values as _exec_vals
+
     with get_connection() as conn:
         ensure_schema(conn)
-        offset = 0
-        batch_size = 50000
-        while True:
-            data = fetch_batch(limit=batch_size, where=where, offset=offset)
-            if not data:
-                break
-            fetched += len(data)
-            rows = []
-            for rec in data:
-                row = [rec.get(c) for c in COLS]
-                row.append(json.dumps(rec) if isinstance(rec, dict) else None)
-                rows.append(tuple(row))
-            cols_sql = ", ".join(COLS) + ", raw_json"
+
+    offset = 0
+    batch_size = 10000
+    cols_sql = ", ".join(COLS) + ", raw_json"
+    upsert_sql = f"""
+        INSERT INTO parcel_sales ({cols_sql})
+        VALUES %s
+        ON CONFLICT (row_id) DO UPDATE SET
+            pin = EXCLUDED.pin, year = EXCLUDED.year, township_code = EXCLUDED.township_code,
+            nbhd = EXCLUDED.nbhd, class = EXCLUDED.class, sale_date = EXCLUDED.sale_date,
+            is_mydec_date = EXCLUDED.is_mydec_date, sale_price = EXCLUDED.sale_price,
+            doc_no = EXCLUDED.doc_no, deed_type = EXCLUDED.deed_type, mydec_deed_type = EXCLUDED.mydec_deed_type,
+            seller_name = EXCLUDED.seller_name, buyer_name = EXCLUDED.buyer_name,
+            is_multisale = EXCLUDED.is_multisale, num_parcels_sale = EXCLUDED.num_parcels_sale,
+            sale_type = EXCLUDED.sale_type,
+            sale_filter_same_sale_within_365 = EXCLUDED.sale_filter_same_sale_within_365,
+            sale_filter_less_than_10k = EXCLUDED.sale_filter_less_than_10k,
+            sale_filter_deed_type = EXCLUDED.sale_filter_deed_type,
+            raw_json = EXCLUDED.raw_json
+    """
+
+    while True:
+        print(f"  Fetching offset={offset} batch_size={batch_size}...", flush=True)
+        data = fetch_batch(limit=batch_size, where=where, offset=offset)
+        if not data:
+            break
+        fetched += len(data)
+        print(f"  Got {len(data)} rows (total: {fetched})", flush=True)
+        rows = []
+        for rec in data:
+            row = [rec.get(c) for c in COLS]
+            row.append(json.dumps(rec) if isinstance(rec, dict) else None)
+            rows.append(tuple(row))
+        with get_connection() as conn:
             with conn.cursor() as cur:
-                from psycopg2.extras import execute_values
-                execute_values(
-                    cur,
-                    f"""
-                    INSERT INTO parcel_sales ({cols_sql})
-                    VALUES %s
-                    ON CONFLICT (row_id) DO UPDATE SET
-                        pin = EXCLUDED.pin, year = EXCLUDED.year, township_code = EXCLUDED.township_code,
-                        nbhd = EXCLUDED.nbhd, class = EXCLUDED.class, sale_date = EXCLUDED.sale_date,
-                        is_mydec_date = EXCLUDED.is_mydec_date, sale_price = EXCLUDED.sale_price,
-                        doc_no = EXCLUDED.doc_no, deed_type = EXCLUDED.deed_type, mydec_deed_type = EXCLUDED.mydec_deed_type,
-                        seller_name = EXCLUDED.seller_name, buyer_name = EXCLUDED.buyer_name,
-                        is_multisale = EXCLUDED.is_multisale, num_parcels_sale = EXCLUDED.num_parcels_sale,
-                        sale_type = EXCLUDED.sale_type,
-                        sale_filter_same_sale_within_365 = EXCLUDED.sale_filter_same_sale_within_365,
-                        sale_filter_less_than_10k = EXCLUDED.sale_filter_less_than_10k,
-                        sale_filter_deed_type = EXCLUDED.sale_filter_deed_type,
-                        raw_json = EXCLUDED.raw_json
-                    """,
-                    rows,
-                    page_size=1000,
-                )
+                _exec_vals(cur, upsert_sql, rows, page_size=1000)
                 inserted += cur.rowcount
-            if len(data) < batch_size:
-                break
-            offset += len(data)
+        batch_len = len(rows)
+        del data, rows
+        if limit and fetched >= limit:
+            break
+        if batch_len < batch_size:
+            break
+        offset += batch_size
 
     duration = time.perf_counter() - start
     return {"rows_fetched": fetched, "rows_inserted": inserted, "duration_sec": duration}
