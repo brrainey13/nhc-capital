@@ -4,10 +4,11 @@ ETL: Parcel Universe from SODA API (nj4t-kc8j) into PostgreSQL.
 Schema: schema/cook_county.md — parcel_universe.
 """
 
+import json
 import os
 import sys
 import time
-import json
+
 import requests
 
 # Project root = parent of scripts/
@@ -15,7 +16,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from utils.db import get_connection, ensure_schema, log_refresh
+from utils.db import ensure_schema, get_connection, log_refresh
 
 BASE = "https://datacatalog.cookcountyil.gov/resource"
 DATASET_ID = "nj4t-kc8j"
@@ -73,8 +74,8 @@ def run(limit: int = None, where: str = None, dry_run: bool = False) -> dict:
                     f"""
                     INSERT INTO parcel_universe ({cols_sql})
                     VALUES %s
-                    ON CONFLICT (pin) DO UPDATE SET
-                        pin10 = EXCLUDED.pin10, year = EXCLUDED.year, class = EXCLUDED.class,
+                    ON CONFLICT (pin, year) DO UPDATE SET
+                        pin10 = EXCLUDED.pin10, class = EXCLUDED.class,
                         triad_name = EXCLUDED.triad_name, triad_code = EXCLUDED.triad_code,
                         township_name = EXCLUDED.township_name, township_code = EXCLUDED.township_code,
                         nbhd_code = EXCLUDED.nbhd_code, tax_code = EXCLUDED.tax_code, zip_code = EXCLUDED.zip_code,

@@ -3,9 +3,9 @@ PostgreSQL connection and upload helpers for Cook County ETL.
 Schema follows schema/cook_county.md. Configure via config/database.yml or env.
 """
 
-from contextlib import contextmanager
-from typing import Any, Dict, List, Optional
 import os
+from contextlib import contextmanager
+from typing import Any, Dict, Optional
 
 # Optional: use psycopg2 or psycopg (binary). Skeleton uses psycopg2.
 try:
@@ -16,13 +16,16 @@ except ImportError:
     execute_values = None
 
 
+DB_CONN = "postgresql://connorrainey@localhost:5432/cook_county"
+
+
 def _load_db_config() -> Dict[str, Any]:
     """Load DB config from env or config file. Env takes precedence."""
     return {
         "host": os.environ.get("PGHOST", "localhost"),
         "port": int(os.environ.get("PGPORT", "5432")),
         "dbname": os.environ.get("PGDATABASE", "cook_county"),
-        "user": os.environ.get("PGUSER", ""),
+        "user": os.environ.get("PGUSER", "connorrainey"),
         "password": os.environ.get("PGPASSWORD", ""),
     }
 
@@ -56,7 +59,7 @@ def ensure_schema(conn) -> None:
     ddl = [
         """
         CREATE TABLE IF NOT EXISTS parcel_universe (
-            pin                    VARCHAR(14) PRIMARY KEY,
+            pin                    VARCHAR(14) NOT NULL,
             pin10                  VARCHAR(10),
             year                   INTEGER,
             class                  VARCHAR(10),
@@ -73,7 +76,8 @@ def ensure_schema(conn) -> None:
             row_id                 VARCHAR(30),
             raw_json               JSONB,
             created_at             TIMESTAMPTZ DEFAULT NOW(),
-            updated_at             TIMESTAMPTZ DEFAULT NOW()
+            updated_at             TIMESTAMPTZ DEFAULT NOW(),
+            PRIMARY KEY (pin, year)
         );
         CREATE INDEX IF NOT EXISTS idx_pu_class ON parcel_universe(class);
         CREATE INDEX IF NOT EXISTS idx_pu_township ON parcel_universe(township_name);

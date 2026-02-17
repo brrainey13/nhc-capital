@@ -3,7 +3,6 @@ Normalize Commercial Valuation CSV column names to match schema (cook_county.md)
 Maps CSV headers like "class(es)", "1brunits", "adj_rent/sf" to class_es, _1brunits, adj_rent_sf.
 """
 
-from typing import List
 import pandas as pd
 
 

@@ -4,17 +4,18 @@ ETL: Parcel Sales from SODA API (wvhk-k5uv) into PostgreSQL.
 Schema: schema/cook_county.md — parcel_sales.
 """
 
+import json
 import os
 import sys
 import time
-import json
+
 import requests
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from utils.db import get_connection, ensure_schema, log_refresh
+from utils.db import ensure_schema, get_connection, log_refresh
 
 BASE = "https://datacatalog.cookcountyil.gov/resource"
 DATASET_ID = "wvhk-k5uv"

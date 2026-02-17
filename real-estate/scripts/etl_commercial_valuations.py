@@ -5,18 +5,18 @@ Source: Assessor_-_Commercial_Valuation_Data_*.csv (flat file).
 Schema: schema/cook_county.md — commercial_valuations.
 """
 
+import glob
 import os
 import sys
 import time
-import glob
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 import pandas as pd
-from utils.db import get_connection, ensure_schema, log_refresh
 from utils.csv_normalize import normalize_commercial_valuation_csv
+from utils.db import ensure_schema, get_connection, log_refresh
 
 # Table columns (excluding id, created_at) for INSERT. Match schema/cook_county.md.
 CV_COLS = [

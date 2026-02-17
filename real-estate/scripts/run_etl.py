@@ -11,9 +11,9 @@ Usage:
   python scripts/run_etl.py --dataset all [--dry-run]
 """
 
+import argparse
 import os
 import sys
-import argparse
 
 # Project root = parent of scripts/
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -64,7 +64,7 @@ def main():
             pd.set_option("display.max_colwidth", 30)
             print(f"\n--- {name} ---")
             print(f"  shape: {df.shape}")
-            print(f"  sample (first 3 rows):\n")
+            print("  sample (first 3 rows):\n")
             print(df_show.to_string(index=False))
         if not args.dry_run and stats.get("rows_fetched"):
             from utils.db import get_connection, log_refresh

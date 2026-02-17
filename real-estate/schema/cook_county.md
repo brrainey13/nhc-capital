@@ -11,7 +11,7 @@ Source: SODA API `nj4t-kc8j` | ~1.8M rows (full) / ~19.5K Class 3 | Weekly refre
 
 ```sql
 CREATE TABLE IF NOT EXISTS parcel_universe (
-    pin                    VARCHAR(14) PRIMARY KEY,
+    pin                    VARCHAR(14) NOT NULL,
     pin10                  VARCHAR(10),
     year                   INTEGER,
     class                  VARCHAR(10),
@@ -28,7 +28,8 @@ CREATE TABLE IF NOT EXISTS parcel_universe (
     row_id                 VARCHAR(30),
     raw_json               JSONB,
     created_at             TIMESTAMPTZ DEFAULT NOW(),
-    updated_at             TIMESTAMPTZ DEFAULT NOW()
+    updated_at             TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (pin, year)
 );
 
 CREATE INDEX IF NOT EXISTS idx_pu_class ON parcel_universe(class);
