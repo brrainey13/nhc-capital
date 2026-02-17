@@ -164,4 +164,32 @@ With starters only (2795 rows), trained < 2025-10, validated 2025-10 to 2026-02:
 ### Individual goalies with positive ROI (small samples)
 Shesterkin +35%, Vasilevskiy +30%, Sorokin +21%, Silovs +31% — but all <15 bets each
 
+---
+
+## Refined Subset Stress Tests (2026-02-16, evening)
+
+Final pass with clean starter-only data. Every "edge" tested came back flat or negative:
+
+| Strategy | ROI | Win% | Bets | Verdict |
+|----------|-----|------|------|---------|
+| Well-rested (5+ days off) | -2.2% | 52.6% | 19 | Noise — too few bets |
+| Opp missing D (>40 TOI) | -2.0% | 52.6% | 135 | Close to breakeven but vig kills it |
+| High line (27+) + Model Under | -1.5% | 52.6% | 19 | Noise |
+| Low line (19-22) | -35.4% | 34.9% | 43 | Terrible — backup goalies are chaos |
+| Line moved DOWN (<-0.5) | -30.3% | 37.5% | 16 | Sharps crush us on line moves |
+| Opp missing D (>40 TOI, cont.) | -27.0% | 39.4% | 104 | Negative in extended sample |
+
+### Key Takeaway
+**No consistently profitable subset survived stress testing.** The one promising signal (own team heavy D missing + model over, +20.3% ROI) was on only 40 bets and did NOT hold up under refinement. The model has real predictive power for shot volume and save%, but not enough edge to overcome sportsbook vig (~4.5%) on any systematic strategy.
+
+### Lessons Learned
+1. **Non-starter goalies were the biggest data quality issue.** 21% of rows were 0-save backups that made every under strategy look amazing. Always filter `shots_against > 0`.
+2. **Walk-forward validation overlap was the biggest modeling mistake.** Val sets were subsets of training data. Always ensure train cutoff < val start.
+3. **AUC=1.0 is always leakage.** No exceptions. Investigate immediately.
+4. **Random feature test is essential.** If random noise ranks in top 5 features, something is wrong.
+5. **Books are efficient.** The 62.8% under rate (pre-fix) looked like free money but was entirely explained by non-starters. Real under rate with starters only: 52.9%.
+6. **Line movement is information.** When lines move, sharps know something. Betting against line moves = -30% ROI.
+7. **Small sample sizes lie.** Individual goalie edges (Shesterkin +35%) on <15 bets are noise until proven otherwise over 200+ bets.
+8. **Pull prediction is not viable with pre-game features.** 2.4% base rate, no predictive features found.
+
 *Updated: 2026-02-16*
