@@ -7,11 +7,10 @@ Lines dropped from 27.9 to 24.0. Model trained on old data has stale baselines.
 Fix: recency-weighted training + seasonal normalization.
 """
 import pickle
-import pandas as pd
-import numpy as np
-from sklearn.linear_model import Ridge
-from sklearn.metrics import mean_absolute_error
+
 import lightgbm as lgb
+import numpy as np
+from sklearn.metrics import mean_absolute_error
 
 # Load feature matrix
 fm = pickle.load(open("model/feature_matrix.pkl", "rb"))
@@ -79,7 +78,7 @@ days_ago = (max_date - train["event_date"]).dt.days
 # Half-life of 365 days
 weights = np.exp(-days_ago * np.log(2) / 365)
 print(f"Weight range: {weights.min():.3f} to {weights.max():.3f}")
-print(f"Mean weight by season:")
+print("Mean weight by season:")
 for s in sorted(train["season"].unique()):
     mask = train["season"] == s
     print(f"  {s}: {weights[mask].mean():.3f}")

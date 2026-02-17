@@ -205,7 +205,7 @@ def run_strategy_v2():
 
     # Save
     results.to_csv("strategy_v2_results.csv", index=False)
-    print(f"\n  Saved to strategy_v2_results.csv")
+    print("\n  Saved to strategy_v2_results.csv")
     return results
 
 
