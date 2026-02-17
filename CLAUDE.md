@@ -2,28 +2,44 @@
 
 You are a coding agent working inside the NH Capital monorepo. NHC (the orchestrator) spawned you for a specific task. Do the task, commit, and exit.
 
+## ⚠️ MANDATORY FIRST STEP — DO THIS BEFORE ANYTHING ELSE
+
+```bash
+scripts/docs-list
+```
+
+Read the output. If ANY doc's "Read when" matches your current task, **read that doc NOW** before writing a single line of code. This is non-negotiable.
+
 ## Repo Layout
 
 ```
 ~/nhc-capital/                    ← monorepo root
 ├── nhl-betting/                  ← NHL betting models & scrapers
-│   ├── scrapers/                 ← Data scrapers (BettingPros, etc.)
-│   └── test_smoke.py
+│   ├── scrapers/                 ← Data scrapers (BettingPros, NHL API, etc.)
+│   ├── model/                    ← ML models & feature engineering (NOT committed)
+│   ├── sql/                      ← Database migrations & schemas
+│   └── CLAUDE.md                 ← Project-specific agent instructions
 ├── admin-dashboard/              ← FastAPI + React dashboard
 │   ├── backend/main.py           ← API server (read-only SQL)
 │   ├── frontend/                 ← React SPA (Vite + TypeScript)
-│   └── backend/tests/test_api.py
-├── real-estate/                  ← Real estate analysis (placeholder)
+│   ├── backend/tests/test_api.py ← API tests
+│   └── CLAUDE.md                 ← Project-specific agent instructions
+├── real-estate/                  ← Real estate analysis
+│   └── CLAUDE.md                 ← Project-specific agent instructions
 ├── polymarket/                   ← Prediction market analysis & trading
+│   └── CLAUDE.md                 ← Project-specific agent instructions
 ├── docs/                         ← Project docs (YAML front-matter)
 ├── scripts/
 │   ├── committer                 ← Safe commit helper (USE THIS)
-│   └── docs-list                 ← List docs with summaries
+│   ├── docs-list                 ← List docs with summaries — RUN THIS FIRST
+│   └── deploy-dashboard          ← Blue-green deploy (the ONLY way to deploy)
 ├── .claude/commands/             ← Slash commands (/build, /commit, /fix, /docs)
 ├── .github/workflows/ci.yml     ← GitHub Actions (ruff + pytest)
 ├── Makefile                      ← make test, make lint, make ci
 └── pyproject.toml                ← pytest config
 ```
+
+Each project subfolder has its own `CLAUDE.md` with project-specific context. **Read it when you enter that folder.**
 
 ## Database
 
@@ -32,19 +48,17 @@ You are a coding agent working inside the NH Capital monorepo. NHC (the orchestr
 - Key tables: `games` (5.9K), `teams` (34), `players` (2.3K), `player_stats` (199K), `goalie_stats` (22K), `goalie_advanced` (9.5K), `goalie_saves_by_strength` (10K), `goalie_starts` (9.2K), `saves_odds` (44K), `standings` (7.6K), `period_scores` (36K), `api_snapshots` (26K), `lineup_absences` (11K), `injuries_live`, `predictions` (empty), `model_runs` (empty)
 - psql path: `/opt/homebrew/Cellar/postgresql@17/17.8/bin/psql`
 
-## Before You Start
-
-1. Run `scripts/docs-list` — check if any doc matches your task, read it first
-2. `git pull` — get latest
-3. `git status` — check for uncommitted changes
-
 ## Workflow
 
-1. Write tests FIRST
-2. Write code to pass tests
-3. `make ci` (ruff lint + pytest) — must pass
-4. `scripts/committer "feat: description" file1 file2 ...` — never `git add .`
-5. Push only when all tests pass
+1. **Run `scripts/docs-list`** — read matching docs
+2. **Read the project's `CLAUDE.md`** in the subfolder you're working in
+3. `git pull` — get latest
+4. `git status` — check for uncommitted changes
+5. Write tests FIRST
+6. Write code to pass tests
+7. `make ci` (ruff lint + pytest) — must pass
+8. `scripts/committer "feat: description" file1 file2 ...` — never `git add .`
+9. Push only when all tests pass
 
 ## Deployment
 
@@ -60,7 +74,9 @@ scripts/deploy-dashboard --all    # Full deploy (CI + build + restart)
 - **Python style:** ruff-compliant, type hints preferred
 - **Tests:** pytest, `--import-mode=importlib`
 - **No secrets in code** — trust auth for Postgres, no API keys in commits
+- **No model artifacts in git** — `.pkl`, `.joblib`, `.h5`, `.pt`, etc. are gitignored
 - **Read `docs/networking-security.md` before exposing any service** — ngrok only, no raw ports
+- **Update docs when you change things** — if you add tables, endpoints, scrapers, or change architecture, update the relevant `docs/*.md` and project `CLAUDE.md`
 
 ## Infrastructure
 
@@ -71,10 +87,8 @@ scripts/deploy-dashboard --all    # Full deploy (CI + build + restart)
 
 ## MCP Servers (Available to You)
 
-- **chrome-devtools** — 26 tools: navigate pages, take snapshots/screenshots, click/fill elements, inspect network requests, console messages, run performance traces. Use for dashboard testing and debugging.
+- **chrome-devtools** — 26 tools: navigate, snapshot, click, fill, network, console, performance traces
 - **deepwiki** — Query documentation for open-source projects
-
-Call via: `mcporter call chrome-devtools.navigate_page url=http://localhost:8000 type=url`
 
 ## Team
 
