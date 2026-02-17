@@ -1,16 +1,6 @@
 import { useEffect, useState } from 'react';
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
-import L from 'leaflet';
+import { MapContainer, TileLayer, CircleMarker, Popup } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
-
-// Fix default marker icons (Leaflet + bundler issue)
-// @ts-ignore
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-});
 
 interface Foreclosure {
   id: number;
@@ -35,20 +25,23 @@ const fmt = (amount: number | null) => {
 export default function ForeclosureMap() {
   const [data, setData] = useState<Foreclosure[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const res = await fetch('/api/tables/ct_foreclosures/data?limit=500', {
-          credentials: 'include',
-        });
+        const res = await fetch('/api/tables/ct_foreclosures/data?limit=500');
+        if (!res.ok) {
+          setError(`API error: ${res.status} ${res.statusText}`);
+          return;
+        }
         const json = await res.json();
         const withCoords = (json.data || []).filter(
           (r: Foreclosure) => r.lat != null && r.lng != null
         );
         setData(withCoords);
       } catch (err) {
-        console.error('Failed to fetch foreclosure data:', err);
+        setError(`Fetch failed: ${err}`);
       } finally {
         setLoading(false);
       }
@@ -58,8 +51,16 @@ export default function ForeclosureMap() {
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', color: '#aaa' }}>
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', color: '#aaa', fontSize: 16 }}>
         Loading map data...
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', color: '#ff6b6b', fontSize: 14 }}>
+        {error}
       </div>
     );
   }
@@ -70,26 +71,35 @@ export default function ForeclosureMap() {
     <div style={{ height: '100%', width: '100%', position: 'relative' }}>
       <div style={{
         position: 'absolute', top: 12, left: 60, zIndex: 1000,
-        background: 'rgba(30,30,30,0.85)', padding: '6px 14px', borderRadius: 8,
-        color: '#ccc', fontSize: 13,
+        background: 'rgba(20,20,20,0.9)', padding: '8px 16px', borderRadius: 8,
+        color: '#fff', fontSize: 13, fontWeight: 600,
+        border: '1px solid rgba(255,255,255,0.1)',
       }}>
         🏠 {data.length} CT Foreclosures
       </div>
       <MapContainer
         center={CT_CENTER}
         zoom={9}
-        style={{ height: '100%', width: '100%' }}
+        style={{ height: '100%', width: '100%', background: '#1a1a2e' }}
         scrollWheelZoom={true}
       >
         <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>'
           url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
         />
         {data.map((f) => (
-          <Marker key={f.id} position={[f.lat, f.lng]}>
+          <CircleMarker
+            key={f.id}
+            center={[f.lat, f.lng]}
+            radius={7}
+            fillColor="#ff4757"
+            fillOpacity={0.85}
+            color="#fff"
+            weight={1.5}
+          >
             <Popup>
-              <div style={{ minWidth: 220, fontFamily: 'system-ui', fontSize: 13 }}>
-                <div style={{ fontWeight: 700, marginBottom: 6, fontSize: 14 }}>
+              <div style={{ minWidth: 240, fontFamily: 'system-ui', fontSize: 13, lineHeight: 1.5 }}>
+                <div style={{ fontWeight: 700, marginBottom: 8, fontSize: 14, color: '#1a1a2e' }}>
                   {f.address}
                 </div>
                 <div style={{ marginBottom: 4 }}>
@@ -101,20 +111,20 @@ export default function ForeclosureMap() {
                 <div style={{ marginBottom: 4 }}>
                   <strong>Type:</strong> {f.property_type || 'N/A'} — {f.sale_type || 'N/A'}
                 </div>
-                <div style={{ marginBottom: 4 }}>
+                <div style={{ marginBottom: 6 }}>
                   <strong>Town:</strong> {f.town}
                 </div>
                 <a
                   href={`${BASE_URL}?PostingId=${f.posting_id}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  style={{ color: '#4da6ff', textDecoration: 'underline' }}
+                  style={{ color: '#2e86de', fontWeight: 600, textDecoration: 'none' }}
                 >
                   View Full Notice →
                 </a>
               </div>
             </Popup>
-          </Marker>
+          </CircleMarker>
         ))}
       </MapContainer>
     </div>

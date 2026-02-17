@@ -44,7 +44,7 @@ interface UsageData {
 interface GroupRow { value: unknown; count: number }
 interface ActiveFilter { id: string; column: string; operator: string; value: string; value2?: string }
 
-import ForeclosureMap from './ForeclosureMap'
+const ForeclosureMap = React.lazy(() => import('./ForeclosureMap'))
 
 type Page = 'home' | 'explorer' | 'query' | 'map'
 type SortDir = 'asc' | 'desc' | null
@@ -1008,7 +1008,9 @@ export default function App() {
             height: 'calc(100vh - 100px)',
             borderRadius: 10, overflow: 'hidden',
           }}>
-            <ForeclosureMap />
+            <React.Suspense fallback={<div style={{ color: '#aaa', padding: 40 }}>Loading map...</div>}>
+              <ForeclosureMap />
+            </React.Suspense>
           </div>
         )}
       </div>
