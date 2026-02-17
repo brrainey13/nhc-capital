@@ -498,39 +498,21 @@ async def nl_query(req: NLQueryRequest):
     schema_text = await _get_db_schema_text()
     model = os.environ.get("NL_QUERY_MODEL", "openrouter/free")
 
-    # ── Pass 1: Generate SQL ──
-    system_msg = f"""You convert questions into PostgreSQL SELECT queries.
-Output ONLY the SQL. No explanation, no markdown.
+    # Single-pass: generate SQL and execute it
+    system_msg = f"""You convert natural language questions into PostgreSQL SELECT queries.
+Output ONLY the SQL query. No explanation, no markdown, no commentary.
+Always add LIMIT 500 unless the user specifies a limit.
+Only use tables and columns from the schema below.
 
 Schema:
 {schema_text}"""
 
-    few_shot = [
+    messages = [
         {"role": "system", "content": system_msg},
-        {"role": "user", "content": "show all teams"},
-        {"role": "assistant", "content": 'SELECT * FROM teams LIMIT 500;'},
-        {"role": "user", "content": "top 5 goalies by saves"},
-        {
-            "role": "assistant",
-            "content": (
-                "SELECT player_id, SUM(saves) AS total_saves "
-                "FROM goalie_stats GROUP BY player_id "
-                "ORDER BY total_saves DESC LIMIT 5;"
-            ),
-        },
-        {"role": "user", "content": "how many games per team"},
-        {
-            "role": "assistant",
-            "content": (
-                "SELECT home_team_id AS team_id, COUNT(*) AS games "
-                "FROM games GROUP BY home_team_id "
-                "ORDER BY games DESC LIMIT 500;"
-            ),
-        },
         {"role": "user", "content": question},
     ]
 
-    generated_sql = await _openrouter_chat(api_key, model, few_shot)
+    generated_sql = await _openrouter_chat(api_key, model, messages)
 
     # Safety check
     if not _is_read_only_query(generated_sql):
@@ -543,43 +525,13 @@ Schema:
 
     columns = [str(k) for k in rows[0].keys()] if rows else []
     row_dicts = [dict(r) for r in rows]
-    row_count = len(row_dicts)
-
-    # ── Pass 2: Summarize results ──
-    # Build a compact preview of the data (first 20 rows) for the summary model
-    preview_rows = row_dicts[:20]
-    preview_text = json.dumps(preview_rows, default=str, indent=None)[:3000]
-
-    summary_prompt = f"""You are a data analyst. The user asked: "{question}"
-
-This SQL was run:
-{generated_sql}
-
-It returned {row_count} rows with columns: {', '.join(columns)}.
-
-Here is a preview of the data (up to 20 rows):
-{preview_text}
-
-Write a clear, concise summary (2-4 sentences) that:
-1. Directly answers the user's question
-2. Highlights key findings, patterns, or notable values
-3. Mentions the total row count if relevant
-
-Be specific — use actual numbers and names from the data. No SQL explanation needed."""
-
-    try:
-        summary = await _openrouter_chat(
-            api_key, model, [{"role": "user", "content": summary_prompt}], max_tokens=512
-        )
-    except Exception:
-        summary = None  # Non-fatal — we still have the data
 
     return {
         "sql": generated_sql,
         "columns": columns,
         "rows": row_dicts,
-        "row_count": row_count,
-        "summary": summary,
+        "row_count": len(row_dicts),
+        "summary": None,
     }
 
 
