@@ -44,7 +44,9 @@ interface UsageData {
 interface GroupRow { value: unknown; count: number }
 interface ActiveFilter { id: string; column: string; operator: string; value: string; value2?: string }
 
-type Page = 'home' | 'explorer' | 'query'
+import ForeclosureMap from './ForeclosureMap'
+
+type Page = 'home' | 'explorer' | 'query' | 'map'
 type SortDir = 'asc' | 'desc' | null
 
 /* ── Responsive hook ── */
@@ -817,10 +819,10 @@ export default function App() {
         <span style={{ fontWeight: 700, fontSize: mobile ? 15 : 16, marginRight: mobile ? 12 : 28, color: C.white, letterSpacing: '-0.02em', whiteSpace: 'nowrap' }}>
           NHC{!mobile && <span style={{ fontWeight: 400, color: C.textMuted }}> Admin</span>}
         </span>
-        {(['home', 'explorer', 'query'] as Page[]).map(p => {
+        {(['home', 'explorer', 'query', 'map'] as Page[]).map(p => {
           const labels = mobile
-            ? { home: '🏠', explorer: '📋', query: '⚡' }
-            : { home: '🏠 Home', explorer: '📋 Data', query: '⚡ Query' }
+            ? { home: '🏠', explorer: '📋', query: '⚡', map: '🗺️' }
+            : { home: '🏠 Home', explorer: '📋 Data', query: '⚡ Query', map: '🗺️ Map' }
           return (
             <button key={p} onClick={() => setPage(p)}
               style={{
@@ -999,6 +1001,13 @@ export default function App() {
 
         {/* QUERY */}
         {page === 'query' && <QueryPage mobile={mobile} />}
+
+        {/* MAP */}
+        {page === 'map' && (
+          <div style={{ height: '100%', borderRadius: 10, overflow: 'hidden' }}>
+            <ForeclosureMap />
+          </div>
+        )}
       </div>
     </div>
   )

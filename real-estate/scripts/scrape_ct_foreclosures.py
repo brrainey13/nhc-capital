@@ -16,6 +16,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
+from geocode_ct_foreclosures import clean_address, geocode_address
 from utils.db import get_connection
 
 BASE = "https://sso.eservices.jud.ct.gov/foreclosures/Public"
@@ -152,6 +153,8 @@ def create_table(conn):
                 check_amount NUMERIC(12,2),
                 full_notice TEXT,
                 heading TEXT,
+                lat DOUBLE PRECISION,
+                lng DOUBLE PRECISION,
                 scraped_at TIMESTAMPTZ DEFAULT NOW()
             );
         """)
@@ -163,20 +166,21 @@ def upsert_listing(conn, data):
         cur.execute("""
             INSERT INTO ct_foreclosures
                 (posting_id, town, docket_number, sale_date, sale_type, property_type,
-                 address, check_amount, full_notice, heading, scraped_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+                 address, check_amount, full_notice, heading, lat, lng, scraped_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
             ON CONFLICT (posting_id) DO UPDATE SET
                 town=EXCLUDED.town, docket_number=EXCLUDED.docket_number,
                 sale_date=EXCLUDED.sale_date, sale_type=EXCLUDED.sale_type,
                 property_type=EXCLUDED.property_type, address=EXCLUDED.address,
                 check_amount=EXCLUDED.check_amount, full_notice=EXCLUDED.full_notice,
-                heading=EXCLUDED.heading, scraped_at=NOW()
+                heading=EXCLUDED.heading, lat=EXCLUDED.lat, lng=EXCLUDED.lng, scraped_at=NOW()
         """, (
             data.get("posting_id"), data.get("town"), data.get("docket_number"),
             data.get("sale_date"), data.get("sale_type"), data.get("property_type"),
             data.get("address"),
             float(data["check_amount"]) if data.get("check_amount") else None,
             data.get("full_notice"), data.get("heading"),
+            data.get("lat"), data.get("lng"),
         ))
     conn.commit()
 
@@ -213,6 +217,14 @@ def main():
                     time.sleep(0.5)  # be polite
                     notice = parse_full_notice(posting_id)
                     # Merge
+                    # Geocode the address
+                    lat, lng = None, None
+                    addr = notice.get("address")
+                    if addr:
+                        clean = clean_address(addr, town)
+                        lat, lng = geocode_address(clean)
+                        time.sleep(1.1)  # Nominatim rate limit
+
                     record = {
                         "posting_id": int(posting_id),
                         "town": town,
@@ -224,6 +236,8 @@ def main():
                         "check_amount": notice.get("check_amount"),
                         "full_notice": notice.get("full_notice"),
                         "heading": notice.get("heading"),
+                        "lat": lat,
+                        "lng": lng,
                     }
                     with get_connection() as conn:
                         upsert_listing(conn, record)
