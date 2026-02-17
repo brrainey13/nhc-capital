@@ -447,7 +447,7 @@ function DataTable({ tableName, mobile }: { tableName: string; mobile: boolean }
       {mobile ? (
         <MobileCardList data={displayData} columns={columns} />
       ) : (
-        <div ref={tableContainerRef} className="scroll-visible" style={{ flex: 1, overflow: 'auto', border: `1px solid ${C.border}`, borderRadius: 8, background: C.surface, minHeight: 0 }}>
+        <div ref={tableContainerRef} className="scroll-visible" style={{ flex: '1 1 0', overflow: 'auto', border: `1px solid ${C.border}`, borderRadius: 8, background: C.surface, minHeight: 0, marginBottom: 24 }}>
           <table style={{ minWidth: columns.length * 160, borderCollapse: 'collapse', fontSize: 12 }}>
             <thead style={{ position: 'sticky', top: 0, zIndex: 1 }}>
               <tr>
