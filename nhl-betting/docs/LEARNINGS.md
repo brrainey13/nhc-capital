@@ -401,4 +401,48 @@ Statistically significant (p=0.000001) across the full dataset.
 - Table: `sog_odds` — 2,536 test rows loaded, full 4-season scrape running (~60-90 min)
 - Will join with actual SOG data once complete to verify against real lines
 
+---
+
+## ⭐ TEAM SOG TOTALS: The Real Edge (2026-02-16)
+
+### The Breakthrough
+Rainman's insight: don't bet individual player SOG or goalie saves — bet **team shot totals**. The full +1.44 team-level shot boost from D absences concentrates into one bet. No goalie pull risk. No splitting across 12 forwards.
+
+### Results: POSITIVE ROI ACROSS ALL 4 SEASONS
+
+| Season | Line | ROI (Opp 3+D over) | Win% | N |
+|--------|------|-------------------|------|-----|
+| 2022-23 | 30.5 | **+5.6%** | 55.3% | 1,012 |
+| 2023-24 | 29.5 | **+7.0%** | 56.0% | 1,128 |
+| 2024-25 | 27.5 | **+6.9%** | 56.0% | 1,068 |
+| 2025-26 | 26.5 | **+12.7%** | 59.0% | 505 |
+
+**Combined: 3,713 bets across 4 seasons, all positive.**
+
+This is the first strategy that survived cross-season validation.
+
+### The Numbers
+- D absences boost opponent team SOG by **+1.44 shots** (3+ D missing vs 0-1)
+- Over rate boost: **+9.8 percentage points** at any line level
+- Consistent across every season (Δ +0.65 to +1.86)
+- Statistically significant: t=8.82, p<0.00000001, Cohen's d=0.21
+
+### Why This Edge Exists
+1. Books set team SOG lines based on team averages and matchup strength
+2. They partially price in injuries but **not the cumulative D TOI impact**
+3. The +1.44 shot boost is enough to shift the over rate from ~50% to ~57-59%
+4. At -110 odds, you need 52.4% to break even — we're at 55-59%
+
+### Market Availability
+- **BettingPros does NOT have team SOG totals** (only goals)
+- Need to verify: DraftKings, FanDuel, BetMGM, PrizePicks for "team shots" props
+- Some books offer this as "team shot attempts" or "team shots on goal"
+- DFS sites (PrizePicks, Underdog) may offer team-level shot props
+
+### Next Steps
+1. **Find where to bet team SOG totals** — check books manually
+2. **Build real-time pipeline**: scrape D absences → flag games → alert team
+3. **Forward-test Feb 26+** when NHL resumes
+4. If no book offers team SOG totals, explore: can we construct it via correlated player SOG parlays?
+
 *Updated: 2026-02-16*
