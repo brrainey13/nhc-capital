@@ -1,4 +1,4 @@
-const CACHE = 'nhc-v1'
+const CACHE = 'nhc-v2'
 const PRECACHE = ['/', '/manifest.json']
 
 self.addEventListener('install', e => {
