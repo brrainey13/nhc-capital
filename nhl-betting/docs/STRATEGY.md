@@ -1,80 +1,63 @@
-# STRATEGY.md - NHL Betting Strategy Lab
+# Goalie Saves O/U Strategy Log
 
-Active strategy testing log. Each strategy gets tested, audited, and scored.
-Read LEARNINGS.md before proposing any new strategy.
-
----
-
-## Strategy #1: Top-Line Forward SOG vs Depleted D Corps
-
-**Date:** 2026-02-17
-**Status:** ⚠️ PROMISING BUT FRAGILE — needs real odds validation
-**Hypothesis:** When a team is missing 3+ defensemen, the opposing top-line forwards absorb a disproportionate share of the extra shots because coaches match their best players against weak replacement D.
-
-### The Signal
-
-| Forward Type | Opp 0-1D Missing | Opp 3+D Missing | Boost | Concentration |
-|---|---|---|---|---|
-| Top-3 FWD (by TOI) | 2.878 avg SOG | 3.012 avg SOG | **+0.134** | 1.7x vs avg FWD |
-| Top-1 FWD only | 2.998 avg SOG | 3.160 avg SOG | **+0.162** | 2.1x vs avg FWD |
-| Other forwards | 2.055 avg SOG | 2.132 avg SOG | +0.077 | baseline |
-
-**Top-1 forwards facing 3+ D missing:**
-- Over 2.5 SOG rate: 58.5% (vs 53.2% baseline) → **+5.3pp boost**
-- Over 3.5 SOG rate: 35.9% (vs 32.8% baseline) → +3.1pp boost
-- Statistical significance: t=4.914, p=0.000001
-
-### The Problem: Book Lines
-
-The over 2.5 SOG line is NOT realistic for most top-line forwards. Actual book lines from our `sog_odds` data:
-
-| Player | Avg Book Line |
-|---|---|
-| MacKinnon | 4.5 |
-| Pastrnak | 4.5 |
-| Matthews | 4.3 |
-| J. Hughes | 3.8 |
-| McDavid | 3.5 |
-| Most top-line FWDs | **3.0 - 3.5** |
-
-Books set lines at 3.0-4.5 for these players, not 2.5. Our "edge" exists at 2.5, which is below where books actually price them.
-
-### Cross-Season Validation (over 2.5 — NOT at book lines)
-
-| Season | Baseline | 3+D Missing | Boost | ROI@-110 |
-|---|---|---|---|---|
-| 2022-23 | 53.8% | 56.6% | +2.8pp | **+8.0%** ✅ |
-| 2023-24 | 54.0% | 56.3% | +2.3pp | **+7.5%** ✅ |
-| 2024-25 | 48.2% | 50.3% | +2.0pp | -4.1% ❌ |
-| 2025-26 | 48.2% | 53.6% | +5.4pp | **+2.3%** ✅ |
-
-3 of 4 seasons positive. 2024-25 is the weak link.
-
-### Compound Conditions
-
-| Filter | N | Over 2.5% | ROI@-110 |
-|---|---|---|---|
-| 3+D missing (all) | 7,380 | 54.3% | +3.7% |
-| 3+D missing + HOME | 3,722 | 56.0% | **+6.8%** |
-| 3+D missing + AWAY | 3,658 | 52.7% | +0.5% |
-
-### Verdict
-
-**The concentration effect is REAL (1.7-2.1x).** Top-line forwards get a measurably larger SOG boost when facing depleted D. But:
-
-1. **+0.134 boost (top-3) or +0.162 (top-1) is still too small** to reliably clear the gap between a player's actual average and their book line
-2. **Books set SOG lines at 3.0-4.5 for these players**, not 2.5. At the 3.5 line, the over rate only goes from 32.8% to 35.9% — deeply unprofitable
-3. **Not all 4 seasons positive** even at the generous 2.5 line
-
-**Next step:** Once full `player_odds` scrape finishes, test against ACTUAL per-player book lines. The edge might exist for players at the lower end of top-line (line=2.5) where the +0.134 boost matters more proportionally.
-
-### What Would Make This Work
-- Find players with book line of 2.5 who are top-3 on their team in TOI
-- These players' baseline over rate is ~50-52% at their book line
-- 3+D opponent boost pushes them to 54-56%
-- That's barely profitable at -110 (need 52.4%)
-- **Margin is razor thin. May not survive juice differences across books.**
+## Baseline (existing model)
+- 2795 samples, 110 features, 3-season walk-forward validation
+- Top shot features: sa_avg_10, opp_sog_season_avg, own_def_missing_toi
+- Top svpct features: svpct_avg_10, own_def_missing_toi, svpct_season_avg
 
 ---
 
-*Next strategy due: 30 min*
+## Round 1 — 2026-02-17 11:52
+- **S1: Baseline LightGBM**: 🔴 Avg ROI: -7.0%, Win rate: 50%, Bets: 4254
+- **S2: Corsi for shot prediction**: 🔴 Avg ROI: -8.7%, Win rate: 49%, Bets: 4254
+- **S3: Possession proxy saves**: 🔴 Avg ROI: -10.2%, Win rate: 48%, Bets: 4254
+- **S4: High Corsi quartile over/under**: 🔴 Avg ROI: -0.8%, Win rate: 53%, Bets: 1063
+- **S5: Rest days B2B filter**: 🔴 Avg ROI: -4.2%, Win rate: 52%, Bets: 899
+
+## Round 2 — 2026-02-17 12:22
+- **S6: Line movement signal**: 🔴 Avg ROI: -9.9%, Win rate: 48%, Bets: 260
+- **S7: SvPct mean reversion**: 🔴 Avg ROI: -8.4%, Win rate: 49%, Bets: 1112
+- **S8: Opponent missing D**: 🔴 Avg ROI: -6.5%, Win rate: 50%, Bets: 1536
+- **S9: Full Corsi LightGBM**: 🔴 Avg ROI: -4.0%, Win rate: 52%, Bets: 4254
+- **S10: Pull probability under**: 🔴 Avg ROI: -2.8%, Win rate: 52%, Bets: 1009
+
+## Round 3 — 2026-02-17 12:52
+- **S11: Extreme lines regression**: 🔴 Avg ROI: -12.1%, Win rate: 48%, Bets: 994
+- **S12: Corsi diff threshold**: 🔴 Avg ROI: -0.1%, Win rate: 54%, Bets: 1053
+- **S13: Faceoff possession proxy**: No valid data.
+- **S14: Saves vs line gap**: 🔴 Avg ROI: -3.1%, Win rate: 52%, Bets: 2013
+- **S15: Home/away split**: 🔴 Avg ROI: -8.0%, Win rate: 50%, Bets: 2125
+
+## Stacked Filters — 2026-02-17 13:01
+
+### ✅ Pure Filter Winners (all splits positive)
+- **UNDER low_corsi_diff + line_dropped**: ROI +40.2%, Win 75%, 32 bets
+- **UNDER low_corsi_diff + saves_below_line + line_dropped**: ROI +38.4%, Win 74%, 31 bets
+- **OVER high_corsi + high_corsi_diff + good_puck_control**: ROI +8.8%, Win 59%, 98 bets
+- **OVER high_corsi_diff + own_d_missing + good_puck_control**: ROI +5.7%, Win 58%, 99 bets
+- **OVER high_corsi + good_puck_control**: ROI +5.6%, Win 58%, 106 bets
+
+### ✅ Model + Filter Winners (all splits positive)
+- **UNDER model(gap>=2) + low_corsi_diff**: ROI +27.9%, Win 69%, 119 bets
+- **UNDER model(gap>=2) + b2b**: ROI +23.0%, Win 66%, 89 bets
+- **UNDER model(gap>=2) + low_corsi**: ROI +21.3%, Win 66%, 124 bets
+- **UNDER model(gap>=1) + low_corsi**: ROI +16.4%, Win 63%, 197 bets
+- **UNDER model(gap>=1.5) + low_corsi**: ROI +15.8%, Win 63%, 150 bets
+
+## Validation Diagnostics — 2026-02-17 16:07
+See validation_diagnostics.md for full report.
+- 2/5 strategies pass all stability checks
+- ⚠️ 4 high-overlap pairs detected
+
+## Optimization Results — 2026-02-17 16:54
+### Gap Distribution
+- MF3 [1.0-1.5): 47 bets, 72.3% win, +34.3% ROI
+- MF3 [1.5-2.0): 26 bets, 61.5% win, +13.6% ROI
+- MF3 [2.0-2.5): 32 bets, 46.9% win, -13.3% ROI
+- MF3 [2.5+]: 92 bets, 65.2% win, +20.6% ROI
+- MF2 [2.0-2.5): 29 bets, 58.6% win, +8.9% ROI
+- MF2 [2.5-3.0): 17 bets, 88.2% win, +62.9% ROI
+- MF2 [3.0+]: 43 bets, 58.1% win, +8.1% ROI
+
+### Optimal Corsi Threshold
+- Best: bottom 30%, gap≥1.0 → 233 bets, +16.0% ROI
