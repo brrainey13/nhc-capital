@@ -1,0 +1,16 @@
+# SODA API config for Cook County Open Data.
+# App token from https://datacatalog.cookcountyil.gov/ (sign up for API token).
+
+base_url: "https://datacatalog.cookcountyil.gov/resource"
+# Set via env SODA_APP_TOKEN in production; fallback for local dev only.
+# app_token: "your-app-token"
+
+datasets:
+  parcel_universe:
+    id: "nj4t-kc8j"
+    order: "pin"
+  parcel_sales:
+    id: "wvhk-k5uv"
+    order: "sale_date DESC"
+
+# Commercial valuations: from CSV (Assessor_-_Commercial_Valuation_Data_*.csv), not API.
