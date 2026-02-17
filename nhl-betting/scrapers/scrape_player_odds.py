@@ -11,7 +11,6 @@ Also scrapes team-level markets:
 
 Stores in player_odds and team_odds tables.
 """
-import os
 import subprocess
 import sys
 import time

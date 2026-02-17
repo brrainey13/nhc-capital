@@ -1,10 +1,7 @@
 """
 Fast bulk scraper — uses psycopg2 for batch inserts, only hits dates with known games.
 """
-import subprocess
-import sys
 import time
-from datetime import datetime
 
 import psycopg2
 import psycopg2.extras
@@ -224,7 +221,10 @@ def bulk_insert_teams(rows):
 
 def get_game_dates():
     with conn.cursor() as cur:
-        cur.execute("SELECT DISTINCT game_date::date FROM games WHERE game_type IN (2,3) AND game_state='OFF' ORDER BY game_date")
+        cur.execute(
+            "SELECT DISTINCT game_date::date FROM games"
+            " WHERE game_type IN (2,3) AND game_state='OFF' ORDER BY game_date"
+        )
         return [str(r[0]) for r in cur.fetchall()]
 
 
