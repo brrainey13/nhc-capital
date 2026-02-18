@@ -823,7 +823,7 @@ export default function App() {
         {(['home', 'explorer', 'query', 'map', 'charts'] as Page[]).map(p => {
           const labels = mobile
             ? { home: '🏠', explorer: '📋', query: '⚡', map: '🗺️', charts: '📊' }
-            : { home: '🏠 Home', explorer: '📋 Data', query: '⚡ Query', map: '🗺️ Foreclosure Listings', charts: '📊 Sales' }
+            : { home: '🏠 Home', explorer: '📋 Data', query: '⚡ Query', map: '🗺️ Foreclosure Listings', charts: '📊 Foreclosure Sales Comps' }
           return (
             <button key={p} onClick={() => setPage(p)}
               style={{
