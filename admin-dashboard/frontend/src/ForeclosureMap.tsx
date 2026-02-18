@@ -13,6 +13,7 @@ interface Foreclosure {
   property_type: string;
   lat: number;
   lng: number;
+  photo_url: string | null;
 }
 
 const BASE_URL = 'https://sso.eservices.jud.ct.gov/foreclosures/Public/PendPostDetailPublic.aspx';
@@ -99,6 +100,13 @@ export default function ForeclosureMap() {
           >
             <Popup>
               <div style={{ minWidth: 240, fontFamily: 'system-ui', fontSize: 13, lineHeight: 1.5 }}>
+                {f.photo_url && (
+                  <img
+                    src={f.photo_url}
+                    alt={f.address}
+                    style={{ width: '100%', maxHeight: 160, objectFit: 'cover', borderRadius: 6, marginBottom: 8 }}
+                  />
+                )}
                 <div style={{ fontWeight: 700, marginBottom: 8, fontSize: 14, color: '#1a1a2e' }}>
                   {f.address}
                 </div>

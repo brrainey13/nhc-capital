@@ -127,6 +127,12 @@ def parse_full_notice(posting_id):
     if m2:
         check_amount = m2.group(1).replace(',', '')
 
+    # Photo URL
+    photo_url = None
+    m_photo = re.search(r'src="\.\./?(ForeclosureUploads/[^"]+)"', html)
+    if m_photo:
+        photo_url = f"{BASE}/{m_photo.group(1)}"
+
     return {
         "sale_date": sale_date,
         "heading": heading,
@@ -135,6 +141,7 @@ def parse_full_notice(posting_id):
         "property_type": property_type,
         "check_amount": check_amount,
         "full_notice": body,
+        "photo_url": photo_url,
     }
 
 def create_table(conn):
@@ -166,21 +173,22 @@ def upsert_listing(conn, data):
         cur.execute("""
             INSERT INTO ct_foreclosures
                 (posting_id, town, docket_number, sale_date, sale_type, property_type,
-                 address, check_amount, full_notice, heading, lat, lng, scraped_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+                 address, check_amount, full_notice, heading, lat, lng, photo_url, scraped_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
             ON CONFLICT (posting_id) DO UPDATE SET
                 town=EXCLUDED.town, docket_number=EXCLUDED.docket_number,
                 sale_date=EXCLUDED.sale_date, sale_type=EXCLUDED.sale_type,
                 property_type=EXCLUDED.property_type, address=EXCLUDED.address,
                 check_amount=EXCLUDED.check_amount, full_notice=EXCLUDED.full_notice,
-                heading=EXCLUDED.heading, lat=EXCLUDED.lat, lng=EXCLUDED.lng, scraped_at=NOW()
+                heading=EXCLUDED.heading, lat=EXCLUDED.lat, lng=EXCLUDED.lng,
+                photo_url=EXCLUDED.photo_url, scraped_at=NOW()
         """, (
             data.get("posting_id"), data.get("town"), data.get("docket_number"),
             data.get("sale_date"), data.get("sale_type"), data.get("property_type"),
             data.get("address"),
             float(data["check_amount"]) if data.get("check_amount") else None,
             data.get("full_notice"), data.get("heading"),
-            data.get("lat"), data.get("lng"),
+            data.get("lat"), data.get("lng"), data.get("photo_url"),
         ))
     conn.commit()
 
@@ -238,6 +246,7 @@ def main():
                         "heading": notice.get("heading"),
                         "lat": lat,
                         "lng": lng,
+                        "photo_url": notice.get("photo_url"),
                     }
                     with get_connection() as conn:
                         upsert_listing(conn, record)
