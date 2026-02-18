@@ -1,5 +1,8 @@
 # CLAUDE.md — Real Estate
 
+
+> ⚠️ **All changes must go through Merge Requests on GitLab.** Never push to `main` directly. See root `CLAUDE.md` for the full PR workflow.
+
 Read `docs/real-estate.md` for project status and data sources.
 
 ## Quick Context

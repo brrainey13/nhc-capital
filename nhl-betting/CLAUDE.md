@@ -1,5 +1,8 @@
 # CLAUDE.md — NHL Betting
 
+
+> ⚠️ **All changes must go through Merge Requests on GitLab.** Never push to `main` directly. See root `CLAUDE.md` for the full PR workflow.
+
 Read `docs/nhl-betting.md` for full schema, scraper docs, and project status.
 
 ## Quick Context

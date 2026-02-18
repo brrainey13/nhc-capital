@@ -1,5 +1,8 @@
 # CLAUDE.md — Admin Dashboard
 
+
+> ⚠️ **All changes must go through Merge Requests on GitLab.** Never push to `main` directly. See root `CLAUDE.md` for the full PR workflow.
+
 Read `docs/admin-dashboard.md` for full architecture, endpoints, and deploy process.
 
 ## Quick Context

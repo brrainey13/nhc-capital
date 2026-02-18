@@ -39,7 +39,8 @@ Then read the `CLAUDE.md` inside whichever project subfolder you're working in (
 │   ├── risk-classifier           ← Classifies changed files by risk tier
 │   └── pr-discord-notify         ← Generates Discord Components v2 PR cards
 ├── .claude/commands/             ← Slash commands (/build, /commit, /fix, /docs)
-├── .github/workflows/
+├── .gitlab-ci.yml                ← GitLab CI pipeline (primary — branch protection enforced)
+├── .github/workflows/            ← GitHub Actions (mirror — kept for compatibility)
 │   ├── ci.yml                    ← Full CI (infra/shared changes)
 │   ├── ci-projects.yml           ← Path-filtered: NHL/Poly/RE only
 │   ├── ci-dashboard.yml          ← Path-filtered: dashboard only
@@ -92,8 +93,9 @@ git checkout -b feat/your-feature-name
 scripts/committer "feat: description" file1 file2 ...
 git push -u origin feat/your-feature-name
 
-# 5. Open a PR
-gh pr create --title "feat: description" --body "What and why"
+# 5. Open a merge request
+glab mr create --title "feat: description" --description "What and why"
+# OR via GitHub (mirror): gh pr create --title "feat: description" --body "What and why"
 ```
 
 ### What happens on PR:
@@ -123,8 +125,10 @@ must update the admin dashboard to verify compatibility. The risk gate will flag
 7. Write code to pass tests
 8. `make ci` (ruff lint + pytest) — must pass
 9. `scripts/committer "feat: description" file1 file2 ...` — never `git add .`
-10. `git push -u origin feat/your-task` — push branch
-11. `gh pr create` — open PR, wait for checks
+10. `git push -u gitlab feat/your-task` — push branch to GitLab
+11. `glab mr create` — open merge request, wait for CI pipeline
+    - GitLab enforces: pipeline must pass + all discussions resolved before merge
+    - Direct pushes to `main` are blocked at the platform level
 
 ## Deployment — CRITICAL RULE
 

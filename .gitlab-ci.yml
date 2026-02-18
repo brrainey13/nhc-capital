@@ -1,0 +1,209 @@
+stages:
+  - gate
+  - test
+  - notify
+
+variables:
+  POSTGRES_USER: connorrainey
+  POSTGRES_DB: nhl_betting
+  POSTGRES_HOST_AUTH_METHOD: trust
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.pip-cache"
+
+cache:
+  paths:
+    - .pip-cache/
+
+# ─── Risk Policy Gate (runs first on every MR) ───────────────────────
+
+risk-policy-gate:
+  stage: gate
+  image: python:3.11-slim
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+  script:
+    - |
+      echo "=== Risk Policy Gate ==="
+      RESULT=$(python3 scripts/risk-classifier $CI_MERGE_REQUEST_DIFF_BASE_SHA 2>/dev/null || echo '{"tier":"low","requiredChecks":["risk-policy-gate"]}')
+      TIER=$(echo "$RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('tier','low'))")
+      echo "RISK_TIER=$TIER" >> gate.env
+      echo "Risk tier: $TIER"
+      echo "$RESULT" | python3 -m json.tool || true
+  artifacts:
+    reports:
+      dotenv: gate.env
+
+# ─── Lint (all code) ─────────────────────────────────────────────────
+
+lint:
+  stage: test
+  image: python:3.11-slim
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+  script:
+    - pip install -q ruff
+    - ruff check .
+
+# ─── Docs Guard ──────────────────────────────────────────────────────
+
+docs-guard:
+  stage: test
+  image: python:3.11-slim
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+  script:
+    - python3 scripts/docs-guard
+
+# ─── Test Projects (NHL, Polymarket, Real Estate) ────────────────────
+
+test-projects:
+  stage: test
+  image: python:3.11-slim
+  services:
+    - name: postgres:17
+      alias: postgres
+      variables:
+        POSTGRES_USER: connorrainey
+        POSTGRES_DB: nhl_betting
+        POSTGRES_HOST_AUTH_METHOD: trust
+  variables:
+    DATABASE_URL: "postgresql://connorrainey@postgres:5432/nhl_betting"
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
+        - nhl-betting/**/*
+        - polymarket/**/*
+        - real-estate/**/*
+        - pyproject.toml
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      changes:
+        - nhl-betting/**/*
+        - polymarket/**/*
+        - real-estate/**/*
+  script:
+    - pip install -q pytest ruff httpx asyncpg psycopg2-binary requests python-dotenv
+    - |
+      apt-get update -qq && apt-get install -y -qq postgresql-client > /dev/null 2>&1
+      psql "postgresql://connorrainey@postgres:5432/nhl_betting" -c "
+        CREATE TABLE IF NOT EXISTS teams (
+          team_id integer PRIMARY KEY, tri_code text UNIQUE, team_name text,
+          team_name_fr text, conference_name text, division_name text,
+          active integer DEFAULT 1, last_updated text DEFAULT 'CURRENT_TIMESTAMP'
+        );
+        INSERT INTO teams (team_id, tri_code, team_name, conference_name, division_name) VALUES
+          (1, 'BOS', 'Bruins', 'Eastern', 'Atlantic'),
+          (2, 'NYR', 'Rangers', 'Eastern', 'Metropolitan'),
+          (3, 'MTL', 'Canadiens', 'Eastern', 'Atlantic'),
+          (4, 'TOR', 'Maple Leafs', 'Eastern', 'Atlantic'),
+          (5, 'CHI', 'Blackhawks', 'Western', 'Central')
+        ON CONFLICT DO NOTHING;
+      "
+    - pytest nhl-betting/ polymarket/ real-estate/ -v --tb=short
+
+# ─── Test Dashboard (Backend + Frontend Build) ───────────────────────
+
+test-dashboard:
+  stage: test
+  image: python:3.11-slim
+  services:
+    - name: postgres:17
+      alias: postgres
+      variables:
+        POSTGRES_USER: connorrainey
+        POSTGRES_DB: nhl_betting
+        POSTGRES_HOST_AUTH_METHOD: trust
+  variables:
+    DATABASE_URL: "postgresql://connorrainey@postgres:5432/nhl_betting"
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
+        - admin-dashboard/**/*
+        - scripts/deploy-dashboard
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      changes:
+        - admin-dashboard/**/*
+  script:
+    - pip install -q pytest ruff httpx pytest-asyncio asyncpg fastapi uvicorn pydantic python-dotenv
+    - |
+      apt-get update -qq && apt-get install -y -qq postgresql-client nodejs npm > /dev/null 2>&1
+      psql "postgresql://connorrainey@postgres:5432/nhl_betting" -c "
+        CREATE TABLE IF NOT EXISTS teams (
+          team_id integer PRIMARY KEY, tri_code text UNIQUE, team_name text,
+          team_name_fr text, conference_name text, division_name text,
+          active integer DEFAULT 1, last_updated text DEFAULT 'CURRENT_TIMESTAMP'
+        );
+        INSERT INTO teams (team_id, tri_code, team_name, conference_name, division_name) VALUES
+          (1, 'BOS', 'Bruins', 'Eastern', 'Atlantic'),
+          (2, 'NYR', 'Rangers', 'Eastern', 'Metropolitan')
+        ON CONFLICT DO NOTHING;
+      "
+    - ruff check admin-dashboard/
+    - pytest admin-dashboard/ -v --tb=short
+    - cd admin-dashboard/frontend && npm ci && npm run build
+
+# ─── Test Full Suite (infra/shared changes) ──────────────────────────
+
+test-full:
+  stage: test
+  image: python:3.11-slim
+  services:
+    - name: postgres:17
+      alias: postgres
+      variables:
+        POSTGRES_USER: connorrainey
+        POSTGRES_DB: nhl_betting
+        POSTGRES_HOST_AUTH_METHOD: trust
+  variables:
+    DATABASE_URL: "postgresql://connorrainey@postgres:5432/nhl_betting"
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
+        - scripts/**/*
+        - Makefile
+        - pyproject.toml
+        - risk-policy.json
+        - .gitlab-ci.yml
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      changes:
+        - scripts/**/*
+        - Makefile
+        - pyproject.toml
+  script:
+    - pip install -q pytest ruff httpx pytest-asyncio asyncpg fastapi uvicorn pydantic python-dotenv psycopg2-binary requests
+    - |
+      apt-get update -qq && apt-get install -y -qq postgresql-client > /dev/null 2>&1
+      psql "postgresql://connorrainey@postgres:5432/nhl_betting" -c "
+        CREATE TABLE IF NOT EXISTS teams (
+          team_id integer PRIMARY KEY, tri_code text UNIQUE, team_name text,
+          team_name_fr text, conference_name text, division_name text,
+          active integer DEFAULT 1, last_updated text DEFAULT 'CURRENT_TIMESTAMP'
+        );
+        INSERT INTO teams (team_id, tri_code, team_name, conference_name, division_name) VALUES
+          (1, 'BOS', 'Bruins', 'Eastern', 'Atlantic'),
+          (2, 'NYR', 'Rangers', 'Eastern', 'Metropolitan'),
+          (3, 'MTL', 'Canadiens', 'Eastern', 'Atlantic'),
+          (4, 'TOR', 'Maple Leafs', 'Eastern', 'Atlantic'),
+          (5, 'CHI', 'Blackhawks', 'Western', 'Central')
+        ON CONFLICT DO NOTHING;
+      "
+    - pytest -v --tb=short
+
+# ─── Discord Notification (main branch only) ─────────────────────────
+
+discord-notify:
+  stage: notify
+  image: alpine:latest
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      when: always
+  script:
+    - apk add --no-cache curl git
+    - |
+      if [ "$CI_JOB_STATUS" = "success" ]; then EMOJI="✅"; COLOR="3066993"; else EMOJI="❌"; COLOR="15158332"; fi
+      COMMIT_MSG=$(git log -1 --pretty=%s)
+      COMMIT_SHA=$(git log -1 --pretty=%h)
+      RUN_URL="$CI_PIPELINE_URL"
+      curl -s -H "Content-Type: application/json" \
+        -d "{\"embeds\":[{\"title\":\"${EMOJI} CI: ${COMMIT_MSG}\",\"description\":\"**Status:** $CI_JOB_STATUS\\n**Commit:** \`${COMMIT_SHA}\`\\n**Pipeline:** [View logs](${RUN_URL})\",\"color\":${COLOR}}]}" \
+        "$DISCORD_WEBHOOK"
