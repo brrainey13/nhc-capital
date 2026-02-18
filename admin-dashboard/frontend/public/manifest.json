@@ -1,6 +1,6 @@
 {
-  "name": "NHC Admin Dashboard",
-  "short_name": "NHC Admin",
+  "name": "NHC Admin",
+  "short_name": "NHC",
   "description": "NH Capital Admin Dashboard",
   "start_url": "/",
   "display": "standalone",

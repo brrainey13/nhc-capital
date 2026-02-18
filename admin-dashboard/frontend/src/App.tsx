@@ -163,9 +163,9 @@ function nextFilterId() { return `f${++filterId}` }
 
 /* ── Combo Box (dropdown + free text) ── */
 
-function ComboBox({ value, onChange, tableName, column, placeholder, inputType, style: outerStyle }: {
+function ComboBox({ value, onChange, tableName, column, placeholder, inputType, style: outerStyle, mobile }: {
   value: string; onChange: (v: string) => void; tableName: string; column: string
-  placeholder?: string; inputType?: string; style?: React.CSSProperties
+  placeholder?: string; inputType?: string; style?: React.CSSProperties; mobile?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const [options, setOptions] = useState<string[]>([])
@@ -204,21 +204,24 @@ function ComboBox({ value, onChange, tableName, column, placeholder, inputType, 
       <input type={inputType || 'text'} value={value} placeholder={placeholder || 'Value'}
         onFocus={() => setOpen(true)}
         onChange={e => { onChange(e.target.value); setOpen(true) }}
-        style={{ ...inputDark, width: '100%', boxSizing: 'border-box' }} />
+        style={{ ...inputDark, width: '100%', boxSizing: 'border-box', height: mobile ? 44 : undefined }} />
       {open && (
         <div style={{
           position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 2, zIndex: 30,
           background: C.surface, border: `1px solid ${C.border}`, borderRadius: 6,
-          boxShadow: '0 6px 20px rgba(0,0,0,0.4)', maxHeight: 200, overflowY: 'auto',
+          boxShadow: '0 6px 20px rgba(0,0,0,0.4)', maxHeight: mobile ? 260 : 200, overflowY: 'auto',
+          WebkitOverflowScrolling: 'touch' as unknown as undefined,
         }}>
           {loading && <div style={{ padding: '8px 12px', fontSize: 11, color: C.textMuted }}>Loading…</div>}
           {!loading && options.length === 0 && <div style={{ padding: '8px 12px', fontSize: 11, color: C.textMuted }}>No values</div>}
           {options.map((opt, i) => (
             <button key={i} onClick={() => { onChange(opt); setOpen(false) }}
               style={{
-                width: '100%', padding: '7px 12px', background: 'transparent', border: 'none',
+                width: '100%', padding: mobile ? '12px 12px' : '7px 12px',
+                minHeight: mobile ? 44 : undefined,
+                background: 'transparent', border: 'none',
                 borderBottom: i < options.length - 1 ? `1px solid ${C.border}` : 'none',
-                cursor: 'pointer', fontSize: 12, fontFamily: 'inherit', color: C.text, textAlign: 'left',
+                cursor: 'pointer', fontSize: mobile ? 14 : 12, fontFamily: 'inherit', color: C.text, textAlign: 'left',
               }}
               onMouseEnter={e => (e.currentTarget.style.background = C.surfaceHover)}
               onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
@@ -258,33 +261,61 @@ function FilterBar({ columns, typeMap, filters, onChange, mobile, tableName }: {
   function removeFilter(id: string) { onChange(filters.filter(f => f.id !== id)) }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: mobile ? 12 : 8 }}>
       {filters.map(f => {
         const dt = typeMap[f.column] || ''
         const ops = operatorsForType(dt)
         const isBetween = f.operator === 'between'
         const inputType = isNumericType(dt) ? 'number' : isDateType(dt) ? 'date' : 'text'
-        return (
+        return mobile ? (
+          <div key={f.id} style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '8px 0', borderBottom: `1px solid ${C.border}` }}>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <select value={f.column} onChange={e => updateFilter(f.id, { column: e.target.value })}
+                style={{ ...selectDark, flex: 1, height: 44, fontSize: 14 }}>
+                {columns.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+              <select value={f.operator} onChange={e => updateFilter(f.id, { operator: e.target.value })}
+                style={{ ...selectDark, width: 110, height: 44, fontSize: 14 }}>
+                {ops.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+              <button onClick={() => removeFilter(f.id)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 22, color: C.textMuted, padding: '4px 8px', lineHeight: 1, minWidth: 44, minHeight: 44, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
+            </div>
+            <ComboBox value={f.value} onChange={v => updateFilter(f.id, { value: v })}
+              tableName={tableName} column={f.column} placeholder={isBetween ? 'Min' : 'Value'}
+              inputType={inputType} mobile={true}
+              style={{ width: '100%' }} />
+            {isBetween && (
+              <>
+                <span style={{ fontSize: 12, color: C.textMuted, textAlign: 'center' }}>to</span>
+                <ComboBox value={f.value2 ?? ''} onChange={v => updateFilter(f.id, { value2: v })}
+                  tableName={tableName} column={f.column} placeholder="Max"
+                  inputType={inputType} mobile={true}
+                  style={{ width: '100%' }} />
+              </>
+            )}
+          </div>
+        ) : (
           <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
             <select value={f.column} onChange={e => updateFilter(f.id, { column: e.target.value })}
-              style={{ ...selectDark, flex: mobile ? '1 1 40%' : undefined, minWidth: mobile ? 0 : undefined }}>
+              style={{ ...selectDark }}>
               {columns.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
             <select value={f.operator} onChange={e => updateFilter(f.id, { operator: e.target.value })}
-              style={{ ...selectDark, width: mobile ? 90 : 110 }}>
+              style={{ ...selectDark, width: 110 }}>
               {ops.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
             <ComboBox value={f.value} onChange={v => updateFilter(f.id, { value: v })}
               tableName={tableName} column={f.column} placeholder={isBetween ? 'Min' : 'Value'}
               inputType={inputType}
-              style={{ flex: mobile ? '1 1 100%' : undefined, width: mobile ? 'auto' : isBetween ? 100 : 160 }} />
+              style={{ width: isBetween ? 100 : 160 }} />
             {isBetween && (
               <>
                 <span style={{ fontSize: 12, color: C.textMuted }}>to</span>
                 <ComboBox value={f.value2 ?? ''} onChange={v => updateFilter(f.id, { value2: v })}
                   tableName={tableName} column={f.column} placeholder="Max"
                   inputType={inputType}
-                  style={{ width: mobile ? '100%' : 100, flex: mobile ? '1 1 100%' : undefined }} />
+                  style={{ width: 100 }} />
               </>
             )}
             <button onClick={() => removeFilter(f.id)}
@@ -292,7 +323,7 @@ function FilterBar({ columns, typeMap, filters, onChange, mobile, tableName }: {
           </div>
         )
       })}
-      <button onClick={addFilter} style={{ ...pillBtn, alignSelf: 'flex-start' }}>+ Add Filter</button>
+      <button onClick={addFilter} style={{ ...pillBtn, alignSelf: 'flex-start', minHeight: mobile ? 44 : undefined, fontSize: mobile ? 14 : 11, padding: mobile ? '10px 16px' : '5px 12px' }}>+ Add Filter</button>
     </div>
   )
 }
@@ -346,29 +377,107 @@ function SchemaToggle({ tableName }: { tableName: string }) {
 
 /* ── Mobile Card View for rows ── */
 
-function MobileCardList({ data, columns }: { data: Record<string, unknown>[]; columns: string[] }) {
+function MobileCardList({ data, columns, tableName, onLoadMore, hasMore, loading }: {
+  data: Record<string, unknown>[]; columns: string[]; tableName?: string
+  onLoadMore?: () => void; hasMore?: boolean; loading?: boolean
+}) {
+  const [visibleCols, setVisibleCols] = useState<string[]>([])
+  const [showColPicker, setShowColPicker] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
+
+  // Default to first 5 columns, reset when columns change
+  useEffect(() => {
+    setVisibleCols(columns.slice(0, 5))
+  }, [columns.join(',')])
+
+  const displayCols = visibleCols.length > 0 ? visibleCols : columns.slice(0, 5)
+
+  // Pull-to-load-more via scroll
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el || !onLoadMore) return
+    function onScroll() {
+      if (!el || !hasMore || loading) return
+      if (el.scrollTop + el.clientHeight >= el.scrollHeight - 200) onLoadMore!()
+    }
+    el.addEventListener('scroll', onScroll, { passive: true })
+    return () => el.removeEventListener('scroll', onScroll)
+  }, [hasMore, loading, onLoadMore])
+
   return (
-    <div ref={containerRef} style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
-      {data.length === 0 && <div style={{ padding: 40, textAlign: 'center', color: C.textMuted }}>No data</div>}
-      {data.slice(0, 200).map((row, i) => (
-        <div key={i} style={{
-          background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: 14,
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      {/* Sticky header with table name and column picker */}
+      <div style={{
+        position: 'sticky', top: 0, zIndex: 5, background: C.bg,
+        padding: '8px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexShrink: 0,
+      }}>
+        {tableName && <span style={{ fontSize: 12, color: C.textMuted, fontWeight: 600 }}>{tableName}</span>}
+        <button onClick={() => setShowColPicker(!showColPicker)}
+          style={{ ...pillBtn, minHeight: 36, fontSize: 12, padding: '6px 12px' }}>
+          📋 Columns ({displayCols.length}/{columns.length})
+        </button>
+      </div>
+
+      {/* Column picker */}
+      {showColPicker && (
+        <div style={{
+          background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8,
+          padding: 12, marginBottom: 8, maxHeight: 200, overflowY: 'auto',
+          WebkitOverflowScrolling: 'touch' as unknown as undefined,
         }}>
-          {columns.map(col => {
-            const v = row[col]
-            return (
-              <div key={col} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: `1px solid ${C.border}`, gap: 12 }}>
-                <span style={{ fontSize: 11, color: C.textMuted, fontWeight: 500, flexShrink: 0 }}>{col}</span>
-                <span style={{ fontSize: 12, color: v === null || v === undefined ? C.textMuted : C.text, textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: v === null || v === undefined ? 'italic' : 'normal' }}>
-                  {v === null || v === undefined ? 'null' : String(v)}
-                </span>
-              </div>
-            )
-          })}
+          <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+            <button onClick={() => setVisibleCols(columns)} style={{ ...pillBtn, fontSize: 11 }}>All</button>
+            <button onClick={() => setVisibleCols(columns.slice(0, 5))} style={{ ...pillBtn, fontSize: 11 }}>First 5</button>
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {columns.map(col => {
+              const active = displayCols.includes(col)
+              return (
+                <button key={col} onClick={() => {
+                  setVisibleCols(prev => {
+                    const cur = prev.length > 0 ? prev : columns.slice(0, 5)
+                    return active ? cur.filter(c => c !== col) : [...cur, col]
+                  })
+                }}
+                  style={{
+                    ...pillBtn, fontSize: 11, minHeight: 36,
+                    background: active ? C.accentBg : C.surfaceActive,
+                    color: active ? C.accent : C.textSecondary,
+                    borderColor: active ? C.accent + '40' : C.borderLight,
+                  }}>
+                  {col}
+                </button>
+              )
+            })}
+          </div>
         </div>
-      ))}
-      {data.length > 200 && <div style={{ padding: 12, textAlign: 'center', color: C.textMuted, fontSize: 12 }}>Showing first 200 of {fmtNum(data.length)}</div>}
+      )}
+
+      <div ref={containerRef} style={{
+        flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 8,
+        WebkitOverflowScrolling: 'touch' as unknown as undefined,
+      }}>
+        {data.length === 0 && !loading && <div style={{ padding: 40, textAlign: 'center', color: C.textMuted }}>No data</div>}
+        {data.map((row, i) => (
+          <div key={i} style={{
+            background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: 14,
+          }}>
+            {displayCols.map(col => {
+              const v = row[col]
+              return (
+                <div key={col} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: `1px solid ${C.border}`, gap: 12, minHeight: 32 }}>
+                  <span style={{ fontSize: 11, color: C.textMuted, fontWeight: 500, flexShrink: 0 }}>{col}</span>
+                  <span style={{ fontSize: 12, color: v === null || v === undefined ? C.textMuted : C.text, textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: v === null || v === undefined ? 'italic' : 'normal' }}>
+                    {v === null || v === undefined ? 'null' : String(v)}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        ))}
+        {loading && <div style={{ padding: 16, textAlign: 'center', color: C.accent, fontSize: 13 }}>Loading more…</div>}
+        {!hasMore && data.length > 0 && <div style={{ padding: 12, textAlign: 'center', color: C.textMuted, fontSize: 12 }}>All rows loaded</div>}
+      </div>
     </div>
   )
 }
@@ -469,6 +578,10 @@ function DataTable({ tableName, mobile }: { tableName: string; mobile: boolean }
     return allData.filter(row => Object.values(row).some(v => v != null && String(v).toLowerCase().includes(q)))
   }, [allData, quickSearch])
 
+  const loadMoreMobile = useCallback(() => {
+    if (hasMore && !fetchingRef.current) fetchBatch(allData.length, true)
+  }, [hasMore, allData.length, fetchBatch])
+
   const colDefs: ColumnDef<Record<string, unknown>, unknown>[] = useMemo(
     () => columns.map(c => ({
       accessorKey: c, header: c, size: 160,
@@ -496,16 +609,19 @@ function DataTable({ tableName, mobile }: { tableName: string; mobile: boolean }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: mobile ? 8 : 10 }}>
-      {/* Toolbar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+      {/* Toolbar — sticky search on mobile */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+        ...(mobile ? { position: 'sticky', top: 0, zIndex: 10, background: C.bg, paddingBottom: 4 } : {}),
+      }}>
         <div style={{ position: 'relative', flex: mobile ? '1 1 100%' : '0 0 260px' }}>
           <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: C.textMuted, fontSize: 14, pointerEvents: 'none' }}>🔍</span>
           <input type="text" value={quickSearch} onChange={e => setQuickSearch(e.target.value)}
             placeholder="Search loaded rows…"
-            style={{ ...inputDark, width: '100%', paddingLeft: 32, height: 36, boxSizing: 'border-box' }} />
+            style={{ ...inputDark, width: '100%', paddingLeft: 32, height: mobile ? 44 : 36, fontSize: mobile ? 16 : 13, boxSizing: 'border-box' }} />
         </div>
         <button onClick={() => setShowFilters(!showFilters)}
-          style={{ ...pillBtn, height: 36, display: 'flex', alignItems: 'center', gap: 4, background: showFilters ? C.accentBg : C.surfaceActive, borderColor: showFilters ? C.accent + '40' : C.borderLight, color: showFilters ? C.accent : C.textSecondary }}>
+          style={{ ...pillBtn, height: mobile ? 44 : 36, minWidth: mobile ? 44 : undefined, display: 'flex', alignItems: 'center', gap: 4, background: showFilters ? C.accentBg : C.surfaceActive, borderColor: showFilters ? C.accent + '40' : C.borderLight, color: showFilters ? C.accent : C.textSecondary }}>
           ⚙ Filters{activeFilterCount > 0 && <span style={{ background: C.accent, color: C.white, borderRadius: 10, padding: '1px 6px', fontSize: 10, fontWeight: 700 }}>{activeFilterCount}</span>}
         </button>
         {!mobile && (
@@ -526,7 +642,7 @@ function DataTable({ tableName, mobile }: { tableName: string; mobile: boolean }
           {mobile && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 10 }}>
               <span style={{ fontSize: 12, color: C.textMuted }}>Group:</span>
-              <select value={groupBy ?? ''} onChange={e => setGroupBy(e.target.value || null)} style={{ ...selectDark, flex: 1 }}>
+              <select value={groupBy ?? ''} onChange={e => setGroupBy(e.target.value || null)} style={{ ...selectDark, flex: 1, height: 44, fontSize: 14 }}>
                 <option value="">None</option>
                 {columns.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
@@ -552,7 +668,7 @@ function DataTable({ tableName, mobile }: { tableName: string; mobile: boolean }
         <div style={{ maxHeight: 180, overflowY: 'auto', border: `1px solid ${C.border}`, borderRadius: 8, background: C.surface }}>
           {groupData.map((g, i) => (
             <button key={String(g.value ?? 'NULL')} onClick={() => filterByGroup(g.value)}
-              style={{ width: '100%', padding: '10px 14px', background: 'transparent', border: 'none', borderBottom: i < groupData.length - 1 ? `1px solid ${C.border}` : 'none', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', fontSize: 13, fontFamily: 'inherit', color: C.text }}>
+              style={{ width: '100%', padding: mobile ? '12px 14px' : '10px 14px', minHeight: mobile ? 44 : undefined, background: 'transparent', border: 'none', borderBottom: i < groupData.length - 1 ? `1px solid ${C.border}` : 'none', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', fontSize: 13, fontFamily: 'inherit', color: C.text }}>
               <span>{String(g.value ?? 'NULL')}</span>
               <span style={{ color: C.textMuted, fontVariantNumeric: 'tabular-nums' }}>{fmtNum(g.count)}</span>
             </button>
@@ -562,7 +678,7 @@ function DataTable({ tableName, mobile }: { tableName: string; mobile: boolean }
 
       {/* Data: cards on mobile, table on desktop */}
       {mobile ? (
-        <MobileCardList data={displayData} columns={columns} />
+        <MobileCardList data={displayData} columns={columns} tableName={tableName} onLoadMore={loadMoreMobile} hasMore={hasMore} loading={loading} />
       ) : (
         <div ref={tableContainerRef} className="scroll-visible" style={{ flex: '1 1 0', overflow: 'auto', border: `1px solid ${C.border}`, borderRadius: 8, background: C.surface, minHeight: 0, marginBottom: 24 }}>
           <table style={{ minWidth: columns.length * 160, borderCollapse: 'collapse', fontSize: 12 }}>
@@ -639,12 +755,12 @@ function QueryPage({ mobile }: { mobile: boolean }) {
   function handleSubmit() { mode === 'ask' ? runNL() : runSQL() }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 12, overflow: 'auto' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 12, overflow: 'auto', WebkitOverflowScrolling: 'touch' as unknown as undefined }}>
       <div style={{ display: 'flex', gap: 0 }}>
         <button onClick={() => { setMode('ask'); setInput(''); setResult(null) }}
-          style={{ ...modeBtn, borderRadius: '8px 0 0 8px', flex: mobile ? 1 : undefined, ...(mode === 'ask' ? modeBtnActive : {}) }}>Ask in English</button>
+          style={{ ...modeBtn, borderRadius: '8px 0 0 8px', flex: mobile ? 1 : undefined, minHeight: mobile ? 44 : undefined, ...(mode === 'ask' ? modeBtnActive : {}) }}>Ask in English</button>
         <button onClick={() => { setMode('sql'); setInput(''); setResult(null) }}
-          style={{ ...modeBtn, borderRadius: '0 8px 8px 0', flex: mobile ? 1 : undefined, ...(mode === 'sql' ? modeBtnActive : {}) }}>Raw SQL</button>
+          style={{ ...modeBtn, borderRadius: '0 8px 8px 0', flex: mobile ? 1 : undefined, minHeight: mobile ? 44 : undefined, ...(mode === 'sql' ? modeBtnActive : {}) }}>Raw SQL</button>
       </div>
       <div style={{ display: 'flex', gap: 8, flexDirection: mobile && mode === 'sql' ? 'column' : 'row' }}>
         {mode === 'sql' ? (
@@ -659,14 +775,14 @@ function QueryPage({ mobile }: { mobile: boolean }) {
             style={{ ...inputDark, flex: 1, padding: '10px 14px', fontSize: 14, height: 44 }} />
         )}
         <button onClick={handleSubmit} disabled={loading || !input.trim()}
-          style={{ padding: mobile ? '12px 20px' : '10px 24px', background: C.accent, color: C.white, border: 'none', borderRadius: 8, cursor: loading ? 'wait' : 'pointer', fontSize: 14, fontWeight: 600, fontFamily: 'inherit', opacity: loading || !input.trim() ? 0.5 : 1 }}>
+          style={{ padding: mobile ? '12px 20px' : '10px 24px', minHeight: mobile ? 44 : undefined, background: C.accent, color: C.white, border: 'none', borderRadius: 8, cursor: loading ? 'wait' : 'pointer', fontSize: 14, fontWeight: 600, fontFamily: 'inherit', opacity: loading || !input.trim() ? 0.5 : 1 }}>
           {loading ? '…' : 'Run'}
         </button>
       </div>
       {summary && <div style={{ padding: '12px 16px', background: C.accentBg, border: `1px solid ${C.accentDim}30`, borderRadius: 8, fontSize: 13, color: C.accent }}>{summary}</div>}
       {generatedSql && (
         <div>
-          <button onClick={() => setShowSql(!showSql)} style={{ ...pillBtn, fontSize: 12 }}>{showSql ? '▾' : '▸'} Generated SQL</button>
+          <button onClick={() => setShowSql(!showSql)} style={{ ...pillBtn, fontSize: 12, minHeight: mobile ? 44 : undefined }}>{showSql ? '▾' : '▸'} Generated SQL</button>
           {showSql && <pre style={{ margin: '8px 0 0', padding: 12, background: C.surfaceActive, borderRadius: 8, fontSize: 12, overflow: 'auto', fontFamily: 'monospace', color: C.text, border: `1px solid ${C.border}` }}>{generatedSql}</pre>}
         </div>
       )}
@@ -697,19 +813,25 @@ function QueryPage({ mobile }: { mobile: boolean }) {
   )
 }
 
-/* ── Mobile Sidebar Drawer ── */
+/* ── Full-Screen Slide-Up Sheet (mobile table selector) ── */
 
-function SidebarDrawer({ open, onClose, children }: { open: boolean; onClose: () => void; children: React.ReactNode }) {
+function SlideUpSheet({ open, onClose, children }: { open: boolean; onClose: () => void; children: React.ReactNode }) {
   if (!open) return null
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'flex' }}>
-      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.6)' }} />
-      <div style={{ position: 'relative', width: 280, maxWidth: '80vw', background: C.surface, height: '100%', overflowY: 'auto', borderRight: `1px solid ${C.border}`, boxShadow: '4px 0 20px rgba(0,0,0,0.3)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 16px', borderBottom: `1px solid ${C.border}` }}>
-          <span style={{ fontWeight: 700, color: C.white, fontSize: 15 }}>Tables</span>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: C.textSecondary, fontSize: 20, cursor: 'pointer', padding: 4 }}>×</button>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'flex', flexDirection: 'column' }}>
+      <div onClick={onClose} style={{ flex: '0 0 60px', background: 'rgba(0,0,0,0.6)' }} />
+      <div style={{
+        flex: 1, background: C.surface, borderRadius: '16px 16px 0 0',
+        display: 'flex', flexDirection: 'column', overflow: 'hidden',
+        paddingBottom: 'env(safe-area-inset-bottom)',
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 16px 12px', borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
+          <span style={{ fontWeight: 700, color: C.white, fontSize: 17 }}>Select Table</span>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: C.textSecondary, fontSize: 24, cursor: 'pointer', padding: 4, minWidth: 44, minHeight: 44, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
         </div>
-        {children}
+        <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch' as unknown as undefined }}>
+          {children}
+        </div>
       </div>
     </div>
   )
@@ -723,11 +845,11 @@ function RealEstatePage({ mobile }: { mobile: boolean }) {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 12 }}>
       <div style={{ display: 'flex', gap: 0, flexShrink: 0 }}>
         <button onClick={() => setSubView('listings')}
-          style={{ ...modeBtn, borderRadius: '8px 0 0 8px', flex: mobile ? 1 : undefined, ...(subView === 'listings' ? modeBtnActive : {}) }}>
+          style={{ ...modeBtn, borderRadius: '8px 0 0 8px', flex: mobile ? 1 : undefined, minHeight: mobile ? 44 : undefined, ...(subView === 'listings' ? modeBtnActive : {}) }}>
           🗺️ Foreclosure Listings
         </button>
         <button onClick={() => setSubView('sales')}
-          style={{ ...modeBtn, borderRadius: '0 8px 8px 0', flex: mobile ? 1 : undefined, ...(subView === 'sales' ? modeBtnActive : {}) }}>
+          style={{ ...modeBtn, borderRadius: '0 8px 8px 0', flex: mobile ? 1 : undefined, minHeight: mobile ? 44 : undefined, ...(subView === 'sales' ? modeBtnActive : {}) }}>
           📊 Sales Comps
         </button>
       </div>
@@ -746,6 +868,37 @@ function RealEstatePage({ mobile }: { mobile: boolean }) {
         </div>
       )}
     </div>
+  )
+}
+
+/* ── Bottom Tab Bar (mobile) ── */
+
+function BottomTabBar({ page, setPage }: { page: Page; setPage: (p: Page) => void }) {
+  const tabs: { key: Page; icon: string; label: string }[] = [
+    { key: 'home', icon: '🏠', label: 'Home' },
+    { key: 'explorer', icon: '📋', label: 'Data' },
+    { key: 'query', icon: '⚡', label: 'Query' },
+    { key: 'realestate', icon: '🏘️', label: 'Real Estate' },
+  ]
+  return (
+    <nav style={{
+      display: 'flex', background: C.surface, borderTop: `1px solid ${C.border}`,
+      paddingBottom: 'env(safe-area-inset-bottom)', flexShrink: 0,
+    }}>
+      {tabs.map(t => (
+        <button key={t.key} onClick={() => setPage(t.key)}
+          style={{
+            flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            gap: 2, padding: '8px 0', minHeight: 52,
+            background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+            color: page === t.key ? C.accent : C.textMuted,
+            fontSize: 10, fontWeight: page === t.key ? 600 : 400,
+          }}>
+          <span style={{ fontSize: 20 }}>{t.icon}</span>
+          <span>{t.label}</span>
+        </button>
+      ))}
+    </nav>
   )
 }
 
@@ -810,13 +963,13 @@ export default function App() {
     <div style={{ padding: mobile ? '8px 10px' : '4px 6px 10px', display: 'flex', flexDirection: 'column', gap: 2 }}>
       <input type="text" value={sidebarSearch} onChange={e => setSidebarSearch(e.target.value)}
         placeholder="Search tables…"
-        style={{ ...inputDark, width: '100%', height: 34, fontSize: 13, boxSizing: 'border-box', padding: '0 12px', marginBottom: 6 }} />
+        style={{ ...inputDark, width: '100%', height: mobile ? 44 : 34, fontSize: mobile ? 16 : 13, boxSizing: 'border-box', padding: '0 12px', marginBottom: 6 }} />
       {filteredGroups.map(g => {
         const isCollapsed = collapsed[g.label] ?? true
         return (
           <div key={g.label}>
             <button onClick={() => toggleGroup(g.label)}
-              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', padding: '9px 10px', background: 'transparent', border: 'none', cursor: 'pointer', borderRadius: 6, fontSize: 13, fontFamily: 'inherit', fontWeight: 600, textAlign: 'left', color: C.text }}>
+              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', padding: mobile ? '12px 10px' : '9px 10px', minHeight: mobile ? 44 : undefined, background: 'transparent', border: 'none', cursor: 'pointer', borderRadius: 6, fontSize: mobile ? 15 : 13, fontFamily: 'inherit', fontWeight: 600, textAlign: 'left', color: C.text }}>
               <span>{isCollapsed ? '▸' : '▾'} {g.icon} {g.label}</span>
               <span style={{ fontSize: 10, color: C.textMuted, fontWeight: 400 }}>{fmtCompact(g.totalRows)}</span>
             </button>
@@ -824,8 +977,9 @@ export default function App() {
               <button key={t.name} onClick={() => selectTable(t.name)}
                 style={{
                   display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%',
-                  padding: '8px 10px 8px 30px', background: 'transparent', border: 'none', cursor: 'pointer',
-                  borderRadius: 6, fontSize: 13, fontFamily: 'inherit', textAlign: 'left', color: C.textSecondary,
+                  padding: mobile ? '12px 10px 12px 30px' : '8px 10px 8px 30px', minHeight: mobile ? 44 : undefined,
+                  background: 'transparent', border: 'none', cursor: 'pointer',
+                  borderRadius: 6, fontSize: mobile ? 15 : 13, fontFamily: 'inherit', textAlign: 'left', color: C.textSecondary,
                   ...(selected === t.name ? { background: C.accentBg, color: C.accent, fontWeight: 600 } : {}),
                 }}>
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</span>
@@ -844,45 +998,56 @@ export default function App() {
       color: C.text, height: '100vh', display: 'flex', flexDirection: 'column', background: C.bg,
       WebkitFontSmoothing: 'antialiased',
     }}>
-      {/* Nav */}
-      <nav style={{
-        background: C.surface, borderBottom: `1px solid ${C.border}`,
-        padding: mobile ? '0 12px' : '0 24px',
-        paddingTop: 'env(safe-area-inset-top)',
-        display: 'flex', alignItems: 'center', minHeight: mobile ? 48 : 52, flexShrink: 0, gap: mobile ? 2 : 4,
-      }}>
-        <span style={{ fontWeight: 700, fontSize: mobile ? 15 : 16, marginRight: mobile ? 12 : 28, color: C.white, letterSpacing: '-0.02em', whiteSpace: 'nowrap' }}>
-          NHC{!mobile && <span style={{ fontWeight: 400, color: C.textMuted }}> Admin</span>}
-        </span>
-        {(['home', 'explorer', 'query', 'realestate'] as Page[]).map(p => {
-          const labels = mobile
-            ? { home: '🏠', explorer: '📋', query: '⚡', realestate: '🏠' }
-            : { home: '🏠 Home', explorer: '📋 Data', query: '⚡ Query', realestate: '🏠 Real Estate Foreclosures' }
-          return (
-            <button key={p} onClick={() => setPage(p)}
-              style={{
-                ...navBtnDark, padding: mobile ? '8px 10px' : '8px 14px',
-                fontSize: mobile ? 14 : 13,
-                ...(page === p ? { color: C.white, background: C.surfaceActive } : {}),
-              }}>
-              {labels[p]}
-            </button>
-          )
-        })}
-        {!mobile && (
-          <>
-            <div style={{ flex: 1 }} />
-            <span style={{ fontSize: 11, color: C.textMuted }}>{fmtNum(tables.length)} tables · {fmtCompact(totalRows)} rows</span>
-          </>
-        )}
-      </nav>
+      {/* Top Nav — desktop only */}
+      {!mobile && (
+        <nav style={{
+          background: C.surface, borderBottom: `1px solid ${C.border}`,
+          padding: '0 24px',
+          paddingTop: 'env(safe-area-inset-top)',
+          display: 'flex', alignItems: 'center', minHeight: 52, flexShrink: 0, gap: 4,
+        }}>
+          <span style={{ fontWeight: 700, fontSize: 16, marginRight: 28, color: C.white, letterSpacing: '-0.02em', whiteSpace: 'nowrap' }}>
+            NHC<span style={{ fontWeight: 400, color: C.textMuted }}> Admin</span>
+          </span>
+          {(['home', 'explorer', 'query', 'realestate'] as Page[]).map(p => {
+            const labels: Record<Page, string> = { home: '🏠 Home', explorer: '📋 Data', query: '⚡ Query', realestate: '🏠 Real Estate Foreclosures' }
+            return (
+              <button key={p} onClick={() => setPage(p)}
+                style={{
+                  ...navBtnDark, padding: '8px 14px', fontSize: 13,
+                  ...(page === p ? { color: C.white, background: C.surfaceActive } : {}),
+                }}>
+                {labels[p]}
+              </button>
+            )
+          })}
+          <div style={{ flex: 1 }} />
+          <span style={{ fontSize: 11, color: C.textMuted }}>{fmtNum(tables.length)} tables · {fmtCompact(totalRows)} rows</span>
+        </nav>
+      )}
+
+      {/* Mobile: minimal top bar with title */}
+      {mobile && (
+        <div style={{
+          background: C.surface, borderBottom: `1px solid ${C.border}`,
+          paddingTop: 'env(safe-area-inset-top)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 44, flexShrink: 0,
+        }}>
+          <span style={{ fontWeight: 700, fontSize: 15, color: C.white, letterSpacing: '-0.02em' }}>NHC Admin</span>
+        </div>
+      )}
 
       {/* Content */}
-      <div style={{ flex: 1, overflow: 'hidden', padding: mobile ? 12 : 20, paddingBottom: mobile ? 'max(12px, env(safe-area-inset-bottom))' : 20, minHeight: 0 }}>
+      <div style={{
+        flex: 1, overflow: 'hidden',
+        padding: mobile ? 12 : 20,
+        paddingBottom: mobile ? 0 : 20,
+        minHeight: 0,
+      }}>
 
         {/* HOME */}
         {page === 'home' && (
-          <div style={{ overflow: 'auto', height: '100%' }}>
+          <div style={{ overflow: 'auto', height: '100%', WebkitOverflowScrolling: 'touch' as unknown as undefined }}>
             <h2 style={{ fontSize: mobile ? 18 : 20, fontWeight: 700, margin: '0 0 8px', color: C.white }}>Dashboard</h2>
             {usage ? (
               <>
@@ -956,7 +1121,7 @@ export default function App() {
                 </div>
 
                 <h3 style={{ fontSize: 13, fontWeight: 600, color: C.textSecondary, margin: '16px 0 10px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Model Usage</h3>
-                <div style={{ ...cardDark, padding: 0, overflow: 'hidden' }}>
+                <div style={{ ...cardDark, padding: 0, overflow: 'hidden', marginBottom: mobile ? 16 : 0 }}>
                   <div style={{ display: 'grid', gridTemplateColumns: mobile ? '1.6fr 1fr' : '1.8fr 1fr 1fr 1fr', padding: '10px 12px', fontSize: 11, color: C.textMuted, borderBottom: `1px solid ${C.border}` }}>
                     <div>Model</div><div>Total</div>{!mobile && <><div>Input / Output</div><div>Sessions</div></>}
                   </div>
@@ -1005,8 +1170,8 @@ export default function App() {
               </div>
             )}
 
-            {/* Mobile drawer */}
-            {mobile && <SidebarDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)}>{sidebarContent}</SidebarDrawer>}
+            {/* Mobile: full-screen slide-up sheet */}
+            {mobile && <SlideUpSheet open={drawerOpen} onClose={() => setDrawerOpen(false)}>{sidebarContent}</SlideUpSheet>}
 
             {/* Main area */}
             <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
@@ -1015,7 +1180,7 @@ export default function App() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, flexShrink: 0, flexWrap: 'wrap' }}>
                     {mobile && (
                       <button onClick={() => setDrawerOpen(true)}
-                        style={{ ...pillBtn, height: 34, fontSize: 14, padding: '0 12px' }}>☰</button>
+                        style={{ ...pillBtn, height: 44, minWidth: 44, fontSize: 18, padding: '0 12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>☰</button>
                     )}
                     <h2 style={{ fontSize: mobile ? 16 : 18, fontWeight: 700, margin: 0, color: C.white }}>{selected}</h2>
                     <SchemaToggle tableName={selected} />
@@ -1026,7 +1191,7 @@ export default function App() {
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: C.textMuted, fontSize: 14, gap: 12 }}>
                   {mobile ? (
                     <button onClick={() => setDrawerOpen(true)}
-                      style={{ ...pillBtn, fontSize: 14, padding: '12px 24px' }}>☰ Select a table</button>
+                      style={{ ...pillBtn, fontSize: 14, padding: '12px 24px', minHeight: 44 }}>☰ Select a table</button>
                   ) : 'Select a table from the sidebar'}
                 </div>
               )}
@@ -1042,6 +1207,9 @@ export default function App() {
           <RealEstatePage mobile={mobile} />
         )}
       </div>
+
+      {/* Bottom tab bar — mobile only */}
+      {mobile && <BottomTabBar page={page} setPage={setPage} />}
     </div>
   )
 }
