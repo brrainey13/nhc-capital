@@ -45,8 +45,9 @@ interface GroupRow { value: unknown; count: number }
 interface ActiveFilter { id: string; column: string; operator: string; value: string; value2?: string }
 
 const ForeclosureMap = React.lazy(() => import('./ForeclosureMap'))
+const SalesChart = React.lazy(() => import('./SalesChart'))
 
-type Page = 'home' | 'explorer' | 'query' | 'map'
+type Page = 'home' | 'explorer' | 'query' | 'map' | 'charts'
 type SortDir = 'asc' | 'desc' | null
 
 /* ── Responsive hook ── */
@@ -819,10 +820,10 @@ export default function App() {
         <span style={{ fontWeight: 700, fontSize: mobile ? 15 : 16, marginRight: mobile ? 12 : 28, color: C.white, letterSpacing: '-0.02em', whiteSpace: 'nowrap' }}>
           NHC{!mobile && <span style={{ fontWeight: 400, color: C.textMuted }}> Admin</span>}
         </span>
-        {(['home', 'explorer', 'query', 'map'] as Page[]).map(p => {
+        {(['home', 'explorer', 'query', 'map', 'charts'] as Page[]).map(p => {
           const labels = mobile
-            ? { home: '🏠', explorer: '📋', query: '⚡', map: '🗺️' }
-            : { home: '🏠 Home', explorer: '📋 Data', query: '⚡ Query', map: '🗺️ Foreclosure Listings' }
+            ? { home: '🏠', explorer: '📋', query: '⚡', map: '🗺️', charts: '📊' }
+            : { home: '🏠 Home', explorer: '📋 Data', query: '⚡ Query', map: '🗺️ Foreclosure Listings', charts: '📊 Sales' }
           return (
             <button key={p} onClick={() => setPage(p)}
               style={{
@@ -1010,6 +1011,13 @@ export default function App() {
           }}>
             <React.Suspense fallback={<div style={{ color: '#aaa', padding: 40 }}>Loading map...</div>}>
               <ForeclosureMap />
+            </React.Suspense>
+          </div>
+        )}
+        {page === 'charts' && (
+          <div style={{ height: 'calc(100vh - 100px)', overflow: 'auto' }}>
+            <React.Suspense fallback={<div style={{ color: '#aaa', padding: 40 }}>Loading charts...</div>}>
+              <SalesChart />
             </React.Suspense>
           </div>
         )}
