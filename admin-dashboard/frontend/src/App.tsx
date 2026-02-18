@@ -47,7 +47,7 @@ interface ActiveFilter { id: string; column: string; operator: string; value: st
 const ForeclosureMap = React.lazy(() => import('./ForeclosureMap'))
 const SalesChart = React.lazy(() => import('./SalesChart'))
 
-type Page = 'home' | 'explorer' | 'query' | 'map' | 'charts'
+type Page = 'home' | 'explorer' | 'query' | 'realestate'
 type SortDir = 'asc' | 'desc' | null
 
 /* ── Responsive hook ── */
@@ -715,6 +715,40 @@ function SidebarDrawer({ open, onClose, children }: { open: boolean; onClose: ()
   )
 }
 
+/* ── Real Estate Foreclosures (combined page) ── */
+
+function RealEstatePage({ mobile }: { mobile: boolean }) {
+  const [subView, setSubView] = useState<'listings' | 'sales'>('listings')
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 12 }}>
+      <div style={{ display: 'flex', gap: 0, flexShrink: 0 }}>
+        <button onClick={() => setSubView('listings')}
+          style={{ ...modeBtn, borderRadius: '8px 0 0 8px', flex: mobile ? 1 : undefined, ...(subView === 'listings' ? modeBtnActive : {}) }}>
+          🗺️ Foreclosure Listings
+        </button>
+        <button onClick={() => setSubView('sales')}
+          style={{ ...modeBtn, borderRadius: '0 8px 8px 0', flex: mobile ? 1 : undefined, ...(subView === 'sales' ? modeBtnActive : {}) }}>
+          📊 Sales Comps
+        </button>
+      </div>
+      {subView === 'listings' && (
+        <div style={{ flex: 1, borderRadius: 10, overflow: 'hidden', minHeight: 0 }}>
+          <React.Suspense fallback={<div style={{ color: '#aaa', padding: 40 }}>Loading map...</div>}>
+            <ForeclosureMap />
+          </React.Suspense>
+        </div>
+      )}
+      {subView === 'sales' && (
+        <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+          <React.Suspense fallback={<div style={{ color: '#aaa', padding: 40 }}>Loading charts...</div>}>
+            <SalesChart />
+          </React.Suspense>
+        </div>
+      )}
+    </div>
+  )
+}
+
 /* ── Main App ── */
 
 export default function App() {
@@ -820,10 +854,10 @@ export default function App() {
         <span style={{ fontWeight: 700, fontSize: mobile ? 15 : 16, marginRight: mobile ? 12 : 28, color: C.white, letterSpacing: '-0.02em', whiteSpace: 'nowrap' }}>
           NHC{!mobile && <span style={{ fontWeight: 400, color: C.textMuted }}> Admin</span>}
         </span>
-        {(['home', 'explorer', 'query', 'map', 'charts'] as Page[]).map(p => {
+        {(['home', 'explorer', 'query', 'realestate'] as Page[]).map(p => {
           const labels = mobile
-            ? { home: '🏠', explorer: '📋', query: '⚡', map: '🗺️', charts: '📊' }
-            : { home: '🏠 Home', explorer: '📋 Data', query: '⚡ Query', map: '🗺️ Foreclosure Listings', charts: '📊 Foreclosure Sales Comps' }
+            ? { home: '🏠', explorer: '📋', query: '⚡', realestate: '🏠' }
+            : { home: '🏠 Home', explorer: '📋 Data', query: '⚡ Query', realestate: '🏠 Real Estate Foreclosures' }
           return (
             <button key={p} onClick={() => setPage(p)}
               style={{
@@ -1003,23 +1037,9 @@ export default function App() {
         {/* QUERY */}
         {page === 'query' && <QueryPage mobile={mobile} />}
 
-        {/* MAP */}
-        {page === 'map' && (
-          <div style={{
-            height: 'calc(100vh - 100px)',
-            borderRadius: 10, overflow: 'hidden',
-          }}>
-            <React.Suspense fallback={<div style={{ color: '#aaa', padding: 40 }}>Loading map...</div>}>
-              <ForeclosureMap />
-            </React.Suspense>
-          </div>
-        )}
-        {page === 'charts' && (
-          <div style={{ height: 'calc(100vh - 100px)', overflow: 'auto' }}>
-            <React.Suspense fallback={<div style={{ color: '#aaa', padding: 40 }}>Loading charts...</div>}>
-              <SalesChart />
-            </React.Suspense>
-          </div>
+        {/* REAL ESTATE FORECLOSURES */}
+        {page === 'realestate' && (
+          <RealEstatePage mobile={mobile} />
         )}
       </div>
     </div>
