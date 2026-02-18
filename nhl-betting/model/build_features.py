@@ -82,10 +82,26 @@ def build_goalie_rolling_features(goalie_stats, players, games, window_sizes=[5,
 
 
 def build_team_rolling_features(game_team_stats, games, window_sizes=[5, 10, 20]):
-    """Build rolling team offensive/defensive features."""
+    """Build rolling team offensive/defensive features including Corsi."""
     gts = game_team_stats.merge(
         games[['game_id', 'game_date']], on='game_id', how='inner'
     )
+
+    # Derive Corsi: need opponent shots_attempted per game
+    opp = gts[['game_id', 'team_id', 'shots_attempted', 'takeaways', 'giveaways']].copy()
+    opp.columns = ['game_id', 'opp_team_id', 'opp_shots_attempted', 'opp_takeaways', 'opp_giveaways']
+
+    gts = gts.merge(opp, on='game_id', how='inner')
+    gts = gts[gts['team_id'] != gts['opp_team_id']].copy()
+
+    # Corsi metrics
+    gts['corsi_for'] = gts['shots_attempted']
+    gts['corsi_against'] = gts['opp_shots_attempted']
+    total_corsi = gts['corsi_for'] + gts['corsi_against']
+    gts['corsi_pct'] = np.where(total_corsi > 0, gts['corsi_for'] / total_corsi, 0.5)
+    gts['corsi_diff'] = gts['corsi_for'] - gts['corsi_against']
+    gts['puck_control'] = gts['takeaways'] - gts['giveaways']
+
     gts = gts.sort_values(['team_id', 'game_date'])
 
     features = []
@@ -97,6 +113,10 @@ def build_team_rolling_features(game_team_stats, games, window_sizes=[5, 10, 20]
             group[f'team_sa_avg_{w}'] = group['shots_attempted'].rolling(w, min_periods=3).mean().shift(1)
             group[f'team_pp_opps_avg_{w}'] = group['power_play_opportunities'].rolling(w, min_periods=3).mean().shift(1)
             group[f'team_hits_avg_{w}'] = group['hits'].rolling(w, min_periods=3).mean().shift(1)
+            # Corsi rolling
+            group[f'corsi_pct_avg_{w}'] = group['corsi_pct'].rolling(w, min_periods=3).mean().shift(1)
+            group[f'corsi_diff_avg_{w}'] = group['corsi_diff'].rolling(w, min_periods=3).mean().shift(1)
+            group[f'puck_control_avg_{w}'] = group['puck_control'].rolling(w, min_periods=3).mean().shift(1)
 
         group['team_sog_season_avg'] = group['shots_on_goal'].expanding(min_periods=3).mean().shift(1)
 
@@ -289,9 +309,11 @@ def build_feature_matrix(dfs):
     )
     matrix['is_home'] = (matrix['team_id'] == matrix['home_team_id']).astype(int)
 
-    # Add opponent team features (shots they generate)
+    # Add opponent team features (shots they generate + Corsi + puck control)
     opp_team_feats = team_feats.copy()
-    opp_feat_cols = [c for c in opp_team_feats.columns if c.startswith('team_') and c != 'team_id']
+    rolling_prefixes = ('team_', 'corsi_', 'puck_control_')
+    opp_feat_cols = [c for c in opp_team_feats.columns
+                     if any(c.startswith(p) for p in rolling_prefixes) and c != 'team_id']
     opp_rename = {c: f'opp_{c}' for c in opp_feat_cols}
     opp_team_feats = opp_team_feats.rename(columns=opp_rename)
     opp_feat_cols_renamed = list(opp_rename.values())
@@ -304,9 +326,10 @@ def build_feature_matrix(dfs):
         suffixes=('', '_opp')
     )
 
-    # Add own team features (shots they allow = defensive quality)
+    # Add own team features (shots they allow = defensive quality + Corsi)
     own_team_feats = team_feats.copy()
-    own_feat_cols = [c for c in own_team_feats.columns if c.startswith('team_') and c != 'team_id']
+    own_feat_cols = [c for c in own_team_feats.columns
+                     if any(c.startswith(p) for p in rolling_prefixes) and c != 'team_id']
     own_rename = {c: f'own_{c}' for c in own_feat_cols}
     own_team_feats = own_team_feats.rename(columns=own_rename)
     own_feat_cols_renamed = list(own_rename.values())
@@ -369,6 +392,23 @@ def build_feature_matrix(dfs):
     # Clean up
     matrix['event_date'] = pd.to_datetime(matrix['event_date'])
     matrix = matrix.sort_values('event_date')
+
+    # Deduplicate: keep one row per goalie per game (pick row with most common line)
+    before_dedup = len(matrix)
+    matrix = matrix.drop_duplicates(subset=['player_name', 'event_date'], keep='first')
+    after_dedup = len(matrix)
+    if before_dedup != after_dedup:
+        print(f"  Deduped: {before_dedup} → {after_dedup} (removed {before_dedup - after_dedup} dupes)")
+
+    # Drop 100% null columns
+    null_cols = [c for c in matrix.columns if matrix[c].isnull().all()]
+    if null_cols:
+        matrix = matrix.drop(columns=null_cols)
+        print(f"  Dropped {len(null_cols)} fully-null columns: {null_cols}")
+
+    # Verify Corsi features exist
+    corsi_cols = [c for c in matrix.columns if 'corsi' in c.lower()]
+    print(f"  Corsi columns present: {corsi_cols}")
 
     print(f"\nFinal feature matrix: {len(matrix)} rows, {len(matrix.columns)} columns")
     print(f"Date range: {matrix['event_date'].min()} to {matrix['event_date'].max()}")
