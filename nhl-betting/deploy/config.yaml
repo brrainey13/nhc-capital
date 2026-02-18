@@ -1,0 +1,26 @@
+apis:
+  odds_api_key: ${ODDS_API_KEY}  # Load from .env
+  nhl_api_base: "https://api-web.nhle.com/v1"
+
+betting:
+  bankroll: 5000
+  kelly_fraction: 0.25
+  max_bet_per_game: 300
+  min_juice: -115  # Worst acceptable juice
+
+strategies:
+  enabled: ["MF3a", "MF3b", "MF5", "MF2"]  # PF1 in paper trading only
+  paper_only: ["PF1"]
+  paper_trading: true  # Set to false when going live
+
+notifications:
+  method: "discord"  # NHC uses Discord
+  discord_channel: "nhl-betting"  # #nhl-betting channel
+
+schedule:
+  initial_pull: "08:00"  # ET
+  starter_check: "11:00"
+  final_picks: "14:00"
+  results_summary: "09:00"  # Next day
+
+blacklist_teams: ["BOS", "TBL", "COL"]  # Skip if opponent in this list AND Corsi < 30th pctile
