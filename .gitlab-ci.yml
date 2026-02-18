@@ -1,3 +1,8 @@
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE == "push"'
+
 stages:
   - gate
   - test
@@ -23,6 +28,7 @@ risk-policy-gate:
   image: python:3.11-slim
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - when: never
   script:
     - |
       echo "=== Risk Policy Gate ==="
@@ -40,10 +46,6 @@ risk-policy-gate:
 lint:
   stage: test
   image: python:3.11-slim
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-    - if: '$CI_COMMIT_BRANCH == "main"'
-    - if: '$CI_PIPELINE_SOURCE == "push"'
   script:
     - pip install -q ruff
     - ruff check .
@@ -53,10 +55,6 @@ lint:
 docs-guard:
   stage: test
   image: python:3.11-slim
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-    - if: '$CI_COMMIT_BRANCH == "main"'
-    - if: '$CI_PIPELINE_SOURCE == "push"'
   script:
     - python3 scripts/docs-guard
 
@@ -75,17 +73,11 @@ test-projects:
   variables:
     DATABASE_URL: "postgresql://connorrainey@postgres:5432/nhl_betting"
   rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-      changes:
+    - changes:
         - nhl-betting/**/*
         - polymarket/**/*
         - real-estate/**/*
         - pyproject.toml
-    - if: '$CI_COMMIT_BRANCH == "main"'
-      changes:
-        - nhl-betting/**/*
-        - polymarket/**/*
-        - real-estate/**/*
   script:
     - pip install -q pytest ruff httpx asyncpg psycopg2-binary requests python-dotenv
     - |
@@ -121,13 +113,9 @@ test-dashboard:
   variables:
     DATABASE_URL: "postgresql://connorrainey@postgres:5432/nhl_betting"
   rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-      changes:
+    - changes:
         - admin-dashboard/**/*
         - scripts/deploy-dashboard
-    - if: '$CI_COMMIT_BRANCH == "main"'
-      changes:
-        - admin-dashboard/**/*
   script:
     - pip install -q pytest ruff httpx pytest-asyncio asyncpg fastapi uvicorn pydantic python-dotenv
     - |
@@ -162,18 +150,12 @@ test-full:
   variables:
     DATABASE_URL: "postgresql://connorrainey@postgres:5432/nhl_betting"
   rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-      changes:
+    - changes:
         - scripts/**/*
         - Makefile
         - pyproject.toml
         - risk-policy.json
         - .gitlab-ci.yml
-    - if: '$CI_COMMIT_BRANCH == "main"'
-      changes:
-        - scripts/**/*
-        - Makefile
-        - pyproject.toml
   script:
     - pip install -q pytest ruff httpx pytest-asyncio asyncpg fastapi uvicorn pydantic python-dotenv psycopg2-binary requests
     - |
@@ -201,7 +183,7 @@ discord-notify:
   image: alpine:latest
   rules:
     - if: '$CI_COMMIT_BRANCH == "main"'
-      when: always
+    - when: never
   script:
     - apk add --no-cache curl git
     - |
