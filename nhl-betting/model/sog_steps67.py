@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """Steps 6-7: Line efficiency + feature importance for SOG model."""
 import warnings
+
+import lightgbm as lgb  # noqa: E402
+import numpy as np  # noqa: E402
+import pandas as pd  # noqa: E402
+import psycopg2  # noqa: E402
+from sklearn.metrics import mean_absolute_error  # noqa: E402
+
 warnings.filterwarnings('ignore')
-import numpy as np
-import pandas as pd
-import psycopg2
-import lightgbm as lgb
-from sklearn.metrics import mean_absolute_error
 
 DB = "postgresql://connorrainey@localhost:5432/nhl_betting"
 conn = psycopg2.connect(DB)
@@ -121,36 +123,36 @@ if len(matched_dedup) > 100:
     under_rate = df['went_under'].mean()
     push_rate = 1 - over_rate - under_rate
 
-    print(f"\n  Book accuracy:")
+    print("\n  Book accuracy:")
     print(f"    MAE:        {mae:.2f} shots")
     print(f"    Mean error: {mean_error:+.3f} (positive = actual > line)")
     print(f"    Over rate:  {over_rate:.1%}")
     print(f"    Under rate: {under_rate:.1%}")
     print(f"    Push rate:  {push_rate:.1%}")
 
-    print(f"\n  By position:")
+    print("\n  By position:")
     print(f"    {'Pos':>4s} {'MAE':>6s} {'Bias':>7s} {'Over%':>7s} {'N':>6s}")
     for pos in ['C','L','R','D']:
         sub = df[df['position_code']==pos]
         if len(sub) > 50:
             print(f"    {pos:>4s} {sub['abs_error'].mean():6.2f} {sub['error'].mean():+7.3f} {sub['went_over'].mean():7.1%} {len(sub):6d}")
 
-    print(f"\n  By line bucket:")
+    print("\n  By line bucket:")
     print(f"    {'Bucket':>12s} {'MAE':>6s} {'Bias':>7s} {'Over%':>7s} {'N':>6s}")
     for lo, hi, label in [(0,2,'0-2'), (2,3,'2-3'), (3,4,'3-4'), (4,5,'4-5'), (5,99,'5+')]:
         sub = df[(df['line']>=lo) & (df['line']<hi)]
         if len(sub) > 50:
             print(f"    {label:>12s} {sub['abs_error'].mean():6.2f} {sub['error'].mean():+7.3f} {sub['went_over'].mean():7.1%} {len(sub):6d}")
 
-    print(f"\n  Biggest book errors by team:")
+    print("\n  Biggest book errors by team:")
     team_err = df.groupby('team_id').agg(
         mean_error=('error','mean'), mae=('abs_error','mean'), n=('error','count')
     ).sort_values('mean_error')
     team_err = team_err[team_err['n']>=50]
-    print(f"    Books OVER-set (actual < line → bet UNDER):")
+    print("    Books OVER-set (actual < line → bet UNDER):")
     for tid, r in team_err.head(5).iterrows():
         print(f"      {teams_map.get(tid,'?'):>4s}: bias {r['mean_error']:+.3f}, MAE {r['mae']:.2f} ({int(r['n'])} bets)")
-    print(f"    Books UNDER-set (actual > line → bet OVER):")
+    print("    Books UNDER-set (actual > line → bet OVER):")
     for tid, r in team_err.tail(5).iterrows():
         print(f"      {teams_map.get(tid,'?'):>4s}: bias {r['mean_error']:+.3f}, MAE {r['mae']:.2f} ({int(r['n'])} bets)")
 
@@ -190,7 +192,7 @@ if book_mae:
     print(f"  {'✅ Model beats the book' if mae < book_mae else '⚠️ Book is better (but this is in-sample, will degrade OOS)'}")
 
 imp = sorted(zip(pre_game_feats, model.feature_importances_), key=lambda x: -x[1])
-print(f"\n  Feature importances (pre-game only):")
+print("\n  Feature importances (pre-game only):")
 print(f"  {'Rank':>4s} {'Feature':>25s} {'Importance':>12s}")
 print(f"  {'-'*44}")
 for i, (feat, v) in enumerate(imp, 1):
@@ -208,7 +210,7 @@ model_all = lgb.LGBMRegressor(n_estimators=300, max_depth=5, learning_rate=0.05,
                                 verbose=-1, subsample=0.8, colsample_bytree=0.8)
 model_all.fit(X_all, y_all)
 imp_all = sorted(zip(all_feats, model_all.feature_importances_), key=lambda x: -x[1])
-print(f"\n  All features (including same-game, for discovery):")
+print("\n  All features (including same-game, for discovery):")
 print(f"  {'Rank':>4s} {'Feature':>25s} {'Importance':>12s} {'Type':>12s}")
 print(f"  {'-'*58}")
 for i, (feat, v) in enumerate(imp_all[:15], 1):
@@ -218,7 +220,7 @@ for i, (feat, v) in enumerate(imp_all[:15], 1):
 # SHAP
 try:
     import shap
-    print(f"\n  SHAP values (pre-game model):")
+    print("\n  SHAP values (pre-game model):")
     sample = X.sample(min(2000, len(X)), random_state=42)
     explainer = shap.TreeExplainer(model)
     shap_values = explainer.shap_values(sample)
@@ -229,7 +231,7 @@ try:
     for i, (feat, val) in enumerate(shap_sorted, 1):
         print(f"  {i:4d} {feat:>25s} {val:12.4f}")
 except ImportError:
-    print(f"\n  SHAP not available")
+    print("\n  SHAP not available")
 
 print("\n" + "=" * 70)
 print("  STEPS 6-7 COMPLETE")
