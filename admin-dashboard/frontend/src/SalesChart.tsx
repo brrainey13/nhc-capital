@@ -15,11 +15,9 @@ interface Sale {
 
 const SQFT_BUCKETS = [
   { label: 'All', min: 0, max: 99999 },
-  { label: '< 800 sqft', min: 0, max: 799 },
-  { label: '800–1000 sqft', min: 800, max: 1000 },
-  { label: '1000–1300 sqft', min: 1000, max: 1300 },
-  { label: '1300–1600 sqft', min: 1300, max: 1600 },
-  { label: '> 1600 sqft', min: 1601, max: 99999 },
+  { label: '< 1000 sqft', min: 0, max: 999 },
+  { label: '1250 sqft', min: 1250, max: 1250 },
+  { label: '> 1250 sqft', min: 1251, max: 99999 },
 ];
 
 const fmt = (v: number) => `$${Math.round(v).toLocaleString()}`;
