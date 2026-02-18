@@ -1,20 +1,25 @@
-name: CI — Full Suite
+name: CI — Projects
 
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
     paths:
-      # Catch-all: runs on infra/shared changes that affect everything
-      - 'scripts/**'
-      - '.github/workflows/ci.yml'
-      - 'Makefile'
+      - 'nhl-betting/**'
+      - 'polymarket/**'
+      - 'real-estate/**'
+      - 'lib/**'
       - 'pyproject.toml'
-      - 'risk-policy.json'
+  push:
+    branches: [main]
+    paths:
+      - 'nhl-betting/**'
+      - 'polymarket/**'
+      - 'real-estate/**'
+      - 'lib/**'
+      - 'pyproject.toml'
 
 jobs:
-  test:
+  test-projects:
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -39,7 +44,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install pytest ruff httpx pytest-asyncio asyncpg fastapi uvicorn pydantic python-dotenv
+        run: pip install pytest ruff httpx asyncpg psycopg2-binary requests python-dotenv
 
       - name: Seed test tables
         run: |
@@ -65,35 +70,27 @@ jobs:
         env:
           PGPASSWORD: ""
 
-      - name: Lint
-        run: ruff check .
+      - name: Lint projects
+        run: ruff check nhl-betting/ polymarket/ real-estate/
 
       - name: Docs guard
         run: python3 scripts/docs-guard
 
-      - name: Risk classifier check
-        run: python3 scripts/risk-classifier --pr 2>/dev/null || echo "No PR context"
-
-      - name: Run tests
-        run: pytest
+      - name: Test projects
+        run: |
+          pytest nhl-betting/ -v --tb=short || exit 1
+          pytest polymarket/ -v --tb=short || exit 1
+          pytest real-estate/ -v --tb=short || exit 1
 
       - name: Discord notification
-        if: always()
+        if: always() && github.event_name == 'push'
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
         run: |
           if [ "${{ job.status }}" = "success" ]; then EMOJI="✅"; COLOR="3066993"; else EMOJI="❌"; COLOR="15158332"; fi
           COMMIT_MSG=$(git log -1 --pretty=%s)
           COMMIT_SHA=$(git log -1 --pretty=%h)
-          COMMIT_FULL=$(git log -1 --pretty=%H)
-          AUTHOR=$(git log -1 --pretty=%an)
-          REPO="${{ github.repository }}"
-          COMMIT_URL="https://github.com/${REPO}/commit/${COMMIT_FULL}"
-          RUN_URL="https://github.com/${REPO}/actions/runs/${{ github.run_id }}"
-          CHANGED=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "(first commit)")
-          FILE_COUNT=$(echo "$CHANGED" | grep -c . || echo 0)
-          FILES_LIST=$(echo "$CHANGED" | sed 's/^/• /' | head -8)
-          DESC="**Status:** ${{ job.status }}\\n**Commit:** [\`${COMMIT_SHA}\`](${COMMIT_URL})\\n**Author:** ${AUTHOR}\\n**Run:** [View logs](${RUN_URL})\\n\\n📁 **Files (${FILE_COUNT}):**\\n${FILES_LIST}"
+          RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           curl -s -H "Content-Type: application/json" \
-            -d "{\"embeds\":[{\"title\":\"${EMOJI} CI: ${COMMIT_MSG}\",\"description\":\"${DESC}\",\"color\":${COLOR}}]}" \
+            -d "{\"embeds\":[{\"title\":\"${EMOJI} Projects CI: ${COMMIT_MSG}\",\"description\":\"**Status:** ${{ job.status }}\\n**Commit:** \`${COMMIT_SHA}\`\\n**Run:** [View logs](${RUN_URL})\",\"color\":${COLOR}}]}" \
             "$DISCORD_WEBHOOK"

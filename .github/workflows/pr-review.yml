@@ -1,0 +1,61 @@
+name: PR Code Review
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+jobs:
+  code-review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get PR diff
+        id: diff
+        run: |
+          DIFF=$(git diff origin/main...HEAD)
+          # Save to file for the review step
+          echo "$DIFF" > /tmp/pr_diff.txt
+          echo "files_changed=$(git diff --name-only origin/main...HEAD | wc -l | tr -d ' ')" >> "$GITHUB_OUTPUT"
+
+      - name: Run risk classifier
+        id: risk
+        run: |
+          pip install -q --break-system-packages 2>/dev/null || true
+          RESULT=$(python3 scripts/risk-classifier --pr 2>/dev/null)
+          TIER=$(echo "$RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin)['tier'])")
+          echo "tier=$TIER" >> "$GITHUB_OUTPUT"
+
+      - name: Post review via webhook
+        if: steps.risk.outputs.tier == 'high' || steps.risk.outputs.tier == 'medium'
+        env:
+          OPENCLAW_WEBHOOK: ${{ secrets.OPENCLAW_WEBHOOK }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RISK_TIER: ${{ steps.risk.outputs.tier }}
+        run: |
+          # Post to OpenClaw webhook for review (if configured)
+          # Fallback: post diff summary as PR comment
+          CHANGED=$(git diff --name-only origin/main...HEAD)
+          STATS=$(git diff --stat origin/main...HEAD)
+
+          BODY="## 🤖 Automated Code Review Request\n\n"
+          BODY+="**PR:** #${PR_NUMBER} — ${PR_TITLE}\n"
+          BODY+="**Risk Tier:** ${RISK_TIER}\n"
+          BODY+="**Head SHA:** \`${HEAD_SHA:0:7}\`\n\n"
+          BODY+="### Changes\n\`\`\`\n${STATS}\n\`\`\`\n\n"
+          BODY+="*Automated review pending — NHC agent will review this PR.*"
+
+          # Post as PR comment
+          gh pr comment "$PR_NUMBER" --body "$BODY" 2>/dev/null || echo "gh not authenticated in CI"
+        # Note: When OPENCLAW_WEBHOOK is set, OpenClaw picks up the PR event
+        # and spawns an isolated review session. For now, we post a comment.
+
+      - name: Skip review for low-risk
+        if: steps.risk.outputs.tier == 'low'
+        run: echo "✅ Low-risk PR — code review not required by policy"

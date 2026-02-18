@@ -1,0 +1,111 @@
+name: Risk Policy Gate
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+jobs:
+  risk-gate:
+    runs-on: ubuntu-latest
+    outputs:
+      tier: ${{ steps.classify.outputs.tier }}
+      required_checks: ${{ steps.classify.outputs.required_checks }}
+      has_schema_changes: ${{ steps.classify.outputs.has_schema_changes }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Need full history for diff
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Classify risk tier
+        id: classify
+        run: |
+          # Get changed files in this PR
+          CHANGED=$(git diff --name-only origin/main...HEAD)
+          echo "Changed files:"
+          echo "$CHANGED"
+
+          # Run risk classifier
+          RESULT=$(python3 scripts/risk-classifier --pr 2>/dev/null)
+          echo "$RESULT"
+
+          TIER=$(echo "$RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin)['tier'])")
+          CHECKS=$(echo "$RESULT" | python3 -c "import sys,json; print(','.join(json.load(sys.stdin)['requiredChecks']))")
+          SCHEMA=$(echo "$RESULT" | python3 -c "import sys,json; w=json.load(sys.stdin).get('schemaWarnings',[]); print('true' if w else 'false')")
+
+          echo "tier=$TIER" >> "$GITHUB_OUTPUT"
+          echo "required_checks=$CHECKS" >> "$GITHUB_OUTPUT"
+          echo "has_schema_changes=$SCHEMA" >> "$GITHUB_OUTPUT"
+
+      - name: Validate docs drift
+        if: contains(steps.classify.outputs.required_checks, 'code-review')
+        run: |
+          # If control-plane files changed, docs should be updated too
+          CHANGED=$(git diff --name-only origin/main...HEAD)
+          CONTROL_PLANE=$(echo "$CHANGED" | grep -E '^\.github/workflows/|^risk-policy\.json|^scripts/|^Makefile$' || true)
+          DOCS_CHANGED=$(echo "$CHANGED" | grep -E '^docs/' || true)
+
+          if [ -n "$CONTROL_PLANE" ] && [ -z "$DOCS_CHANGED" ]; then
+            echo "⚠️ Control-plane files changed without docs updates:"
+            echo "$CONTROL_PLANE"
+            echo ""
+            echo "Consider updating relevant docs/ files in this PR."
+            # Warning only, not blocking (yet)
+          fi
+
+      - name: Post risk summary
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const tier = '${{ steps.classify.outputs.tier }}';
+            const checks = '${{ steps.classify.outputs.required_checks }}'.split(',');
+            const hasSchema = '${{ steps.classify.outputs.has_schema_changes }}' === 'true';
+            const sha = context.payload.pull_request.head.sha.substring(0, 7);
+
+            const tierEmoji = { high: '🔴', medium: '🟡', low: '🟢' };
+
+            let body = `## ${tierEmoji[tier]} Risk Policy Gate — \`${tier.toUpperCase()}\`\n\n`;
+            body += `**Head SHA:** \`${sha}\`\n\n`;
+            body += `### Required Checks\n`;
+            checks.forEach(c => { body += `- [ ] \`${c}\`\n`; });
+
+            if (hasSchema) {
+              body += `\n### ⚠️ Schema Changes Detected\n`;
+              body += `This PR modifies database schema files. If you're changing tables that the admin dashboard reads, `;
+              body += `ensure a companion PR updates the dashboard to handle the new schema.\n`;
+            }
+
+            body += `\n---\n*Risk policy enforced by \`risk-policy.json\`. SHA: ${sha}*`;
+
+            // Find existing bot comment to update
+            const marker = '<!-- risk-policy-gate -->';
+            body = marker + '\n' + body;
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const existing = comments.find(c => c.body.includes(marker));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }

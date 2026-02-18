@@ -1,20 +1,19 @@
-name: CI — Full Suite
+name: CI — Dashboard
 
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
     paths:
-      # Catch-all: runs on infra/shared changes that affect everything
-      - 'scripts/**'
-      - '.github/workflows/ci.yml'
-      - 'Makefile'
-      - 'pyproject.toml'
-      - 'risk-policy.json'
+      - 'admin-dashboard/**'
+      - 'scripts/deploy-dashboard'
+  push:
+    branches: [main]
+    paths:
+      - 'admin-dashboard/**'
+      - 'scripts/deploy-dashboard'
 
 jobs:
-  test:
+  test-dashboard:
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -38,7 +37,12 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install dependencies
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Python deps
         run: pip install pytest ruff httpx pytest-asyncio asyncpg fastapi uvicorn pydantic python-dotenv
 
       - name: Seed test tables
@@ -56,44 +60,33 @@ jobs:
             );
             INSERT INTO teams (team_id, tri_code, team_name, conference_name, division_name) VALUES
               (1, 'BOS', 'Bruins', 'Eastern', 'Atlantic'),
-              (2, 'NYR', 'Rangers', 'Eastern', 'Metropolitan'),
-              (3, 'MTL', 'Canadiens', 'Eastern', 'Atlantic'),
-              (4, 'TOR', 'Maple Leafs', 'Eastern', 'Atlantic'),
-              (5, 'CHI', 'Blackhawks', 'Western', 'Central')
+              (2, 'NYR', 'Rangers', 'Eastern', 'Metropolitan')
             ON CONFLICT DO NOTHING;
           "
         env:
           PGPASSWORD: ""
 
-      - name: Lint
-        run: ruff check .
+      - name: Lint backend
+        run: ruff check admin-dashboard/
 
-      - name: Docs guard
-        run: python3 scripts/docs-guard
+      - name: Test backend
+        run: pytest admin-dashboard/ -v --tb=short
 
-      - name: Risk classifier check
-        run: python3 scripts/risk-classifier --pr 2>/dev/null || echo "No PR context"
-
-      - name: Run tests
-        run: pytest
+      - name: Build frontend
+        run: |
+          cd admin-dashboard/frontend
+          npm ci
+          npm run build
 
       - name: Discord notification
-        if: always()
+        if: always() && github.event_name == 'push'
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
         run: |
           if [ "${{ job.status }}" = "success" ]; then EMOJI="✅"; COLOR="3066993"; else EMOJI="❌"; COLOR="15158332"; fi
           COMMIT_MSG=$(git log -1 --pretty=%s)
           COMMIT_SHA=$(git log -1 --pretty=%h)
-          COMMIT_FULL=$(git log -1 --pretty=%H)
-          AUTHOR=$(git log -1 --pretty=%an)
-          REPO="${{ github.repository }}"
-          COMMIT_URL="https://github.com/${REPO}/commit/${COMMIT_FULL}"
-          RUN_URL="https://github.com/${REPO}/actions/runs/${{ github.run_id }}"
-          CHANGED=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "(first commit)")
-          FILE_COUNT=$(echo "$CHANGED" | grep -c . || echo 0)
-          FILES_LIST=$(echo "$CHANGED" | sed 's/^/• /' | head -8)
-          DESC="**Status:** ${{ job.status }}\\n**Commit:** [\`${COMMIT_SHA}\`](${COMMIT_URL})\\n**Author:** ${AUTHOR}\\n**Run:** [View logs](${RUN_URL})\\n\\n📁 **Files (${FILE_COUNT}):**\\n${FILES_LIST}"
+          RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           curl -s -H "Content-Type: application/json" \
-            -d "{\"embeds\":[{\"title\":\"${EMOJI} CI: ${COMMIT_MSG}\",\"description\":\"${DESC}\",\"color\":${COLOR}}]}" \
+            -d "{\"embeds\":[{\"title\":\"${EMOJI} Dashboard CI: ${COMMIT_MSG}\",\"description\":\"**Status:** ${{ job.status }}\\n**Commit:** \`${COMMIT_SHA}\`\\n**Run:** [View logs](${RUN_URL})\",\"color\":${COLOR}}]}" \
             "$DISCORD_WEBHOOK"

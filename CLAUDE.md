@@ -31,12 +31,20 @@ Then read the `CLAUDE.md` inside whichever project subfolder you're working in (
 ├── polymarket/                   ← Prediction market analysis & trading
 │   └── CLAUDE.md                 ← Project-specific agent instructions
 ├── docs/                         ← Project docs (YAML front-matter)
+├── risk-policy.json              ← Machine-readable risk tiers & merge policy
 ├── scripts/
 │   ├── committer                 ← Safe commit helper (USE THIS)
 │   ├── docs-list                 ← List docs with summaries — RUN THIS FIRST
-│   └── deploy-dashboard          ← Blue-green deploy (the ONLY way to deploy)
+│   ├── deploy-dashboard          ← Blue-green deploy (the ONLY way to deploy)
+│   ├── risk-classifier           ← Classifies changed files by risk tier
+│   └── pr-discord-notify         ← Generates Discord Components v2 PR cards
 ├── .claude/commands/             ← Slash commands (/build, /commit, /fix, /docs)
-├── .github/workflows/ci.yml     ← GitHub Actions (ruff + pytest)
+├── .github/workflows/
+│   ├── ci.yml                    ← Full CI (infra/shared changes)
+│   ├── ci-projects.yml           ← Path-filtered: NHL/Poly/RE only
+│   ├── ci-dashboard.yml          ← Path-filtered: dashboard only
+│   ├── risk-policy-gate.yml      ← Preflight risk classification on PRs
+│   └── pr-review.yml             ← Automated code review on PRs
 ├── Makefile                      ← make test, make lint, make ci
 └── pyproject.toml                ← pytest config
 ```
@@ -70,17 +78,53 @@ cd <project> && python3 -m venv .venv && .venv/bin/pip install -r requirements.t
 - Key tables: `games` (5.9K), `teams` (34), `players` (2.3K), `player_stats` (199K), `goalie_stats` (22K), `goalie_advanced` (9.5K), `goalie_saves_by_strength` (10K), `goalie_starts` (9.2K), `saves_odds` (44K), `standings` (7.6K), `period_scores` (36K), `api_snapshots` (26K), `lineup_absences` (11K), `injuries_live`, `predictions` (empty), `model_runs` (empty)
 - psql path: `/opt/homebrew/Cellar/postgresql@17/17.8/bin/psql`
 
+## ⚠️ PR WORKFLOW — MANDATORY (No Direct Pushes to main)
+
+**ALL changes MUST go through Pull Requests.** Never push directly to `main`.
+
+```bash
+# 1. Create a feature branch
+git checkout -b feat/your-feature-name
+
+# 2. Do your work (tests first, then code)
+# 3. make ci — must pass
+# 4. Commit and push
+scripts/committer "feat: description" file1 file2 ...
+git push -u origin feat/your-feature-name
+
+# 5. Open a PR
+gh pr create --title "feat: description" --body "What and why"
+```
+
+### What happens on PR:
+1. **Risk Policy Gate** — classifies your changes as high/medium/low risk
+2. **CI runs** — lint + test (path-filtered: only your project's tests run)
+3. **Code Review** — NHC reviews high/medium PRs automatically
+4. **Team approval** — posted to Discord with approve/reject buttons
+5. **Merge** — only after all required checks pass
+
+### Risk tiers (from `risk-policy.json`):
+- 🔴 **HIGH** — dashboard, CI workflows, deploy scripts → full gate + review
+- 🟡 **MEDIUM** — pipelines, models, scrapers → tests + lint required
+- 🟢 **LOW** — docs, markdown → lint only
+
+### Schema protection:
+If you modify database schema (CREATE/ALTER/DROP TABLE, migration files), a companion PR
+must update the admin dashboard to verify compatibility. The risk gate will flag this.
+
 ## Workflow
 
 1. **Run `scripts/docs-list`** — then `cat docs/<name>.md` for every doc whose "Read when" matches your task
 2. **`cat` the project's `CLAUDE.md`** in the subfolder you're working in (e.g. `cat nhl-betting/CLAUDE.md`)
-3. `git pull` — get latest
-4. `git status` — check for uncommitted changes
-5. Write tests FIRST
-6. Write code to pass tests
-7. `make ci` (ruff lint + pytest) — must pass
-8. `scripts/committer "feat: description" file1 file2 ...` — never `git add .`
-9. Push only when all tests pass
+3. `git checkout -b feat/your-task` — **always work on a branch**
+4. `git pull origin main` — get latest
+5. `git status` — check for uncommitted changes
+6. Write tests FIRST
+7. Write code to pass tests
+8. `make ci` (ruff lint + pytest) — must pass
+9. `scripts/committer "feat: description" file1 file2 ...` — never `git add .`
+10. `git push -u origin feat/your-task` — push branch
+11. `gh pr create` — open PR, wait for checks
 
 ## Deployment — CRITICAL RULE
 

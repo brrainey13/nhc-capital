@@ -1,0 +1,80 @@
+#!/usr/bin/env python3
+"""Post PR review cards to Discord with Components v2 buttons.
+
+Called by OpenClaw when a PR needs team review. Posts an interactive card
+with Approve/Request Changes/View Diff buttons.
+
+Usage:
+  scripts/pr-discord-notify --pr 42 --title "feat: add risk gate" --tier high --url https://github.com/...
+  
+This script outputs a JSON payload that OpenClaw's message tool can send
+to Discord with Components v2 blocks.
+"""
+
+import argparse
+import json
+import sys
+
+
+def build_components(pr_number: int, title: str, tier: str, url: str, sha: str):
+    """Build Discord Components v2 payload for a PR review card."""
+    tier_emoji = {"high": "🔴", "medium": "🟡", "low": "🟢"}
+    tier_color = {"high": "#ED4245", "medium": "#FEE75C", "low": "#57F287"}
+
+    return {
+        "components": {
+            "container": {
+                "accentColor": tier_color.get(tier, "#5865F2"),
+            },
+            "blocks": [
+                {
+                    "type": "text",
+                    "text": f"## {tier_emoji.get(tier, '📋')} PR #{pr_number} — {title}",
+                },
+                {
+                    "type": "text",
+                    "text": f"**Risk Tier:** {tier.upper()}  •  **SHA:** `{sha[:7]}`",
+                },
+                {
+                    "type": "divider",
+                    "divider": True,
+                },
+                {
+                    "type": "buttons",
+                    "buttons": [
+                        {
+                            "label": "✅ Approve & Merge",
+                            "style": "success",
+                        },
+                        {
+                            "label": "❌ Request Changes",
+                            "style": "danger",
+                        },
+                        {
+                            "label": "📄 View PR",
+                            "style": "link",
+                            "url": url,
+                        },
+                    ],
+                },
+            ],
+        },
+        "message": f"🔍 PR #{pr_number} ready for review: **{title}** [{tier.upper()}]",
+    }
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Generate Discord PR review card")
+    parser.add_argument("--pr", type=int, required=True, help="PR number")
+    parser.add_argument("--title", required=True, help="PR title")
+    parser.add_argument("--tier", default="medium", help="Risk tier")
+    parser.add_argument("--url", required=True, help="PR URL")
+    parser.add_argument("--sha", default="unknown", help="Head SHA")
+    args = parser.parse_args()
+
+    payload = build_components(args.pr, args.title, args.tier, args.url, args.sha)
+    print(json.dumps(payload, indent=2))
+
+
+if __name__ == "__main__":
+    main()

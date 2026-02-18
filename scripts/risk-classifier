@@ -1,0 +1,140 @@
+#!/usr/bin/env python3
+"""Risk classifier — classifies changed files by risk tier using risk-policy.json.
+
+Usage:
+  scripts/risk-classifier                    # Classify uncommitted changes
+  scripts/risk-classifier --pr              # Classify PR changes (git diff origin/main)
+  scripts/risk-classifier file1 file2 ...   # Classify specific files
+
+Outputs JSON: {"tier": "high|medium|low", "files": {...}, "requiredChecks": [...]}
+"""
+
+import json
+import subprocess
+import sys
+from fnmatch import fnmatch
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).parent.parent
+POLICY_FILE = REPO_ROOT / "risk-policy.json"
+
+
+def load_policy():
+    with open(POLICY_FILE) as f:
+        return json.load(f)
+
+
+def classify_file(filepath: str, rules: dict) -> str:
+    """Return the highest risk tier matching the file."""
+    for tier in ["high", "medium", "low"]:
+        patterns = rules.get(tier, [])
+        for pattern in patterns:
+            if fnmatch(filepath, pattern):
+                return tier
+    return "low"
+
+
+def get_changed_files(mode: str) -> list[str]:
+    """Get list of changed files."""
+    if mode == "pr":
+        # Files changed vs origin/main
+        result = subprocess.run(
+            ["git", "diff", "--name-only", "origin/main...HEAD"],
+            capture_output=True, text=True, cwd=REPO_ROOT,
+        )
+    elif mode == "staged":
+        result = subprocess.run(
+            ["git", "diff", "--name-only", "--cached"],
+            capture_output=True, text=True, cwd=REPO_ROOT,
+        )
+    else:
+        # All uncommitted changes
+        result = subprocess.run(
+            ["git", "diff", "--name-only", "HEAD"],
+            capture_output=True, text=True, cwd=REPO_ROOT,
+        )
+        # Also include untracked
+        untracked = subprocess.run(
+            ["git", "ls-files", "--others", "--exclude-standard"],
+            capture_output=True, text=True, cwd=REPO_ROOT,
+        )
+        files = result.stdout.strip().split("\n") + untracked.stdout.strip().split("\n")
+        return [f for f in files if f]
+
+    return [f for f in result.stdout.strip().split("\n") if f]
+
+
+def detect_schema_changes(files: list[str], policy: dict) -> list[str]:
+    """Check if any files match schema protection patterns."""
+    warnings = []
+    patterns = policy.get("schemaProtection", {}).get("protectedPatterns", [])
+    for f in files:
+        for pattern in patterns:
+            if fnmatch(f, pattern):
+                warnings.append(f"⚠️ Schema-protected file changed: {f}")
+                break
+    return warnings
+
+
+def main():
+    policy = load_policy()
+    rules = policy["riskTierRules"]
+    merge_policy = policy["mergePolicy"]
+
+    # Determine files to classify
+    if len(sys.argv) > 1 and sys.argv[1] == "--pr":
+        files = get_changed_files("pr")
+    elif len(sys.argv) > 1 and not sys.argv[1].startswith("-"):
+        files = sys.argv[1:]
+    else:
+        files = get_changed_files("uncommitted")
+
+    if not files:
+        print(json.dumps({"tier": "low", "files": {}, "requiredChecks": ["risk-policy-gate", "ci-lint"]}))
+        return
+
+    # Classify each file
+    classified = {"high": [], "medium": [], "low": []}
+    for f in files:
+        tier = classify_file(f, rules)
+        classified[tier].append(f)
+
+    # Overall tier is the highest
+    if classified["high"]:
+        overall = "high"
+    elif classified["medium"]:
+        overall = "medium"
+    else:
+        overall = "low"
+
+    required_checks = merge_policy[overall]["requiredChecks"]
+    schema_warnings = detect_schema_changes(files, policy)
+
+    result = {
+        "tier": overall,
+        "files": {k: v for k, v in classified.items() if v},
+        "requiredChecks": required_checks,
+        "schemaWarnings": schema_warnings,
+        "totalFiles": len(files),
+    }
+
+    # Compact JSON on stdout (machine-readable)
+    import sys as _sys
+    if _sys.stdout.isatty():
+        print(json.dumps(result, indent=2))
+    else:
+        print(json.dumps(result))
+
+    # Human-readable summary to stderr
+    print(f"\n📊 Risk tier: {overall.upper()}", file=sys.stderr)
+    print(f"   Files: {len(files)} total", file=sys.stderr)
+    for tier in ["high", "medium", "low"]:
+        if classified[tier]:
+            print(f"   {tier}: {len(classified[tier])} files", file=sys.stderr)
+    print(f"   Required checks: {', '.join(required_checks)}", file=sys.stderr)
+    for w in schema_warnings:
+        print(f"   {w}", file=sys.stderr)
+
+
+if __name__ == "__main__":
+    main()
