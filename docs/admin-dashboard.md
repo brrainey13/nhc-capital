@@ -78,13 +78,12 @@ Returns:
 
 ## Frontend Features
 
-- **Ops command center home page** — four-row dashboard with API/rate-limit status, token budget, 7-day Claude costs, active sessions, a 24-hour burn chart, session activity table, cost breakdown visuals, and system-health checks
+- **Ops command center home** — API/rate-limit status, token budget, 7-day cost tracking, active sessions, 24h burn chart, session activity table, and system-health cards from existing telemetry endpoints
 - **Bankroll tracker** — current balance, manual deposits/withdrawals, transaction history, balance chart, win rate, ROI
 - **NHL model outputs page** — LightGBM metadata, today's picks, 30-day history, strategy performance, and grouped odds snapshot
-- **30-second auto-refresh** — usage, cost, and health telemetry refresh in place while the rate-limit countdown continues updating every second
-- **24h trend chart** — area visualization of time-bucket activity from real session updates
-- **Session activity table** — model, share, burn rate, and freshness in a glanceable live ranking
-- **Data freshness strip** — generated timestamp + "latest session updated" staleness indicator
+- **Session activity table** — per-session token share, burn estimate, model, and freshness coloring
+- **24h burn chart** — area chart of time-bucket activity signal from real session updates
+- **Data freshness strip** — generated timestamp + "latest session updated" staleness indicator with 30-second auto-refresh
 - **Virtualized scrolling** — @tanstack/react-virtual, infinite scroll, loads 200 rows at a time
 - **Operator-based filters** — "+ Add Filter" button → column → operator → value. Filter pills with × to remove
 - **Group-by** — in toolbar, click group value to auto-add filter

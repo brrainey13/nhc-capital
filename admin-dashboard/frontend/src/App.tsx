@@ -6,11 +6,7 @@ import {
   type ColumnDef,
 } from '@tanstack/react-table'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import Dashboard, {
-  type ClaudeCosts,
-  type HealthData,
-  type UsageData,
-} from './Dashboard'
+import Dashboard from './Dashboard'
 
 const API = '/api'
 
@@ -139,6 +135,11 @@ function operatorsForType(dt: string): { value: string; label: string }[] {
 /* ── Helpers ── */
 
 function fmtNum(n: number): string { return n.toLocaleString() }
+function fmtDate(iso: string | null): string {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+}
 function fmtCompact(n: number): string {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M'
   if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K'
@@ -804,12 +805,6 @@ export default function App() {
   const mobile = useIsMobile()
   const [page, setPage] = useState<Page>('home')
   const [tables, setTables] = useState<TableInfo[]>([])
-  const [usage, setUsage] = useState<UsageData | null>(null)
-  const [usageLoadFailed, setUsageLoadFailed] = useState(false)
-  const [claudeCosts, setClaudeCosts] = useState<ClaudeCosts | null>(null)
-  const [health, setHealth] = useState<HealthData | null>(null)
-  const [healthLoadFailed, setHealthLoadFailed] = useState(false)
-  const [nowMs, setNowMs] = useState(Date.now())
 
   // Explorer state: tree → detail → data
   const [explorerView, setExplorerView] = useState<ExplorerView>('tree')
@@ -845,75 +840,6 @@ export default function App() {
 
   useEffect(() => {
     fetch(`${API}/tables`).then(r => r.ok ? r.json() : []).then(data => setTables(Array.isArray(data) ? data : [])).catch(() => setTables([]))
-  }, [])
-
-  useEffect(() => {
-    const t = window.setInterval(() => setNowMs(Date.now()), 1000)
-    return () => window.clearInterval(t)
-  }, [])
-
-  useEffect(() => {
-    let active = true
-
-    async function loadDashboardData() {
-      const [usageRes, costsRes, healthRes] = await Promise.allSettled([
-        fetch(`${API}/usage`),
-        fetch(`${API}/usage/claude-limits`),
-        fetch(`${API}/health`),
-      ])
-
-      if (!active) return
-
-      if (usageRes.status === 'fulfilled') {
-        const payload = usageRes.value.ok ? await usageRes.value.json() : null
-        if (payload && payload.freshness && payload.totals) {
-          setUsage(payload as UsageData)
-          setUsageLoadFailed(false)
-        } else {
-          setUsage(null)
-          setUsageLoadFailed(true)
-        }
-      } else {
-        setUsage(null)
-        setUsageLoadFailed(true)
-      }
-
-      if (costsRes.status === 'fulfilled') {
-        const payload = costsRes.value.ok ? await costsRes.value.json() : null
-        if (payload) setClaudeCosts(payload as ClaudeCosts)
-      }
-
-      if (healthRes.status === 'fulfilled') {
-        const payload = healthRes.value.ok ? await healthRes.value.json() : null
-        if (payload) {
-          setHealth(payload as HealthData)
-          setHealthLoadFailed(false)
-        } else {
-          setHealth(null)
-          setHealthLoadFailed(true)
-        }
-      } else {
-        setHealth(null)
-        setHealthLoadFailed(true)
-      }
-    }
-
-    loadDashboardData().catch(() => {
-      if (!active) return
-      setUsage(null)
-      setUsageLoadFailed(true)
-      setHealth(null)
-      setHealthLoadFailed(true)
-    })
-
-    const interval = window.setInterval(() => {
-      loadDashboardData().catch(() => {})
-    }, 30_000)
-
-    return () => {
-      active = false
-      window.clearInterval(interval)
-    }
   }, [])
 
   const totalRows = tables.reduce((s, t) => s + t.row_count, 0)
@@ -952,15 +878,7 @@ export default function App() {
 
         {/* HOME */}
         {page === 'home' && (
-          <Dashboard
-            mobile={mobile}
-            usage={usage}
-            usageLoadFailed={usageLoadFailed}
-            claudeCosts={claudeCosts}
-            health={health}
-            healthLoadFailed={healthLoadFailed}
-            nowMs={nowMs}
-          />
+          <Dashboard mobile={mobile} />
         )}
 
         {/* DATA EXPLORER — Tree → Detail → Full Data */}
@@ -1082,6 +1000,8 @@ export default function App() {
     </div>
   )
 }
+
+/* ── Small components ── */
 
 /* ── Styles ── */
 

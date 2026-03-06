@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import {
   Area,
   AreaChart,
@@ -13,662 +13,469 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
+import {
+  API,
+  buildHealthRows,
+  C,
+  emptyChartStyle,
+  fmtCompact,
+  fmtCountdown,
+  fmtCurrency,
+  fmtDateTime,
+  fmtDayLabel,
+  fmtNum,
+  fmtPct,
+  fmtRelativeFromNow,
+  fmtTimeEst,
+  getRateLimitColor,
+  getRecencyColor,
+  LoadingState,
+  metricCardSpan,
+  MetricCard,
+  panelStyle,
+  ProgressBar,
+  SectionHeader,
+  StatusPill,
+  tableCellStyle,
+  tableHeadStyle,
+  tooltipStyle,
+  type ClaudeCosts,
+  type HealthData,
+  type TableInfo,
+  type UsageData,
+} from './dashboardSupport'
 
-export interface SessionInfo {
-  key: string
-  label: string
-  total_tokens: number
-  input_tokens: number
-  output_tokens: number
-  context_window: number
-  model: string
-  updated_at: string | null
-  age_hours?: number | null
-  share_pct?: number
-  burn_rate_24h_est?: number
-}
+type DashboardProps = { mobile: boolean }
 
-export interface UsageData {
-  sessions: SessionInfo[]
-  totals: { total_tokens: number; input_tokens: number; output_tokens: number; session_count: number }
-  models: Array<{
-    model: string
-    total_tokens: number
-    input_tokens: number
-    output_tokens: number
-    session_count: number
-    top_sessions: Array<{
-      key: string
-      label: string
-      total_tokens: number
-      updated_at: string | null
-      share_within_model_pct: number
-    }>
-  }>
-  claude_rate_limit: {
-    status: 'active' | 'limited' | 'unknown'
-    reset_at: string | null
-    seconds_until_reset: number | null
-    reason: string | null
-    source: string
-  }
-  windows: Record<string, {
-    hours: number
-    session_count: number
-    total_tokens: number
-    input_tokens: number
-    output_tokens: number
-    burn_rate_tokens_per_hour: number
-  }>
-  top_consumers: Array<{
-    key: string
-    label: string
-    total_tokens: number
-    share_pct: number
-    updated_at: string | null
-    burn_rate_24h_est: number
-  }>
-  trend: {
-    window_hours: number
-    bucket_minutes: number
-    buckets: Array<{ start: string | null; end: string | null; session_count: number; total_tokens: number }>
-  }
-  freshness: { generated_at: string; latest_session_update_at: string | null; staleness_seconds: number | null }
-}
+export default function Dashboard({ mobile }: DashboardProps) {
+  const [usage, setUsage] = useState<UsageData | null>(null)
+  const [claudeCosts, setClaudeCosts] = useState<ClaudeCosts | null>(null)
+  const [health, setHealth] = useState<HealthData | null>(null)
+  const [tables, setTables] = useState<TableInfo[] | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [loadFailed, setLoadFailed] = useState(false)
+  const [nowMs, setNowMs] = useState(Date.now())
 
-export interface OAuthUsage {
-  five_hour?: { utilization: number; resets_at: string }
-  seven_day?: { utilization: number; resets_at: string }
-  extra_usage?: { is_enabled: boolean; monthly_limit: number; used_credits: number }
-}
+  useEffect(() => {
+    let cancelled = false
 
-export interface ClaudeCosts {
-  daily_costs: Array<{ date: string; cost: number; tokens: number }>
-  total_cost_7d: number
-  total_tokens_7d: number
-  models_7d: Record<string, { tokens: number; cost: number }>
-  fetched_at: string
-  error?: string
-  oauth?: OAuthUsage
-}
+    async function loadAll() {
+      try {
+        const [usageRes, costsRes, healthRes, tablesRes] = await Promise.all([
+          fetch(`${API}/usage`),
+          fetch(`${API}/usage/claude-limits`),
+          fetch(`${API}/health`),
+          fetch(`${API}/tables`),
+        ])
 
-export interface HealthData {
-  status?: string
-}
+        const [usageJson, costsJson, healthJson, tablesJson] = await Promise.all([
+          usageRes.ok ? usageRes.json() : null,
+          costsRes.ok ? costsRes.json() : null,
+          healthRes.ok ? healthRes.json() : null,
+          tablesRes.ok ? tablesRes.json() : null,
+        ])
 
-const C = {
-  bg: '#0f1117',
-  surface: '#181a20',
-  surfaceHover: '#1e2028',
-  surfaceActive: '#252830',
-  border: '#2a2d37',
-  borderLight: '#333642',
-  text: '#e4e5e9',
-  textSecondary: '#8b8f9a',
-  textMuted: '#5f6370',
-  accent: '#4f8cff',
-  accentDim: '#3a6fd8',
-  accentBg: 'rgba(79,140,255,0.08)',
-  white: '#ffffff',
-  danger: '#ef4444',
-  dangerBg: 'rgba(239,68,68,0.1)',
-  success: '#22c55e',
-  purple: '#a855f7',
-  purpleBg: 'rgba(168,85,247,0.08)',
-  warning: '#f59e0b',
-  warningBg: 'rgba(245,158,11,0.12)',
-}
+        if (cancelled) return
 
-const PIE_COLORS = [C.accent, '#60a5fa', '#34d399', '#f59e0b', '#f87171', '#a78bfa']
+        setUsage(usageJson && usageJson.freshness ? (usageJson as UsageData) : null)
+        setClaudeCosts(costsJson ? (costsJson as ClaudeCosts) : null)
+        setHealth((healthJson as HealthData | null) ?? null)
+        setTables(Array.isArray(tablesJson) ? (tablesJson as TableInfo[]) : null)
+        setLoadFailed(!usageJson)
+      } catch {
+        if (cancelled) return
+        setUsage(null)
+        setClaudeCosts(null)
+        setHealth(null)
+        setTables(null)
+        setLoadFailed(true)
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
 
-function fmtNum(n: number): string {
-  return n.toLocaleString()
-}
+    loadAll()
+    const refresh = window.setInterval(loadAll, 30_000)
+    return () => {
+      cancelled = true
+      window.clearInterval(refresh)
+    }
+  }, [])
 
-function fmtCompact(n: number): string {
-  if (Math.abs(n) >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
-  if (Math.abs(n) >= 1_000) return `${(n / 1_000).toFixed(1)}K`
-  return String(Math.round(n))
-}
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowMs(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [])
 
-function fmtMoney(value: number): string {
-  return value.toLocaleString(undefined, {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })
-}
+  const sessionRows = useMemo(() => {
+    return (usage?.sessions ?? []).slice().sort((a, b) => {
+      const burnDelta = (b.burn_rate_24h_est ?? 0) - (a.burn_rate_24h_est ?? 0)
+      if (burnDelta !== 0) return burnDelta
+      const updatedA = a.updated_at ? new Date(a.updated_at).getTime() : 0
+      const updatedB = b.updated_at ? new Date(b.updated_at).getTime() : 0
+      return updatedB - updatedA
+    })
+  }, [usage])
 
-function fmtPct(value: number, digits = 1): string {
-  return `${value.toFixed(digits)}%`
-}
-
-function fmtDateTime(iso: string | null): string {
-  if (!iso) return 'Unavailable'
-  return new Date(iso).toLocaleString([], {
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  })
-}
-
-function fmtTime(iso: string | null): string {
-  if (!iso) return '—'
-  return new Date(iso).toLocaleTimeString([], {
-    timeZone: 'America/New_York',
-    hour: 'numeric',
-    minute: '2-digit',
-  })
-}
-
-function fmtRelative(iso: string | null): string {
-  if (!iso) return 'Unknown'
-  const diffSeconds = Math.max(Math.floor((Date.now() - new Date(iso).getTime()) / 1000), 0)
-  if (diffSeconds < 60) return `${diffSeconds}s ago`
-  const mins = Math.floor(diffSeconds / 60)
-  if (mins < 60) return `${mins}m ago`
-  const hours = Math.floor(mins / 60)
-  if (hours < 24) return `${hours}h ago`
-  return `${Math.floor(hours / 24)}d ago`
-}
-
-function fmtCountdown(seconds: number | null): string {
-  if (seconds == null) return 'Unavailable'
-  const safe = Math.max(seconds, 0)
-  const hours = Math.floor(safe / 3600)
-  const mins = Math.floor((safe % 3600) / 60)
-  const secs = safe % 60
-  return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
-}
-
-function sessionAgeHours(updatedAt: string | null): number | null {
-  if (!updatedAt) return null
-  return Math.max((Date.now() - new Date(updatedAt).getTime()) / 3_600_000, 0)
-}
-
-function statusColorFromAge(hours: number | null): string {
-  if (hours == null) return C.textMuted
-  if (hours < 1) return C.success
-  if (hours < 6) return C.warning
-  return C.textMuted
-}
-
-function statusLabelFromAge(hours: number | null): string {
-  if (hours == null) return 'Unknown'
-  if (hours < 1) return 'Active'
-  if (hours < 6) return 'Warm'
-  return 'Stale'
-}
-
-function topModelName(usage: UsageData): string {
-  return usage.models[0]?.model || usage.sessions[0]?.model || 'claude-opus-4-6'
-}
-
-type DashboardProps = {
-  mobile: boolean
-  usage: UsageData | null
-  usageLoadFailed: boolean
-  claudeCosts: ClaudeCosts | null
-  health: HealthData | null
-  healthLoadFailed: boolean
-  nowMs: number
-}
-
-export default function Dashboard({
-  mobile,
-  usage,
-  usageLoadFailed,
-  claudeCosts,
-  health,
-  healthLoadFailed,
-  nowMs,
-}: DashboardProps) {
-  const recentSessions = useMemo(
-    () => (usage?.sessions ?? [])
-      .filter((session) => {
-        const age = sessionAgeHours(session.updated_at)
-        return age != null && age < 1
-      })
-      .sort((a, b) => (b.burn_rate_24h_est ?? 0) - (a.burn_rate_24h_est ?? 0)),
-    [usage],
+  const activeSessionsLastHour = useMemo(
+    () => sessionRows.filter((session) => session.updated_at && (nowMs - new Date(session.updated_at).getTime()) <= 3600_000),
+    [nowMs, sessionRows],
   )
 
-  const sessionRows = useMemo(
-    () => (usage?.sessions ?? [])
-      .slice()
-      .sort((a, b) => {
-        const burnDiff = (b.burn_rate_24h_est ?? 0) - (a.burn_rate_24h_est ?? 0)
-        if (burnDiff !== 0) return burnDiff
-        return (b.total_tokens ?? 0) - (a.total_tokens ?? 0)
-      }),
-    [usage],
-  )
+  const dominantModel = useMemo(() => {
+    const claudeSession = sessionRows.find((session) => session.model.toLowerCase().includes('claude'))
+    return claudeSession?.model || usage?.models?.[0]?.model || 'Model unavailable'
+  }, [sessionRows, usage])
 
-  const trendData = useMemo(
-    () => (usage?.trend.buckets ?? []).map((bucket) => ({
-      label: fmtTime(bucket.start),
-      fullLabel: bucket.start ? new Date(bucket.start).toLocaleString([], {
-        timeZone: 'America/New_York',
-        month: 'short',
-        day: 'numeric',
-        hour: 'numeric',
-      }) : 'Unknown',
+  const tokenBudget = useMemo(() => {
+    const used = usage?.windows.last_24h?.total_tokens ?? 0
+    const activeCapacity = activeSessionsLastHour.reduce((sum, session) => sum + (session.context_window || 0), 0)
+    const fallbackCapacity = sessionRows.reduce((sum, session) => sum + (session.context_window || 0), 0)
+    const capacity = activeCapacity || fallbackCapacity
+    const remaining = Math.max(capacity - used, 0)
+    const pct = capacity > 0 ? Math.min((used / capacity) * 100, 100) : 0
+    return { used, capacity, remaining, pct }
+  }, [activeSessionsLastHour, sessionRows, usage])
+
+  const burnTrend = useMemo(() => {
+    return (usage?.trend.buckets ?? []).map((bucket) => ({
+      label: fmtTimeEst(bucket.start),
       tokens: bucket.total_tokens,
       sessions: bucket.session_count,
-    })),
-    [usage],
-  )
+      start: bucket.start,
+    }))
+  }, [usage])
 
-  const totalContextCapacity = useMemo(
-    () => recentSessions.reduce((sum, session) => sum + (session.context_window || 0), 0),
-    [recentSessions],
-  )
+  const dailyCostSeries = useMemo(() => {
+    return (claudeCosts?.daily_costs ?? []).map((row) => ({
+      ...row,
+      label: fmtDayLabel(row.date),
+    }))
+  }, [claudeCosts])
 
-  const tokenBudgetUsed = usage?.windows.last_24h?.total_tokens ?? 0
-  const tokenBudgetPct = totalContextCapacity > 0
-    ? Math.min((tokenBudgetUsed / totalContextCapacity) * 100, 100)
-    : 0
-  const tokenBudgetRemaining = Math.max(totalContextCapacity - tokenBudgetUsed, 0)
+  const costBreakdown = useMemo(() => {
+    const palette = ['#4f8cff', '#22c55e', '#a855f7', '#f59e0b', '#ef4444', '#14b8a6']
+    return Object.entries(claudeCosts?.models_7d ?? {})
+      .sort(([, a], [, b]) => b.cost - a.cost)
+      .map(([model, data], index) => ({
+        model,
+        cost: data.cost,
+        tokens: data.tokens,
+        color: palette[index % palette.length],
+      }))
+  }, [claudeCosts])
 
-  const sparklineData = claudeCosts?.daily_costs ?? []
-  const donutData = useMemo(
-    () => Object.entries(claudeCosts?.models_7d ?? {})
-      .map(([model, data]) => ({ model, cost: data.cost, tokens: data.tokens }))
-      .sort((a, b) => b.cost - a.cost),
-    [claudeCosts],
-  )
+  const hostMode = typeof window !== 'undefined' && !['localhost', '127.0.0.1'].includes(window.location.hostname)
+    ? 'Cloudflare edge'
+    : 'Local dev'
+  const healthRows = buildHealthRows({ health, tables, hostMode, usage, claudeCosts, nowMs })
 
-  const burnRate = usage?.windows.last_24h?.burn_rate_tokens_per_hour ?? 0
-  const rateLimitCountdown = usage?.claude_rate_limit.reset_at
-    ? Math.max(Math.floor((new Date(usage.claude_rate_limit.reset_at).getTime() - nowMs) / 1000), 0)
-    : usage?.claude_rate_limit.seconds_until_reset ?? null
+  if (loading && !usage) {
+    return <LoadingState />
+  }
 
   if (!usage) {
     return (
-      <div style={{ ...panel, minHeight: 180, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <section style={panelStyle}>
         <div style={{ color: C.textMuted, fontSize: 13 }}>
-          {usageLoadFailed ? 'Unable to load dashboard data. Refresh and sign in again.' : 'Loading dashboard…'}
+          {loadFailed ? 'Unable to load dashboard telemetry. Refresh and sign in again.' : 'Loading dashboard telemetry…'}
         </div>
-      </div>
+      </section>
     )
   }
 
   return (
-    <div style={{ height: '100%', overflow: 'auto', paddingBottom: mobile ? 24 : 12 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: mobile ? 'flex-start' : 'center', gap: 12, marginBottom: 16, flexDirection: mobile ? 'column' : 'row' }}>
+    <div style={{ height: '100%', overflow: 'auto', paddingBottom: mobile ? 96 : 24 }}>
+      <div style={{ display: 'flex', alignItems: mobile ? 'flex-start' : 'center', justifyContent: 'space-between', gap: 12, marginBottom: 16, flexDirection: mobile ? 'column' : 'row' }}>
         <div>
-          <h2 style={{ fontSize: mobile ? 20 : 24, fontWeight: 800, margin: '0 0 4px', color: C.white, letterSpacing: '-0.03em' }}>Ops Command Center</h2>
-          <div style={{ fontSize: 12, color: C.textMuted }}>
-            Refreshed {fmtDateTime(usage.freshness.generated_at)} · latest session {fmtRelative(usage.freshness.latest_session_update_at)}
+          <h2 style={{ margin: 0, fontSize: mobile ? 22 : 26, fontWeight: 800, letterSpacing: '-0.04em', color: C.white }}>Ops Command Center</h2>
+          <div style={{ marginTop: 6, fontSize: 12, color: C.textMuted }}>
+            Generated {fmtDateTime(usage.freshness.generated_at)} · latest session {fmtRelativeFromNow(usage.freshness.latest_session_update_at, nowMs)} · refreshes every 30s
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <Badge tone={usage.claude_rate_limit.status === 'limited' ? 'danger' : usage.claude_rate_limit.status === 'active' ? 'success' : 'muted'}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderRadius: 999, border: `1px solid ${C.border}`, background: C.surface }}>
+          <span style={{ width: 8, height: 8, borderRadius: '50%', background: getRateLimitColor(usage.claude_rate_limit.status), boxShadow: `0 0 12px ${getRateLimitColor(usage.claude_rate_limit.status)}66` }} />
+          <span style={{ fontSize: 12, color: C.textSecondary, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
             Claude {usage.claude_rate_limit.status}
-          </Badge>
-          <Badge tone={health?.status === 'ok' ? 'success' : healthLoadFailed ? 'danger' : 'muted'}>
-            API {health?.status === 'ok' ? 'healthy' : healthLoadFailed ? 'unreachable' : 'checking'}
-          </Badge>
+          </span>
+          <span style={{ fontSize: 12, fontWeight: 700, color: C.white, fontVariantNumeric: 'tabular-nums' }}>
+            {fmtCountdown(usage.claude_rate_limit.seconds_until_reset, nowMs, usage.claude_rate_limit.reset_at)}
+          </span>
         </div>
       </div>
 
-      <div style={{ display: 'grid', gap: 14, gridTemplateColumns: mobile ? '1fr' : 'repeat(4, minmax(0, 1fr))', marginBottom: 14 }}>
+      <section style={{ display: 'grid', gap: 12, gridTemplateColumns: mobile ? '1fr' : 'repeat(4, minmax(0, 1fr))', marginBottom: 16 }}>
         <MetricCard
           title="API Status"
-          value={health?.status === 'ok' ? 'Operational' : healthLoadFailed ? 'Offline' : 'Checking'}
-          accent={health?.status === 'ok' ? C.success : healthLoadFailed ? C.danger : C.textSecondary}
-          footer={`${topModelName(usage)} · ${usage.claude_rate_limit.status.toUpperCase()}`}
+          accent={getRateLimitColor(usage.claude_rate_limit.status)}
+          footer={`Reset ${fmtDateTime(usage.claude_rate_limit.reset_at)}`}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <StatusDot color={health?.status === 'ok' ? C.success : healthLoadFailed ? C.danger : C.textMuted} />
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 12, color: C.textSecondary }}>Rate limit reset</div>
-              <div style={{ fontSize: 18, fontWeight: 700, color: C.white, fontVariantNumeric: 'tabular-nums' }}>{fmtCountdown(rateLimitCountdown)}</div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+            <div>
+              <div style={{ fontSize: 26, fontWeight: 800, color: C.white, letterSpacing: '-0.03em' }}>
+                {health?.status === 'ok' ? 'Online' : 'Check API'}
+              </div>
+              <div style={{ marginTop: 4, fontSize: 12, color: C.textSecondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {dominantModel}
+              </div>
             </div>
+            <StatusPill label={usage.claude_rate_limit.status} color={getRateLimitColor(usage.claude_rate_limit.status)} />
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12, color: C.textMuted }}>
+            <span>Rate limit reset</span>
+            <span style={{ color: C.white, fontVariantNumeric: 'tabular-nums' }}>
+              {fmtCountdown(usage.claude_rate_limit.seconds_until_reset, nowMs, usage.claude_rate_limit.reset_at)}
+            </span>
           </div>
         </MetricCard>
 
         <MetricCard
           title="Token Budget"
-          value={fmtNum(tokenBudgetUsed)}
-          accent={C.white}
-          footer={totalContextCapacity > 0 ? `${fmtPct(tokenBudgetPct)} of active context capacity` : 'Context capacity unavailable'}
+          accent={C.accent}
+          footer={tokenBudget.capacity > 0 ? `${fmtNum(tokenBudget.remaining)} remaining capacity` : 'Context capacity unavailable'}
         >
-          <ProgressBar value={tokenBudgetPct} color={tokenBudgetPct > 85 ? C.danger : tokenBudgetPct > 60 ? C.warning : C.accent} />
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, fontSize: 12, color: C.textSecondary }}>
-            <span>Remaining {fmtNum(tokenBudgetRemaining)}</span>
-            <span>Cap {fmtNum(totalContextCapacity)}</span>
+          <div style={{ fontSize: 30, fontWeight: 800, color: C.white, letterSpacing: '-0.04em' }}>{fmtNum(tokenBudget.used)}</div>
+          <div style={{ fontSize: 12, color: C.textSecondary }}>Last 24h tokens across recent sessions</div>
+          <ProgressBar value={tokenBudget.pct} color={C.accent} />
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12, color: C.textMuted }}>
+            <span>{fmtPct(tokenBudget.pct)} of active context capacity</span>
+            <span>{tokenBudget.capacity > 0 ? fmtNum(tokenBudget.capacity) : '—'} total</span>
           </div>
         </MetricCard>
 
         <MetricCard
           title="Cost (7d)"
-          value={claudeCosts ? fmtMoney(claudeCosts.total_cost_7d) : '—'}
-          accent={C.accent}
-          footer={claudeCosts ? `${fmtNum(claudeCosts.total_tokens_7d)} tokens in 7d` : 'Waiting for CodexBar'}
+          accent={C.success}
+          footer={claudeCosts ? `${fmtNum(claudeCosts.total_tokens_7d)} tokens over 7d` : 'CodexBar data unavailable'}
         >
-          <div style={{ height: 56, marginTop: 6 }}>
-            {sparklineData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={sparklineData}>
-                  <defs>
-                    <linearGradient id="costSpark" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor={C.accent} stopOpacity={0.65} />
-                      <stop offset="100%" stopColor={C.accent} stopOpacity={0.05} />
-                    </linearGradient>
-                  </defs>
-                  <Area type="monotone" dataKey="cost" stroke={C.accent} fill="url(#costSpark)" strokeWidth={2} />
-                </AreaChart>
-              </ResponsiveContainer>
-            ) : (
-              <div style={{ height: '100%', display: 'flex', alignItems: 'center', color: C.textMuted, fontSize: 12 }}>
-                {claudeCosts?.error ? 'Cost feed unavailable' : 'Waiting for daily costs'}
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+            <div>
+              <div style={{ fontSize: 30, fontWeight: 800, color: C.white, letterSpacing: '-0.04em' }}>
+                {claudeCosts ? fmtCurrency(claudeCosts.total_cost_7d) : '—'}
               </div>
-            )}
+              <div style={{ marginTop: 4, fontSize: 12, color: C.textSecondary }}>
+                {claudeCosts?.error ? 'CodexBar feed degraded' : 'Daily spend trend'}
+              </div>
+            </div>
+            <div style={{ width: mobile ? 96 : 120, height: 56, flexShrink: 0 }}>
+              {dailyCostSeries.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={dailyCostSeries}>
+                    <defs>
+                      <linearGradient id="costSpark" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor={C.success} stopOpacity={0.8} />
+                        <stop offset="100%" stopColor={C.success} stopOpacity={0.08} />
+                      </linearGradient>
+                    </defs>
+                    <Area type="monotone" dataKey="cost" stroke={C.success} strokeWidth={2.5} fill="url(#costSpark)" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              ) : (
+                <div style={{ height: '100%', borderRadius: 10, background: C.surfaceActive, border: `1px solid ${C.border}` }} />
+              )}
+            </div>
           </div>
         </MetricCard>
 
         <MetricCard
           title="Active Sessions"
-          value={String(usage.windows.last_1h?.session_count ?? recentSessions.length)}
-          accent={C.white}
-          footer={`${recentSessions.length} updated in the last hour`}
+          accent={C.purple}
+          footer={`${fmtNum(usage.totals.session_count)} sessions total`}
         >
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6 }}>
-            {(recentSessions.slice(0, 3)).map((session) => (
-              <div key={session.key} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 12 }}>
+          <div style={{ fontSize: 30, fontWeight: 800, color: C.white, letterSpacing: '-0.04em' }}>{activeSessionsLastHour.length}</div>
+          <div style={{ fontSize: 12, color: C.textSecondary }}>Updated within the last hour</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {activeSessionsLastHour.slice(0, 3).map((session) => (
+              <div key={session.key} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12 }}>
                 <span style={{ color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{session.label}</span>
-                <span style={{ color: C.textMuted }}>{fmtCompact(session.burn_rate_24h_est ?? 0)}/h</span>
+                <span style={{ color: C.textMuted }}>{fmtCompact(session.total_tokens)}</span>
               </div>
             ))}
-            {recentSessions.length === 0 && <div style={{ fontSize: 12, color: C.textMuted }}>No sessions active in the last hour.</div>}
+            {activeSessionsLastHour.length === 0 && <div style={{ fontSize: 12, color: C.textMuted }}>No sessions updated in the last hour.</div>}
           </div>
         </MetricCard>
-      </div>
+      </section>
 
-      <section style={{ ...panel, marginBottom: 14 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: mobile ? 'flex-start' : 'center', gap: 10, marginBottom: 14, flexDirection: mobile ? 'column' : 'row' }}>
-          <div>
-            <div style={eyebrow}>Token Burn</div>
-            <div style={{ fontSize: 22, fontWeight: 700, color: C.white, letterSpacing: '-0.03em' }}>24-hour usage curve</div>
-          </div>
-          <div style={{ fontSize: 13, color: C.textSecondary }}>
-            {fmtCompact(Math.round(burnRate))} tokens/hour avg
-          </div>
-        </div>
+      <section style={{ ...panelStyle, marginBottom: 16 }}>
+        <SectionHeader
+          title="Token Burn"
+          subtitle={`${fmtCompact(Math.round(usage.windows.last_24h?.burn_rate_tokens_per_hour ?? 0))} tokens/hour avg · last 24h in ${usage.trend.bucket_minutes}-minute buckets`}
+        />
         <div style={{ height: mobile ? 240 : 320 }}>
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={trendData}>
+            <AreaChart data={burnTrend} margin={{ top: 10, right: 8, left: 0, bottom: 0 }}>
               <defs>
-                <linearGradient id="tokenBurn" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={C.accent} stopOpacity={0.55} />
-                  <stop offset="100%" stopColor={C.accent} stopOpacity={0.04} />
+                <linearGradient id="burnFill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={C.accent} stopOpacity={0.7} />
+                  <stop offset="100%" stopColor={C.accent} stopOpacity={0.05} />
                 </linearGradient>
               </defs>
               <CartesianGrid stroke={C.border} vertical={false} />
-              <XAxis dataKey="label" stroke={C.textMuted} tick={{ fontSize: 11 }} />
-              <YAxis stroke={C.textMuted} tick={{ fontSize: 11 }} tickFormatter={(value) => fmtCompact(Number(value))} width={mobile ? 44 : 60} />
+              <XAxis dataKey="label" stroke={C.textMuted} tick={{ fill: C.textMuted, fontSize: 11 }} />
+              <YAxis stroke={C.textMuted} tick={{ fill: C.textMuted, fontSize: 11 }} tickFormatter={(value) => fmtCompact(Number(value))} width={72} />
               <Tooltip
                 contentStyle={tooltipStyle}
-                formatter={(value) => [fmtNum(Number(value ?? 0)), 'Tokens']}
-                labelFormatter={(_, payload) => payload?.[0]?.payload?.fullLabel || 'Unknown'}
+                cursor={{ stroke: `${C.accent}55`, strokeWidth: 1 }}
+                formatter={(value: number | string | undefined) => [fmtNum(Number(value ?? 0)), 'Tokens']}
+                labelFormatter={(_, payload) => fmtDateTime(payload?.[0]?.payload?.start ?? null)}
               />
-              <Area type="monotone" dataKey="tokens" stroke={C.accent} fill="url(#tokenBurn)" strokeWidth={3} />
+              <Area type="monotone" dataKey="tokens" stroke={C.accent} strokeWidth={3} fill="url(#burnFill)" />
             </AreaChart>
           </ResponsiveContainer>
         </div>
       </section>
 
-      <div style={{ display: 'grid', gap: 14, gridTemplateColumns: mobile ? '1fr' : 'minmax(0, 1.6fr) minmax(340px, 1fr)', marginBottom: 14 }}>
-        <section style={{ ...panel, overflow: 'hidden' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-            <div>
-              <div style={eyebrow}>Session Activity</div>
-              <div style={{ fontSize: 20, fontWeight: 700, color: C.white, letterSpacing: '-0.02em' }}>Live session ranking</div>
-            </div>
-            <div style={{ fontSize: 12, color: C.textMuted }}>Sorted by burn rate</div>
-          </div>
+      <section style={{ display: 'grid', gap: 16, gridTemplateColumns: mobile ? '1fr' : 'minmax(0, 1.6fr) minmax(320px, 1fr)', marginBottom: 16 }}>
+        <div style={panelStyle}>
+          <SectionHeader
+            title="Session Activity"
+            subtitle="Sorted by estimated burn rate with freshness coloring"
+          />
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 720 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: mobile ? 760 : 0 }}>
               <thead>
                 <tr>
-                  {['Session', 'Model', 'Tokens Used', 'Share', 'Burn Rate', 'Last Active'].map((label) => (
-                    <th key={label} style={th}>{label}</th>
-                  ))}
+                  <th style={{ ...tableHeadStyle, width: '28%' }}>Session</th>
+                  <th style={tableHeadStyle}>Model</th>
+                  <th style={tableHeadStyle}>Tokens Used</th>
+                  <th style={tableHeadStyle}>Share</th>
+                  <th style={tableHeadStyle}>Burn Rate</th>
+                  <th style={tableHeadStyle}>Last Active</th>
                 </tr>
               </thead>
               <tbody>
                 {sessionRows.map((session) => {
-                  const age = sessionAgeHours(session.updated_at)
+                  const hoursSince = session.updated_at ? (nowMs - new Date(session.updated_at).getTime()) / 3_600_000 : null
+                  const color = getRecencyColor(hoursSince)
                   return (
                     <tr key={session.key}>
-                      <td style={td}>
+                      <td style={tableCellStyle}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                          <StatusDot color={statusColorFromAge(age)} />
-                          <div>
-                            <div style={{ color: C.white, fontWeight: 600 }}>{session.label}</div>
-                            <div style={{ color: C.textMuted, fontSize: 11 }}>{statusLabelFromAge(age)}</div>
+                          <span style={{ width: 8, height: 8, borderRadius: '50%', background: color, boxShadow: `0 0 12px ${color}55`, flexShrink: 0 }} />
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ color: C.white, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{session.label}</div>
+                            <div style={{ color: C.textMuted, fontSize: 11, marginTop: 3 }}>{session.key.slice(0, 12)}…</div>
                           </div>
                         </div>
                       </td>
-                      <td style={tdMuted}>{session.model || 'Unknown'}</td>
-                      <td style={td}>{fmtNum(session.total_tokens)}</td>
-                      <td style={td}>{fmtPct(session.share_pct ?? 0)}</td>
-                      <td style={td}>{fmtCompact(session.burn_rate_24h_est ?? 0)}/h</td>
-                      <td style={tdMuted}>{fmtRelative(session.updated_at)}</td>
+                      <td style={{ ...tableCellStyle, color: C.textSecondary, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{session.model || '—'}</td>
+                      <td style={tableCellStyle}>{fmtNum(session.total_tokens)}</td>
+                      <td style={tableCellStyle}>{fmtPct(session.share_pct ?? 0)}</td>
+                      <td style={tableCellStyle}>{fmtCompact(Math.round(session.burn_rate_24h_est ?? 0))}/h</td>
+                      <td style={tableCellStyle}>
+                        <div style={{ color, fontWeight: 600 }}>{fmtRelativeFromNow(session.updated_at, nowMs)}</div>
+                        <div style={{ marginTop: 3, color: C.textMuted, fontSize: 11 }}>{fmtDateTime(session.updated_at)}</div>
+                      </td>
                     </tr>
                   )
                 })}
               </tbody>
             </table>
           </div>
-        </section>
-
-        <section style={{ ...panel, display: 'grid', gap: 14, alignContent: 'start' }}>
-          <div>
-            <div style={eyebrow}>Cost Breakdown</div>
-            <div style={{ fontSize: 20, fontWeight: 700, color: C.white, letterSpacing: '-0.02em' }}>Seven-day model mix</div>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: mobile ? '1fr' : '190px 1fr', gap: 14, alignItems: 'center' }}>
-            <div style={{ height: 190 }}>
-              {donutData.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie data={donutData} dataKey="cost" nameKey="model" innerRadius={52} outerRadius={78} paddingAngle={2}>
-                      {donutData.map((entry, index) => (
-                        <Cell key={entry.model} fill={PIE_COLORS[index % PIE_COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip contentStyle={tooltipStyle} formatter={(value) => [fmtMoney(Number(value ?? 0)), 'Cost']} />
-                  </PieChart>
-                </ResponsiveContainer>
-              ) : (
-                <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.textMuted, fontSize: 12 }}>
-                  No model cost data
-                </div>
-              )}
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <div style={{ fontSize: 28, fontWeight: 800, color: C.white, letterSpacing: '-0.04em' }}>{claudeCosts ? fmtMoney(claudeCosts.total_cost_7d) : '—'}</div>
-              <div style={{ fontSize: 12, color: C.textMuted }}>Total cost over the last 7 days</div>
-              {donutData.slice(0, 5).map((row, index) => (
-                <div key={row.model} style={{ display: 'grid', gridTemplateColumns: '12px minmax(0, 1fr) auto', gap: 10, alignItems: 'center', fontSize: 12 }}>
-                  <span style={{ width: 12, height: 12, borderRadius: 999, background: PIE_COLORS[index % PIE_COLORS.length] }} />
-                  <span style={{ color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.model}</span>
-                  <span style={{ color: C.textSecondary }}>{fmtMoney(row.cost)}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div style={{ height: 180 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={sparklineData}>
-                <CartesianGrid stroke={C.border} vertical={false} />
-                <XAxis dataKey="date" stroke={C.textMuted} tick={{ fontSize: 11 }} tickFormatter={(value) => new Date(`${value}T12:00:00`).toLocaleDateString([], { weekday: 'short' })} />
-                <YAxis stroke={C.textMuted} tick={{ fontSize: 11 }} tickFormatter={(value) => `$${Number(value).toFixed(0)}`} width={44} />
-                <Tooltip
-                  contentStyle={tooltipStyle}
-                  formatter={(value, _, item) => [fmtMoney(Number(value ?? 0)), item?.payload?.tokens ? `${fmtNum(item.payload.tokens)} tokens` : 'Cost']}
-                  labelFormatter={(label) => fmtDateTime(label ? `${label}T12:00:00` : null)}
-                />
-                <Bar dataKey="cost" radius={[6, 6, 0, 0]} fill={C.accent} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </section>
-      </div>
-
-      <section style={panel}>
-        <div style={{ marginBottom: 12 }}>
-          <div style={eyebrow}>System Health</div>
-          <div style={{ fontSize: 20, fontWeight: 700, color: C.white, letterSpacing: '-0.02em' }}>Operational checks</div>
         </div>
-        <div style={{ display: 'grid', gap: 12, gridTemplateColumns: mobile ? '1fr' : 'repeat(4, minmax(0, 1fr))' }}>
-          <HealthCard
-            label="Cloudflare Tunnel"
-            value={health?.status === 'ok' ? 'Protected' : 'Unknown'}
-            tone={health?.status === 'ok' ? 'success' : 'muted'}
-            sub={health?.status === 'ok' ? 'API reachable behind Access' : 'Tunnel runtime not exposed by API'}
-          />
-          <HealthCard
-            label="Database"
-            value={health?.status === 'ok' ? 'Connected' : 'Unknown'}
-            tone={health?.status === 'ok' ? 'success' : 'muted'}
-            sub={health?.status === 'ok' ? 'Backend responding to health checks' : 'Connection detail not exposed'}
-          />
-          <HealthCard
-            label="Cron Jobs"
-            value={usage.freshness.staleness_seconds != null && usage.freshness.staleness_seconds < 3600 ? 'Fresh data' : 'Unknown'}
-            tone={usage.freshness.staleness_seconds != null && usage.freshness.staleness_seconds < 3600 ? 'success' : 'warning'}
-            sub={usage.freshness.latest_session_update_at ? `Latest update ${fmtRelative(usage.freshness.latest_session_update_at)}` : 'Last run times not exposed'}
-          />
-          <HealthCard
-            label="Git / Deploy"
-            value="Not exposed"
-            tone="muted"
-            sub="Branch, SHA, and deploy status are not returned by current API"
-          />
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={panelStyle}>
+            <SectionHeader
+              title="Cost Breakdown"
+              subtitle={claudeCosts ? `${fmtCurrency(claudeCosts.total_cost_7d)} total over the last 7 days` : 'No cost data available'}
+            />
+            <div style={{ display: 'flex', flexDirection: mobile ? 'column' : 'row', gap: 12 }}>
+              <div style={metricCardSpan(mobile, '1 1 52%')}>
+                <div style={{ height: 220 }}>
+                  {costBreakdown.length > 0 ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={costBreakdown}
+                          dataKey="cost"
+                          nameKey="model"
+                          innerRadius={58}
+                          outerRadius={82}
+                          paddingAngle={2}
+                          stroke="none"
+                        >
+                          {costBreakdown.map((entry) => (
+                            <Cell key={entry.model} fill={entry.color} />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          contentStyle={tooltipStyle}
+                          formatter={(value: number | string | undefined) => [fmtCurrency(Number(value ?? 0)), 'Cost']}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div style={emptyChartStyle}>No model cost breakdown available.</div>
+                  )}
+                </div>
+              </div>
+              <div style={metricCardSpan(mobile, '1 1 48%')}>
+                <div style={{ fontSize: 28, fontWeight: 800, color: C.white, letterSpacing: '-0.04em' }}>
+                  {claudeCosts ? fmtCurrency(claudeCosts.total_cost_7d) : '—'}
+                </div>
+                <div style={{ fontSize: 12, color: C.textSecondary }}>Model share of last 7 days</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {costBreakdown.slice(0, 5).map((entry) => {
+                    const pct = claudeCosts && claudeCosts.total_cost_7d > 0 ? (entry.cost / claudeCosts.total_cost_7d) * 100 : 0
+                    return (
+                      <div key={entry.model}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12, marginBottom: 4 }}>
+                          <span style={{ color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{entry.model}</span>
+                          <span style={{ color: C.white }}>{fmtCurrency(entry.cost)}</span>
+                        </div>
+                        <div style={{ height: 6, borderRadius: 999, overflow: 'hidden', background: C.surfaceActive }}>
+                          <div style={{ width: `${pct}%`, height: '100%', borderRadius: 999, background: entry.color }} />
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+            <div style={{ marginTop: 16 }}>
+              <div style={{ fontSize: 11, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>Daily Cost</div>
+              <div style={{ height: 180 }}>
+                {dailyCostSeries.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={dailyCostSeries}>
+                      <CartesianGrid stroke={C.border} vertical={false} />
+                      <XAxis dataKey="label" stroke={C.textMuted} tick={{ fill: C.textMuted, fontSize: 11 }} />
+                      <YAxis stroke={C.textMuted} tick={{ fill: C.textMuted, fontSize: 11 }} tickFormatter={(value) => `$${Number(value).toFixed(0)}`} width={52} />
+                      <Tooltip
+                        contentStyle={tooltipStyle}
+                        formatter={(value: number | string | undefined) => [fmtCurrency(Number(value ?? 0)), 'Cost']}
+                        labelFormatter={(_, payload) => payload?.[0]?.payload?.date ?? ''}
+                      />
+                      <Bar dataKey="cost" radius={[8, 8, 0, 0]} fill={C.accent} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div style={emptyChartStyle}>No daily cost history available.</div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section style={panelStyle}>
+        <SectionHeader
+          title="System Health"
+          subtitle="Best-effort status from existing endpoints only"
+        />
+        <div style={{ display: 'grid', gap: 12, gridTemplateColumns: mobile ? '1fr' : 'repeat(3, minmax(0, 1fr))' }}>
+          {healthRows.map((row) => (
+            <div key={row.label} style={{ borderRadius: 14, border: `1px solid ${C.border}`, background: C.surfaceActive, padding: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 10 }}>
+                <div style={{ fontSize: 11, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700 }}>{row.label}</div>
+                <StatusPill label={row.status} color={row.color} subtle />
+              </div>
+              <div style={{ fontSize: 12, color: C.textSecondary, lineHeight: 1.5 }}>{row.detail}</div>
+            </div>
+          ))}
         </div>
       </section>
     </div>
   )
-}
-
-function MetricCard({
-  title,
-  value,
-  footer,
-  accent,
-  children,
-}: {
-  title: string
-  value: string
-  footer: string
-  accent: string
-  children?: React.ReactNode
-}) {
-  return (
-    <section style={{ ...panel, minHeight: 174 }}>
-      <div style={eyebrow}>{title}</div>
-      <div style={{ fontSize: 30, fontWeight: 800, color: accent, letterSpacing: '-0.04em', marginBottom: 6 }}>{value}</div>
-      <div style={{ fontSize: 12, color: C.textSecondary, minHeight: 18 }}>{footer}</div>
-      {children}
-    </section>
-  )
-}
-
-function Badge({ children, tone }: { children: React.ReactNode; tone: 'success' | 'danger' | 'muted' }) {
-  const toneStyle = tone === 'success'
-    ? { color: C.success, background: 'rgba(34,197,94,0.12)', borderColor: 'rgba(34,197,94,0.24)' }
-    : tone === 'danger'
-      ? { color: C.danger, background: C.dangerBg, borderColor: 'rgba(239,68,68,0.22)' }
-      : { color: C.textSecondary, background: C.surfaceActive, borderColor: C.borderLight }
-  return (
-    <div style={{ ...toneStyle, borderWidth: 1, borderStyle: 'solid', borderRadius: 999, padding: '8px 12px', fontSize: 11, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
-      {children}
-    </div>
-  )
-}
-
-function ProgressBar({ value, color }: { value: number; color: string }) {
-  return (
-    <div style={{ marginTop: 12, height: 10, background: C.surfaceActive, borderRadius: 999, overflow: 'hidden' }}>
-      <div style={{ width: `${Math.max(0, Math.min(value, 100))}%`, height: '100%', background: color, borderRadius: 999, transition: 'width 0.25s ease' }} />
-    </div>
-  )
-}
-
-function StatusDot({ color }: { color: string }) {
-  return <span style={{ width: 10, height: 10, borderRadius: 999, background: color, boxShadow: `0 0 0 4px ${color}22`, flexShrink: 0 }} />
-}
-
-function HealthCard({
-  label,
-  value,
-  sub,
-  tone,
-}: {
-  label: string
-  value: string
-  sub: string
-  tone: 'success' | 'warning' | 'muted'
-}) {
-  const valueColor = tone === 'success' ? C.success : tone === 'warning' ? C.warning : C.white
-  return (
-    <div style={{ background: C.surfaceActive, border: `1px solid ${C.borderLight}`, borderRadius: 12, padding: 14 }}>
-      <div style={eyebrow}>{label}</div>
-      <div style={{ fontSize: 22, fontWeight: 700, color: valueColor, letterSpacing: '-0.03em', marginBottom: 6 }}>{value}</div>
-      <div style={{ fontSize: 12, color: C.textMuted }}>{sub}</div>
-    </div>
-  )
-}
-
-const panel: React.CSSProperties = {
-  background: C.surface,
-  border: `1px solid ${C.border}`,
-  borderRadius: 16,
-  padding: 16,
-  boxShadow: '0 18px 40px rgba(0,0,0,0.24)',
-}
-
-const eyebrow: React.CSSProperties = {
-  fontSize: 11,
-  color: C.textMuted,
-  marginBottom: 8,
-  textTransform: 'uppercase',
-  letterSpacing: '0.08em',
-  fontWeight: 700,
-}
-
-const th: React.CSSProperties = {
-  textAlign: 'left',
-  padding: '0 0 10px',
-  borderBottom: `1px solid ${C.border}`,
-  fontSize: 11,
-  color: C.textMuted,
-  textTransform: 'uppercase',
-  letterSpacing: '0.07em',
-  fontWeight: 700,
-}
-
-const td: React.CSSProperties = {
-  padding: '12px 0',
-  borderBottom: `1px solid ${C.border}`,
-  fontSize: 13,
-  color: C.text,
-  verticalAlign: 'middle',
-}
-
-const tdMuted: React.CSSProperties = {
-  ...td,
-  color: C.textSecondary,
-}
-
-const tooltipStyle: React.CSSProperties = {
-  background: C.surface,
-  border: `1px solid ${C.borderLight}`,
-  borderRadius: 10,
-  color: C.text,
 }
