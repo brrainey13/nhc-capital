@@ -56,8 +56,9 @@ interface ActiveFilter { id: string; column: string; operator: string; value: st
 const ForeclosureMap = React.lazy(() => import('./ForeclosureMap'))
 const SalesChart = React.lazy(() => import('./SalesChart'))
 const BankrollTracker = React.lazy(() => import('./BankrollTracker'))
+const NHLModel = React.lazy(() => import('./NHLModel'))
 
-type Page = 'home' | 'explorer' | 'query' | 'realestate' | 'bankroll'
+type Page = 'home' | 'explorer' | 'query' | 'realestate' | 'bankroll' | 'nhlmodel'
 type SortDir = 'asc' | 'desc' | null
 type ExplorerView = 'tree' | 'detail' | 'data'
 
@@ -831,6 +832,7 @@ function RealEstatePage({ mobile }: { mobile: boolean }) {
 function BottomTabBar({ page, setPage }: { page: Page; setPage: (p: Page) => void }) {
   const tabs: { key: Page; icon: string; label: string }[] = [
     { key: 'home', icon: '', label: 'Home' },
+    { key: 'nhlmodel', icon: '', label: 'Model' },
     { key: 'bankroll', icon: '', label: 'Bankroll' },
     { key: 'explorer', icon: '', label: 'Data' },
     { key: 'query', icon: '', label: 'Query' },
@@ -927,8 +929,8 @@ export default function App() {
           <span style={{ fontWeight: 700, fontSize: 16, marginRight: 28, color: C.white, letterSpacing: '-0.02em', whiteSpace: 'nowrap' }}>
             NHC<span style={{ fontWeight: 400, color: C.textMuted }}> Admin</span>
           </span>
-          {(['home', 'bankroll', 'explorer', 'query', 'realestate'] as Page[]).map(p => {
-            const labels: Record<Page, string> = { home: 'Home', bankroll: 'Bankroll', explorer: 'Data', query: 'Query', realestate: 'Real Estate' }
+          {(['home', 'nhlmodel', 'bankroll', 'explorer', 'query', 'realestate'] as Page[]).map(p => {
+            const labels: Record<Page, string> = { home: 'Home', nhlmodel: 'Model Outputs', bankroll: 'Bankroll', explorer: 'Data', query: 'Query', realestate: 'Real Estate' }
             return (
               <button key={p} onClick={() => { setPage(p); if (p === 'explorer') setExplorerView('tree') }}
                 style={{ ...navBtnDark, padding: '8px 14px', fontSize: 13, ...(page === p ? { color: C.white, background: C.surfaceActive } : {}) }}>
@@ -1198,6 +1200,13 @@ export default function App() {
 
         {/* QUERY */}
         {page === 'query' && <QueryPage mobile={mobile} initialSql={querySql} />}
+
+        {/* NHL MODEL */}
+        {page === 'nhlmodel' && (
+          <React.Suspense fallback={<div style={{ color: '#aaa', padding: 40 }}>Loading model outputs...</div>}>
+            <NHLModel mobile={mobile} />
+          </React.Suspense>
+        )}
 
         {/* BANKROLL */}
         {page === 'bankroll' && (
