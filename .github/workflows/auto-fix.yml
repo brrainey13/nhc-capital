@@ -49,6 +49,14 @@ jobs:
               core.setOutput('skip', 'true');
               return;
             }
+            // Security: only auto-fix PRs from trusted authors
+            const trustedAuthors = ['nhccapitalinc-gif', 'brrainey13', 'yshahin14'];
+            const prAuthor = prs.data[0].user.login;
+            if (!trustedAuthors.includes(prAuthor)) {
+              core.warning(`Skipping auto-fix: PR author ${prAuthor} is not trusted`);
+              core.setOutput('skip', 'true');
+              return;
+            }
             core.setOutput('skip', 'false');
             core.setOutput('pr_number', prs.data[0].number);
             core.setOutput('branch', headBranch);

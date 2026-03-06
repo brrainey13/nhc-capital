@@ -2,6 +2,7 @@
 NHC Daily Picks Pipeline
 Pulls live odds, runs V2 model + hit rate filter, outputs picks with confidence.
 """
+import os
 import subprocess
 import time
 from collections import defaultdict
@@ -10,7 +11,9 @@ from io import StringIO
 import pandas as pd
 import requests
 
-API_KEY = '53b74c4c440a14071dac325d834a55b8'
+API_KEY = os.environ.get("ODDS_API_KEY", "")
+if not API_KEY:
+    raise RuntimeError("ODDS_API_KEY not set — add it to admin-dashboard/.env")
 PSQL = '/opt/homebrew/Cellar/postgresql@17/17.8/bin/psql'
 DB = 'nhl_betting'
 
@@ -29,7 +32,11 @@ print("PULLING LIVE ODDS")
 print("=" * 70)
 
 # Get tonight's events
-events_r = requests.get(f"https://api.the-odds-api.com/v4/sports/icehockey_nhl/events?apiKey={API_KEY}")
+events_r = requests.get(
+    "https://api.the-odds-api.com/v4/sports/icehockey_nhl/events",
+    params={"apiKey": API_KEY},
+    timeout=30,
+)
 events = events_r.json()
 tonight = [e for e in events if '2026-02-27' in e['commence_time'] or '2026-02-26T2' in e['commence_time']]
 print(f"Tonight: {len(tonight)} games")
@@ -39,8 +46,18 @@ all_props = []
 for ev in tonight:
     eid = ev['id']
     game = f"{ev['away_team']} @ {ev['home_team']}"
-    url = f"https://api.the-odds-api.com/v4/sports/icehockey_nhl/events/{eid}/odds?apiKey={API_KEY}&regions=us,us2&markets=player_points,player_assists,player_shots_on_goal&oddsFormat=american&bookmakers=draftkings,fanduel,betmgm,hardrockbet"
-    r = requests.get(url)
+    url = f"https://api.the-odds-api.com/v4/sports/icehockey_nhl/events/{eid}/odds"
+    r = requests.get(
+        url,
+        params={
+            "apiKey": API_KEY,
+            "regions": "us,us2",
+            "markets": "player_points,player_assists,player_shots_on_goal",
+            "oddsFormat": "american",
+            "bookmakers": "draftkings,fanduel,betmgm,hardrockbet",
+        },
+        timeout=30,
+    )
     d = r.json()
     for bk in d.get('bookmakers', []):
         for mkt in bk.get('markets', []):
@@ -371,5 +388,5 @@ for p in all_picks:
     print(f"  {p['reasoning']}")
 
 # Check API quota
-r = requests.get(f"https://api.the-odds-api.com/v4/sports/?apiKey={API_KEY}")
+r = requests.get("https://api.the-odds-api.com/v4/sports/", params={"apiKey": API_KEY}, timeout=30)
 print(f"\nAPI requests remaining: {r.headers.get('x-requests-remaining')}")

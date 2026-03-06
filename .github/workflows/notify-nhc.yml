@@ -12,6 +12,10 @@ on:
     workflows: ["CI"]
     types: [completed]
 
+permissions:
+  contents: read
+  actions: read
+
 jobs:
   notify:
     name: "Notify: CI Results → Discord"

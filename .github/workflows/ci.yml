@@ -20,11 +20,32 @@ permissions:
 
 jobs:
   # ═══════════════════════════════════════════════════════════════════
+  # STAGE 0: contributor gate — Block PRs from non-contributors
+  # ═══════════════════════════════════════════════════════════════════
+  contributor-gate:
+    name: "Gate: Contributor Check"
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Verify PR author is a contributor
+        run: |
+          TRUSTED="nhccapitalinc-gif brrainey13 yshahin14"
+          AUTHOR="${{ github.event.pull_request.user.login }}"
+          if echo "$TRUSTED" | grep -qw "$AUTHOR"; then
+            echo "✅ $AUTHOR is a trusted contributor"
+          else
+            echo "❌ $AUTHOR is NOT a trusted contributor — PR blocked"
+            echo "Only repo contributors can open PRs. Contact the team for access."
+            exit 1
+          fi
+
+  # ═══════════════════════════════════════════════════════════════════
   # STAGE 1: gate — Risk classification + policy preflight
   # ═══════════════════════════════════════════════════════════════════
   gate:
     name: "Gate: Risk Policy"
     runs-on: ubuntu-latest
+    needs: [contributor-gate]
     if: github.event_name == 'pull_request'
     outputs:
       risk_tier: ${{ steps.classify.outputs.tier }}

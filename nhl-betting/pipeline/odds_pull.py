@@ -9,9 +9,13 @@ from collections import defaultdict
 import requests
 
 API_KEYS = [
-    os.environ.get("ODDS_API_KEY", "53b74c4c440a14071dac325d834a55b8"),
-    "2d240c499924015358260c955bbc4cb9",
+    k for k in [
+        os.environ.get("ODDS_API_KEY", ""),
+        os.environ.get("ODDS_API_KEY_2", ""),
+    ] if k
 ]
+if not API_KEYS:
+    raise RuntimeError("ODDS_API_KEY not set — add it to admin-dashboard/.env")
 API_KEY = API_KEYS[0]  # Active key, rotated on quota exhaustion
 BOOKS = "draftkings,fanduel,betmgm,hardrockbet"
 REGIONS = "us,us2"
@@ -29,17 +33,21 @@ def _rotate_key():
     return False
 
 
-def _api_get(url_template):
-    """Make an API request with automatic key rotation on quota exhaustion."""
+def _api_get(url_path, extra_params=None):
+    """Make an API request with automatic key rotation on quota exhaustion.
+
+    url_path: URL without apiKey param (e.g. "https://api.the-odds-api.com/v4/sports/")
+    extra_params: dict of additional query params
+    """
     global API_KEY
-    url = url_template.replace("{API_KEY}", API_KEY)
-    r = requests.get(url)
-    if r.status_code == 401 or r.status_code == 429:
-        remaining = r.headers.get("x-requests-remaining", "0")
-        if remaining == "0" or r.status_code in (401, 429):
-            if _rotate_key():
-                url = url_template.replace("{API_KEY}", API_KEY)
-                r = requests.get(url)
+    params = {"apiKey": API_KEY}
+    if extra_params:
+        params.update(extra_params)
+    r = requests.get(url_path, params=params, timeout=30)
+    if r.status_code in (401, 429):
+        if _rotate_key():
+            params["apiKey"] = API_KEY
+            r = requests.get(url_path, params=params, timeout=30)
     return r
 
 
@@ -55,7 +63,6 @@ def get_todays_events(date_str=None):
 
     r = _api_get(
         "https://api.the-odds-api.com/v4/sports/icehockey_nhl/events"
-        "?apiKey={API_KEY}"
     )
     events = r.json()
 
@@ -105,9 +112,13 @@ def pull_player_props(events, markets=None):
         game = f"{ev['away_team']} @ {ev['home_team']}"
         r = _api_get(
             f"https://api.the-odds-api.com/v4/sports/icehockey_nhl/"
-            f"events/{eid}/odds?apiKey={{API_KEY}}"
-            f"&regions={REGIONS}&markets={markets_str}"
-            f"&oddsFormat=american&bookmakers={BOOKS}"
+            f"events/{eid}/odds",
+            extra_params={
+                "regions": REGIONS,
+                "markets": markets_str,
+                "oddsFormat": "american",
+                "bookmakers": BOOKS,
+            },
         )
         d = r.json()
 
@@ -142,9 +153,13 @@ def pull_game_totals(events):
         game = f"{ev['away_team']} @ {ev['home_team']}"
         r = _api_get(
             f"https://api.the-odds-api.com/v4/sports/icehockey_nhl/"
-            f"events/{eid}/odds?apiKey={{API_KEY}}"
-            f"&regions={REGIONS}&markets=totals"
-            f"&oddsFormat=american&bookmakers={BOOKS}"
+            f"events/{eid}/odds",
+            extra_params={
+                "regions": REGIONS,
+                "markets": "totals",
+                "oddsFormat": "american",
+                "bookmakers": BOOKS,
+            },
         )
         d = r.json()
 
@@ -190,10 +205,15 @@ def check_quota():
     """Check remaining API request quota for all keys."""
     results = []
     for i, key in enumerate(API_KEYS):
-        r = requests.get(
-            f"https://api.the-odds-api.com/v4/sports/?apiKey={key}"
-        )
-        remaining = r.headers.get("x-requests-remaining", "?")
+        try:
+            r = requests.get(
+                "https://api.the-odds-api.com/v4/sports/",
+                params={"apiKey": key},
+                timeout=10,
+            )
+            remaining = str(r.headers.get("x-requests-remaining", "?"))
+        except Exception:
+            remaining = "error"
         results.append(f"Key#{i+1}: {remaining}")
     return " | ".join(results)
 
