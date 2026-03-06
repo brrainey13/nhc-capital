@@ -546,7 +546,7 @@ __all__ = [
     "GOALIE_STRATEGY_FEATURES",
     "STRATEGY_MODEL_PARAMS",
     "compute_strategy_thresholds",
-    "get_database_url",
+
     "get_strategy_feature_columns",
     "load_feature_matrix",
     "run_live_goalie_saves",
