@@ -196,6 +196,24 @@ API keys are in `admin-dashboard/.env` (gitignored): `NVIDIA_API_KEY`, `OPENROUT
 
 - **chrome-devtools** — 26 tools: navigate, snapshot, click, fill, network, console, performance traces
 - **deepwiki** — Query documentation for open-source projects
+- **mcporter** — CLI to call any MCP tool: `mcporter call <server.tool> key=value`
+
+## ClawHub Skills (Installed)
+
+These skills are available via OpenClaw and provide best-practice guidance:
+
+- **vercel** — Vercel CLI, deployment, domains, env vars
+- **react** — React patterns, hooks, component architecture
+- **nextjs** — Next.js App Router, SSR, API routes
+- **pandas** — Pandas data manipulation, analysis patterns
+- **python-dataviz** — Python visualization (matplotlib, seaborn, plotly)
+- **data-analysis** — Statistical analysis, EDA, hypothesis testing
+- **frontend** — Frontend design, accessibility, performance
+- **tailwind-v4-shadcn** — Tailwind CSS v4 + shadcn/ui components
+
+### Using Skills
+Coding agents (Codex, Claude Code) get these automatically via OpenClaw workspace.
+For direct reference: `cat ~/.openclaw/workspace/skills/<name>/SKILL.md`
 
 ## Team
 

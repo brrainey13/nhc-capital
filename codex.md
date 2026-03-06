@@ -38,3 +38,27 @@ Also read the `CLAUDE.md` in whatever project subfolder you're working in.
 - **Update docs when you change things** — stale docs waste everyone's time
 - **NEVER run uvicorn directly** — use `scripts/deploy-dashboard --all` for ALL deployment
 - If you finish, exit cleanly
+
+## Frontend Development
+
+When working on `admin-dashboard/frontend/`:
+- **React 18+** with Vite + TypeScript
+- **Tailwind CSS** for all styling
+- **@tanstack/react-virtual** for large lists/tables
+- **Recharts** or **visx** for charts
+- Components < 200 LOC, TypeScript interfaces for props + API responses
+- `npm run build` must succeed before committing frontend changes
+
+## Available Reference Skills
+
+Best-practice guides are installed at `~/.openclaw/workspace/skills/`:
+- `vercel/SKILL.md` — Vercel deployment, domains, env vars
+- `react/SKILL.md` — React patterns, hooks, components
+- `nextjs/SKILL.md` — Next.js App Router, SSR, API routes
+- `pandas/SKILL.md` — Pandas data analysis patterns
+- `python-dataviz/SKILL.md` — Python visualization libraries
+- `data-analysis/SKILL.md` — Statistical analysis, EDA
+- `frontend/SKILL.md` — Frontend design best practices
+- `tailwind-v4-shadcn/SKILL.md` — Tailwind v4 + shadcn/ui
+
+Read these when working on relevant tasks.
