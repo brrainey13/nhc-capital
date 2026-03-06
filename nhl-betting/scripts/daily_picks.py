@@ -32,7 +32,11 @@ print("PULLING LIVE ODDS")
 print("=" * 70)
 
 # Get tonight's events
-events_r = requests.get("https://api.the-odds-api.com/v4/sports/icehockey_nhl/events", params={"apiKey": API_KEY}, timeout=30)
+events_r = requests.get(
+    "https://api.the-odds-api.com/v4/sports/icehockey_nhl/events",
+    params={"apiKey": API_KEY},
+    timeout=30,
+)
 events = events_r.json()
 tonight = [e for e in events if '2026-02-27' in e['commence_time'] or '2026-02-26T2' in e['commence_time']]
 print(f"Tonight: {len(tonight)} games")
@@ -43,7 +47,17 @@ for ev in tonight:
     eid = ev['id']
     game = f"{ev['away_team']} @ {ev['home_team']}"
     url = f"https://api.the-odds-api.com/v4/sports/icehockey_nhl/events/{eid}/odds"
-    r = requests.get(url, params={"apiKey": API_KEY, "regions": "us,us2", "markets": "player_points,player_assists,player_shots_on_goal", "oddsFormat": "american", "bookmakers": "draftkings,fanduel,betmgm,hardrockbet"}, timeout=30)
+    r = requests.get(
+        url,
+        params={
+            "apiKey": API_KEY,
+            "regions": "us,us2",
+            "markets": "player_points,player_assists,player_shots_on_goal",
+            "oddsFormat": "american",
+            "bookmakers": "draftkings,fanduel,betmgm,hardrockbet",
+        },
+        timeout=30,
+    )
     d = r.json()
     for bk in d.get('bookmakers', []):
         for mkt in bk.get('markets', []):
