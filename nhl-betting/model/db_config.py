@@ -19,13 +19,17 @@ def get_database_url(db: str = "nhl_betting") -> str:
         return os.environ["DATABASE_URL"]
 
     user = get_db_user()
-    host = os.environ.get("PGHOST") or os.environ.get("DB_HOST", "localhost")
+    host = os.environ.get("PGHOST") or os.environ.get("DB_HOST")
     port = os.environ.get("PGPORT") or os.environ.get("DB_PORT", "5432")
     password = os.environ.get("PGPASSWORD") or os.environ.get("DB_PASS", "")
 
+    if host:
+        if password:
+            return f"postgresql://{user}:{password}@{host}:{port}/{db}"
+        return f"postgresql://{user}@{host}:{port}/{db}"
     if password:
-        return f"postgresql://{user}:{password}@{host}:{port}/{db}"
-    return f"postgresql://{user}@{host}:{port}/{db}"
+        return f"postgresql://{user}:{password}@/{db}"
+    return f"postgresql://{user}@/{db}"
 
 
 def get_dsn(db: str = "nhl_betting") -> str:
@@ -34,11 +38,13 @@ def get_dsn(db: str = "nhl_betting") -> str:
         return os.environ["DATABASE_URL"]
 
     user = get_db_user()
-    host = os.environ.get("PGHOST") or os.environ.get("DB_HOST", "localhost")
+    host = os.environ.get("PGHOST") or os.environ.get("DB_HOST")
     port = os.environ.get("PGPORT") or os.environ.get("DB_PORT", "5432")
     password = os.environ.get("PGPASSWORD") or os.environ.get("DB_PASS", "")
 
-    parts = [f"dbname={db}", f"user={user}", f"host={host}", f"port={port}"]
+    parts = [f"dbname={db}", f"user={user}"]
+    if host:
+        parts.extend([f"host={host}", f"port={port}"])
     if password:
         parts.append(f"password={password}")
     return " ".join(parts)

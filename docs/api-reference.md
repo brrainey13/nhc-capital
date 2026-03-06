@@ -50,6 +50,15 @@ Authentication: Cloudflare Access OR `X-API-Key` header / `?api_key=` query para
 | GET | `/api/usage` | Yes | OpenClaw session stats, token usage |
 | GET | `/api/usage/claude-limits` | Yes | Claude API usage and rate limits |
 
+## NHL Bankroll
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/api/nhl/bankroll` | Yes | Current bankroll balance plus recent ledger entries |
+| POST | `/api/nhl/bankroll/deposit` | Yes | Add a bankroll deposit. Body: `{"amount": 100, "sportsbook": "DraftKings", "notes": "..."}` |
+| POST | `/api/nhl/bankroll/withdrawal` | Yes | Add a bankroll withdrawal. Body matches deposit |
+| GET | `/api/nhl/bankroll/summary` | Yes | Daily P/L, end-of-day balance series, win rate, ROI |
+
 ## Data Ingestion (POST)
 
 | Method | Path | Auth | Description |

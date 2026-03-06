@@ -55,8 +55,9 @@ interface ActiveFilter { id: string; column: string; operator: string; value: st
 
 const ForeclosureMap = React.lazy(() => import('./ForeclosureMap'))
 const SalesChart = React.lazy(() => import('./SalesChart'))
+const BankrollTracker = React.lazy(() => import('./BankrollTracker'))
 
-type Page = 'home' | 'explorer' | 'query' | 'realestate'
+type Page = 'home' | 'explorer' | 'query' | 'realestate' | 'bankroll'
 type SortDir = 'asc' | 'desc' | null
 type ExplorerView = 'tree' | 'detail' | 'data'
 
@@ -830,6 +831,7 @@ function RealEstatePage({ mobile }: { mobile: boolean }) {
 function BottomTabBar({ page, setPage }: { page: Page; setPage: (p: Page) => void }) {
   const tabs: { key: Page; icon: string; label: string }[] = [
     { key: 'home', icon: '', label: 'Home' },
+    { key: 'bankroll', icon: '', label: 'Bankroll' },
     { key: 'explorer', icon: '', label: 'Data' },
     { key: 'query', icon: '', label: 'Query' },
     { key: 'realestate', icon: '', label: 'Real Estate' },
@@ -925,8 +927,8 @@ export default function App() {
           <span style={{ fontWeight: 700, fontSize: 16, marginRight: 28, color: C.white, letterSpacing: '-0.02em', whiteSpace: 'nowrap' }}>
             NHC<span style={{ fontWeight: 400, color: C.textMuted }}> Admin</span>
           </span>
-          {(['home', 'explorer', 'query', 'realestate'] as Page[]).map(p => {
-            const labels: Record<Page, string> = { home: 'Home', explorer: 'Data', query: 'Query', realestate: 'Real Estate' }
+          {(['home', 'bankroll', 'explorer', 'query', 'realestate'] as Page[]).map(p => {
+            const labels: Record<Page, string> = { home: 'Home', bankroll: 'Bankroll', explorer: 'Data', query: 'Query', realestate: 'Real Estate' }
             return (
               <button key={p} onClick={() => { setPage(p); if (p === 'explorer') setExplorerView('tree') }}
                 style={{ ...navBtnDark, padding: '8px 14px', fontSize: 13, ...(page === p ? { color: C.white, background: C.surfaceActive } : {}) }}>
@@ -1196,6 +1198,13 @@ export default function App() {
 
         {/* QUERY */}
         {page === 'query' && <QueryPage mobile={mobile} initialSql={querySql} />}
+
+        {/* BANKROLL */}
+        {page === 'bankroll' && (
+          <React.Suspense fallback={<div style={{ color: '#aaa', padding: 40 }}>Loading bankroll...</div>}>
+            <BankrollTracker mobile={mobile} />
+          </React.Suspense>
+        )}
 
         {/* REAL ESTATE */}
         {page === 'realestate' && <RealEstatePage mobile={mobile} />}

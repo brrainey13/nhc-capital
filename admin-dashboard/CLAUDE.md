@@ -40,6 +40,10 @@ Read `docs/admin-dashboard.md` for full architecture, endpoints, and deploy proc
 | `/api/query` | POST | Run arbitrary read-only SQL (`db` param selects database) |
 | `/api/nl-query` | POST | Natural language → SQL (`db` param selects database) |
 | `/api/usage` | GET | OpenClaw session token usage + model aggregates + Claude rate-limit telemetry |
+| `/api/nhl/bankroll` | GET | Current bankroll balance + recent transactions |
+| `/api/nhl/bankroll/deposit` | POST | Add bankroll funds |
+| `/api/nhl/bankroll/withdrawal` | POST | Remove bankroll funds |
+| `/api/nhl/bankroll/summary` | GET | Daily P/L, balance chart, win rate, ROI |
 
 ## Multi-Database
 
@@ -51,6 +55,7 @@ Tables are **auto-discovered** from all configured databases on startup. No hard
 ## Frontend Features
 
 - Virtualized scrolling (@tanstack/react-virtual) — infinite scroll, loads 200 rows at a time
+- NHL bankroll tracker page — balance, manual ledger entry, transaction history, and chart
 - Operator-based filters: "+ Add Filter" → column → operator → value. Stacked AND logic
 - Group-by with click-to-filter
 - NL Query page: "Ask in English" + "Raw SQL" toggle
@@ -71,6 +76,28 @@ Internet → Cloudflare Tunnel + Access → localhost:8000 (uvicorn)
 - **Never use Cloudflare quick tunnels** — no auth, guessable URLs
 - **Never expose port 8000 directly** — always go through Cloudflare
 - **Deploy ONLY via `scripts/deploy-dashboard --all`** — handles blue-green swap, health checks, and tunnel restart
+
+## Frontend Stack & Best Practices
+
+- **React 18+** with Vite + TypeScript
+- **Tailwind CSS** for styling (utility-first, no custom CSS unless necessary)
+- **@tanstack/react-virtual** for virtualized lists/tables
+- **@tanstack/react-query** for server state management
+- Charts: **Recharts** or **visx** for data visualization
+- Forms: controlled components, no form libraries unless complexity warrants it
+
+### Component Guidelines
+- Keep components < 200 LOC — extract hooks and subcomponents
+- Use TypeScript interfaces for all props and API responses
+- Colocate styles (Tailwind classes) with components
+- Use `useMemo`/`useCallback` for expensive computations and stable references
+- Error boundaries around major sections
+
+### Vercel Deployment (Future)
+- Dashboard frontend can be deployed to Vercel for CDN + edge performance
+- API stays on Mac Mini behind Cloudflare Tunnel
+- Frontend would call API via `VITE_API_URL` env var
+- `vercel.json` rewrites for SPA routing: `{ "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }] }`
 
 ## Rules
 

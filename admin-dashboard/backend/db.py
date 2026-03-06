@@ -4,7 +4,7 @@ import os
 
 import asyncpg
 
-DB_HOST = os.environ.get("DATABASE_HOST", "localhost")
+DB_HOST = os.environ.get("DATABASE_HOST", "127.0.0.1")
 DB_PORT = os.environ.get("DATABASE_PORT", "5432")
 # Dashboard uses a read-only Postgres role — cannot INSERT/UPDATE/DELETE/DROP.
 # This is defense-in-depth alongside the SQL validator in query.py.

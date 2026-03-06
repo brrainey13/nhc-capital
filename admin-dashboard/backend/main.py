@@ -23,6 +23,7 @@ from fastapi.staticfiles import StaticFiles
 from routes.claude_limits import router as claude_limits_router
 from routes.comps import router as comps_router
 from routes.ingest import router as ingest_router
+from routes.nhl_bankroll import router as nhl_bankroll_router
 from routes.query import router as query_router
 from routes.real_estate import router as real_estate_router
 from routes.tables import router as tables_router
@@ -71,6 +72,7 @@ app.include_router(comps_router)
 app.include_router(usage_router)
 app.include_router(claude_limits_router)
 app.include_router(ingest_router)
+app.include_router(nhl_bankroll_router)
 
 # Serve frontend
 if FRONTEND_DIR.exists():

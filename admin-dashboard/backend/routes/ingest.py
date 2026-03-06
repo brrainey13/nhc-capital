@@ -16,7 +16,7 @@ _etl_pools: dict[str, asyncpg.Pool] = {}
 
 ETL_USER = os.environ.get("ETL_DB_USER", "nhc_etl")
 ETL_PASS = os.environ.get("ETL_DB_PASS", "")
-ETL_HOST = os.environ.get("DATABASE_HOST", "localhost")
+ETL_HOST = os.environ.get("DATABASE_HOST", "127.0.0.1")
 ETL_PORT = os.environ.get("DATABASE_PORT", "5432")
 
 
