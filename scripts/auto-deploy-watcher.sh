@@ -8,6 +8,7 @@
 
 set -euo pipefail
 
+SELF="$(realpath "$0")"
 REPO_ROOT="$HOME/nhc-capital"
 DEPLOY_SCRIPT="$REPO_ROOT/scripts/deploy-dashboard"
 SHA_FILE="$HOME/.nhc-deploy-sha"
@@ -138,6 +139,13 @@ git pull origin main --quiet 2>/dev/null || {
   notify_discord "❌ **Auto-deploy failed** — git pull error on \`${remote_sha:0:8}\`"
   exit 1
 }
+
+# Self-update: if this script changed in the pull, re-exec with the new version
+if ! cmp -s "$SELF" "$REPO_ROOT/scripts/auto-deploy-watcher.sh" 2>/dev/null; then
+  log "🔄 Watcher script updated — re-executing with new version"
+  cp "$REPO_ROOT/scripts/auto-deploy-watcher.sh" "$SELF"
+  exec "$SELF" "$@"
+fi
 
 # Get commit info for notification
 commit_msg=$(git log -1 --format="%s" HEAD)
