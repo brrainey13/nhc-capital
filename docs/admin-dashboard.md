@@ -38,9 +38,15 @@ Browser → Cloudflare Tunnel + Access → localhost:8000 → FastAPI
 | `/api/nl-query` | POST | Natural language → SQL via OpenRouter |
 | `/api/usage` | GET | OpenClaw session token usage + dashboard metrics (totals, windows, burn rate, trend, top consumers, freshness) |
 | `/api/nhl/bankroll` | GET | Current NHL bankroll balance + recent bankroll transactions |
+| `/api/nhl/bankroll/history` | GET | Daily bankroll balance history |
 | `/api/nhl/bankroll/deposit` | POST | Add a manual bankroll deposit |
 | `/api/nhl/bankroll/withdrawal` | POST | Add a manual bankroll withdrawal |
 | `/api/nhl/bankroll/summary` | GET | Daily P/L, balance chart, win rate, ROI |
+| `/api/nhl/model/info` | GET | NHL LightGBM model metadata and feature importances loaded from repo artifacts |
+| `/api/nhl/picks/today` | GET | Today's NHL picks with edge, model probability, and stake sizing |
+| `/api/nhl/picks/history` | GET | Trailing-window NHL picks with summary stats and optional strategy filter |
+| `/api/nhl/odds/snapshot` | GET | Latest NHL odds snapshot grouped by game; falls back to `player_odds`/`saves_odds` if `odds_history` is absent |
+| `/api/nhl/model/strategies` | GET | Trailing-window NHL strategy performance cards/chart data |
 
 ### Filtering (`/api/tables/{name}/data`)
 
@@ -74,6 +80,7 @@ Returns:
 
 - **Home usage dashboard** — KPI cards for totals, 24h activity, and burn rate
 - **Bankroll tracker** — current balance, manual deposits/withdrawals, transaction history, balance chart, win rate, ROI
+- **NHL model outputs page** — LightGBM metadata, today's picks, 30-day history, strategy performance, and grouped odds snapshot
 - **Top consumers ranking** — per-session token share + burn estimate + last update
 - **24h trend bars** — simple time-bucket activity signal from real session updates
 - **Data freshness strip** — generated timestamp + "latest session updated" staleness indicator
@@ -116,10 +123,11 @@ Two layers of authentication — both must pass:
 
 ### Layer 2: Backend AuthMiddleware (application level)
 - Every `/api/*` endpoint (except `/api/health`) requires auth
+- Requests to `localhost` / `127.0.0.1` bypass auth for local development and testing
 - Auth methods (any one grants access):
   1. **Cloudflare Access header:** `cf-access-authenticated-user-email` (must be in `ALLOWED_EMAILS` set)
   2. **API key:** `X-API-Key` header or `?api_key=` query param (set `DASHBOARD_API_KEY` in `.env`)
-- Unauthenticated → 401, wrong email → 403
+- Unauthenticated/invalid API auth → 403, wrong email → 403
 - `/api/health` is public (for monitoring/health checks)
 - Frontend static files (non-`/api/` paths) are always served
 

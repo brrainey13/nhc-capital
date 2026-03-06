@@ -53,6 +53,26 @@ _MARKET_MAP = {
 MAX_RISK = None  # Set to cap total deployment (e.g., 500)
 
 
+def sort_picks_by_edge(picks):
+    """Return picks sorted by edge descending."""
+    return sorted(picks, key=lambda pick: pick.get("edge", 0), reverse=True)
+
+
+def apply_max_risk_cap(picks, max_risk):
+    """Scale pick sizing down to the configured max risk cap."""
+    total_risk = sum(p.get("dollars", 0) for p in picks)
+    if not max_risk or total_risk <= max_risk:
+        return picks, total_risk, None
+
+    scale = max_risk / total_risk
+    for pick in picks:
+        pick["dollars_raw"] = pick.get("dollars", 0)
+        pick["units_raw"] = pick.get("units", 0)
+        pick["dollars"] = round(pick["dollars_raw"] * scale, 2)
+        pick["units"] = round(pick["units_raw"] * scale, 1)
+    return picks, sum(p.get("dollars", 0) for p in picks), scale
+
+
 def get_current_bankroll() -> Decimal:
     """Read the latest bankroll balance from Postgres."""
     import psycopg2
@@ -394,20 +414,15 @@ def run_pipeline(date_str=None, max_risk=MAX_RISK, no_db=False):
     all_picks.extend(assists_under[:5])
     all_picks.extend(goalscorer_deduped)
     all_picks.extend(total_picks)
+    all_picks = sort_picks_by_edge(all_picks)
 
-    total_risk = sum(p.get("dollars", 0) for p in all_picks)
+    raw_total_risk = sum(p.get("dollars", 0) for p in all_picks)
 
     # === SCALE TO MAX RISK CAP ===
-    if max_risk and total_risk > max_risk:
-        scale = max_risk / total_risk
-        print(f"\n⚠️  SCALING: Raw risk ${total_risk:.0f} → capped at ${max_risk:.0f} "
+    all_picks, total_risk, scale = apply_max_risk_cap(all_picks, max_risk)
+    if scale is not None:
+        print(f"\n⚠️  SCALING: Raw risk ${raw_total_risk:.0f} → capped at ${max_risk:.0f} "
               f"(scale factor: {scale:.3f})")
-        for p in all_picks:
-            p["dollars_raw"] = p.get("dollars", 0)
-            p["units_raw"] = p.get("units", 0)
-            p["dollars"] = round(p["dollars_raw"] * scale, 2)
-            p["units"] = round(p["units_raw"] * scale, 1)
-        total_risk = sum(p.get("dollars", 0) for p in all_picks)
 
         # Reprint scaled picks
         print("\n" + "=" * 70)

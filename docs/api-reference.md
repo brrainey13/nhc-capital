@@ -55,6 +55,7 @@ Authentication: Cloudflare Access OR `X-API-Key` header / `?api_key=` query para
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | GET | `/api/nhl/bankroll` | Yes | Current bankroll balance plus recent ledger entries |
+| GET | `/api/nhl/bankroll/history` | Yes | End-of-day bankroll balance history |
 | POST | `/api/nhl/bankroll/deposit` | Yes | Add a bankroll deposit. Body: `{"amount": 100, "sportsbook": "DraftKings", "notes": "..."}` |
 | POST | `/api/nhl/bankroll/withdrawal` | Yes | Add a bankroll withdrawal. Body matches deposit |
 | GET | `/api/nhl/bankroll/summary` | Yes | Daily P/L, end-of-day balance series, win rate, ROI |
