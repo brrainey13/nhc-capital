@@ -39,15 +39,8 @@ def _detect_repo() -> str:
 
 GITHUB_REPO = _detect_repo()
 
-# Load OPENROUTER_API_KEY from .env if not already in environment.
-# Only used locally — CI should set env vars directly.
-if not os.environ.get("OPENROUTER_API_KEY"):
-    _env_file = REPO_ROOT / "admin-dashboard" / ".env"
-    if _env_file.exists():
-        for _line in _env_file.read_text().splitlines():
-            if _line.startswith("OPENROUTER_API_KEY="):
-                os.environ["OPENROUTER_API_KEY"] = _line.split("=", 1)[1]
-                break
+# OPENROUTER_API_KEY must be provided via environment.
+# Local usage: `source admin-dashboard/.env` before running scripts.
 
 GITHUB_API = "https://api.github.com"
 REVIEW_MARKER = "<!-- nhc-review-agent -->"
