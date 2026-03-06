@@ -53,7 +53,7 @@ if [ "$deployed_sha" = "$remote_sha" ]; then
 fi
 
 log "🚀 New commit detected on main: ${remote_sha:0:8}"
-log "   Previous deployed: ${deployed_sha:0:8:-none}"
+log "   Previous deployed: ${deployed_sha:-none}"
 
 # ── GATE: Verify commit came from an approved, CI-passed merged PR ──
 # Uses GitHub API to check that the commit is associated with a merged PR
@@ -98,14 +98,25 @@ try:
     runs = data.get('check_runs', [])
     if not runs:
         print('none')
-    elif all(r.get('conclusion') == 'success' for r in runs):
+        sys.exit()
+    # Only check REQUIRED CI jobs — skip notifications, auto-fix, CodeQL
+    required = [
+        'Gate: Contributor Check', 'Gate: Risk Policy',
+        'Review: Code Review Agent', 'Lint: ruff',
+        'Guard: Docs', 'Guard: Schema',
+    ]
+    relevant = [r for r in runs if r['name'] in required]
+    if not relevant:
+        # No required checks found yet
+        print('pending')
+    elif all(r.get('conclusion') == 'success' for r in relevant):
         print('success')
-    elif any(r.get('status') != 'completed' for r in runs):
+    elif any(r.get('status') != 'completed' for r in relevant):
         print('pending')
     else:
-        failed = [r['name'] for r in runs if r.get('conclusion') != 'success']
-        print(f'failed:{','.join(failed)}')
-except:
+        failed = [r['name'] for r in relevant if r.get('conclusion') != 'success']
+        print('failed:' + ','.join(failed))
+except Exception as e:
     print('unknown')
 " 2>/dev/null)
 
