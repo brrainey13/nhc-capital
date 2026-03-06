@@ -83,6 +83,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: gate
     if: github.event_name == 'pull_request'
+    outputs:
+      critical_count: ${{ steps.review-result.outputs.critical_count }}
+      findings_count: ${{ steps.review-result.outputs.findings_count }}
+      reviewed_sha: ${{ steps.review-result.outputs.reviewed_sha }}
     env:
       NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
@@ -100,12 +104,86 @@ jobs:
         run: pip install -q requests
 
       - name: Run code review
+        id: review
+        continue-on-error: true
         run: |
           echo "═══════════════════════════════════════════════════"
           echo "  STAGE 2: Code Review Agent"
           echo "═══════════════════════════════════════════════════"
           echo "PR: #${{ github.event.pull_request.number }} | HEAD: ${GITHUB_SHA:0:7}"
-          python3 scripts/mr-review "${{ github.event.pull_request.number }}" --ci --auto-resolve --remediate
+          python3 scripts/mr-review "${{ github.event.pull_request.number }}" --ci --auto-resolve --remediate --machine
+
+      - name: Publish review outputs
+        id: review-result
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          result = json.loads(Path(".review-result.json").read_text())
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
+              out.write(f"critical_count={result.get('critical_count', 0)}\n")
+              out.write(f"findings_count={result.get('findings_count', 0)}\n")
+              out.write(f"reviewed_sha={result.get('sha', '')}\n")
+          PY
+
+      - name: Upload review artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: review-findings
+          path: |
+            .review-result.json
+            .review-findings.json
+            .review-remediation.json
+          if-no-files-found: error
+
+      - name: Fail on critical findings
+        if: steps.review.outcome == 'failure'
+        run: exit 1
+
+  auto-fix-review-findings:
+    name: "Auto-Fix: Code Review Findings"
+    runs-on: ubuntu-latest
+    needs: code-review
+    if: |
+      always() &&
+      github.event_name == 'pull_request' &&
+      needs.code-review.outputs.critical_count != '' &&
+      needs.code-review.outputs.critical_count != '0'
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    env:
+      NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.ref }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Download review artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: review-findings
+          path: .
+
+      - name: Auto-remediate critical findings
+        run: |
+          echo "═══════════════════════════════════════════════════"
+          echo "  AUTO-FIX: Code Review Findings"
+          echo "═══════════════════════════════════════════════════"
+          echo "PR: #${{ github.event.pull_request.number }} | HEAD: ${GITHUB_SHA:0:7}"
+          python3 scripts/remediate "${{ github.event.pull_request.number }}" --ci
 
   # ═══════════════════════════════════════════════════════════════════
   # Lint + Guards (BLOCKING — auto-fix workflow handles failures)

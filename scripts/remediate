@@ -1,74 +1,146 @@
 #!/usr/bin/env python3
-"""Remediation Loop Driver — Carson Step 5.
-
-Reads review findings from .review-remediation.json, generates a prompt
-for a coding agent, and optionally spawns Claude Code to auto-fix.
-
-Usage:
-  scripts/remediate <PR_NUMBER>           # Review + generate remediation prompt
-  scripts/remediate <PR_NUMBER> --auto    # Review + spawn coding agent to fix
-  scripts/remediate <PR_NUMBER> --prompt  # Just print the prompt (no agent spawn)
-
-Flow:
-  1. Run mr-review --remediate to get findings
-  2. Parse .review-remediation.json
-  3. Generate a focused coding prompt
-  4. (--auto) Spawn Claude Code / Codex to apply fixes
-  5. Agent pushes fix commit → CI re-reviews automatically (SHA discipline)
-
-Safety:
-  - Max 2 remediation attempts per SHA (prevents infinite loops)
-  - Never bypasses policy gates
-  - Human must merge — agent can only push to the PR branch
-"""
+"""Review remediation driver for local-agent and CI-native auto-fix flows."""
 
 import json
 import os
+import re
 import subprocess
 import sys
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).parent.parent
 REMEDIATION_FILE = REPO_ROOT / ".review-remediation.json"
 RESULT_FILE = REPO_ROOT / ".review-result.json"
-STATE_FILE = REPO_ROOT / ".remediation-state.json"
-MAX_ATTEMPTS = 2
+FINDINGS_FILE = REPO_ROOT / ".review-findings.json"
+REMEDIATION_MARKER = "<!-- nhc-auto-remediation -->"
+REVIEW_MARKER = "<!-- nhc-review-agent -->"
+MAX_ATTEMPTS = 3
+DISCORD_CHANNEL = "1473074663356629078"
+COMMIT_MESSAGE = "fix: auto-remediate review findings [skip ci-review]"
+GITHUB_API = "https://api.github.com"
 
 
-def load_state() -> dict:
-    if STATE_FILE.exists():
-        return json.loads(STATE_FILE.read_text())
-    return {}
+def _detect_repo() -> str:
+    result = subprocess.run(
+        ["gh", "repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"],
+        capture_output=True,
+        text=True,
+        cwd=REPO_ROOT,
+    )
+    if result.returncode == 0 and result.stdout.strip():
+        return result.stdout.strip()
+    return os.environ.get("GITHUB_REPOSITORY", "nhccapitalinc-gif/nhc-capital")
 
 
-def save_state(state: dict):
-    STATE_FILE.write_text(json.dumps(state, indent=2))
+GITHUB_REPO = _detect_repo()
+CI_MODE = "--ci" in sys.argv or os.environ.get("CI") == "true"
+GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
+def _api_request(endpoint: str, method: str = "GET", data: dict | None = None):
+    if GITHUB_TOKEN:
+        return _http_api(endpoint, method, data)
+    return _gh_api(endpoint, method, data)
 
 
+def _http_api(endpoint: str, method: str = "GET", data: dict | None = None):
+    url = f"{GITHUB_API}/repos/{GITHUB_REPO}/{endpoint}"
+    headers = {
+        "Authorization": f"Bearer {GITHUB_TOKEN}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    body = None
+    if data is not None:
+        headers["Content-Type"] = "application/json"
+        body = json.dumps(data).encode()
+    req = urllib.request.Request(url, data=body, headers=headers, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return json.loads(resp.read().decode())
+    except urllib.error.HTTPError as exc:
+        payload = exc.read().decode()
+        print(f"  API error: {exc.code} {exc.reason} — {endpoint}", file=sys.stderr)
+        if payload:
+            print(payload[:500], file=sys.stderr)
+        return {}
+    except Exception as exc:
+        print(f"  API error: {exc} — {endpoint}", file=sys.stderr)
+        return {}
+def _gh_api(endpoint: str, method: str = "GET", data: dict | None = None):
+    cmd = ["gh", "api", f"repos/{GITHUB_REPO}/{endpoint}"]
+    if method != "GET":
+        cmd.extend(["-X", method])
+    if data:
+        cmd.extend(["--input", "-"])
+        result = subprocess.run(
+            cmd,
+            input=json.dumps(data),
+            capture_output=True,
+            text=True,
+            cwd=REPO_ROOT,
+        )
+    else:
+        result = subprocess.run(cmd, capture_output=True, text=True, cwd=REPO_ROOT)
+    try:
+        return json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return {}
+def get_pr(number: int) -> dict:
+    return _api_request(f"pulls/{number}")
+def get_commit_message(sha: str) -> str:
+    commit = _api_request(f"commits/{sha}")
+    return commit.get("commit", {}).get("message", "")
+def get_pr_comments(number: int) -> list[dict]:
+    return _api_request(f"issues/{number}/comments") or []
+def post_pr_comment(number: int, body: str) -> dict:
+    return _api_request(f"issues/{number}/comments", "POST", {"body": body})
+def send_discord_message(message: str):
+    webhook = os.environ.get("DISCORD_WEBHOOK", "")
+    if not webhook:
+        print(f"  Discord webhook not set. Skipping: {message}")
+        return
+    payload = {
+        "content": f"<#{DISCORD_CHANNEL}> {message}",
+    }
+    req = urllib.request.Request(
+        webhook,
+        data=json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15):
+            pass
+    except Exception as exc:
+        print(f"  Discord notify failed: {exc}")
 def run_review(pr_number: int) -> dict:
-    """Run mr-review --remediate and return the result."""
     print(f"🔍 Running review for PR #{pr_number}...")
     env = os.environ.copy()
-    # Load .env if needed
     env_file = REPO_ROOT / "admin-dashboard" / ".env"
     if env_file.exists():
         for line in env_file.read_text().splitlines():
             if "=" in line and not line.startswith("#"):
-                k, v = line.split("=", 1)
-                env.setdefault(k.strip(), v.strip())
+                key, value = line.split("=", 1)
+                env.setdefault(key.strip(), value.strip())
 
     subprocess.run(
-        ["python3", str(REPO_ROOT / "scripts" / "mr-review"), str(pr_number), "--remediate"],
-        cwd=REPO_ROOT, env=env,
+        [
+            "python3",
+            str(REPO_ROOT / "scripts" / "mr-review"),
+            str(pr_number),
+            "--remediate",
+            "--machine",
+        ],
+        cwd=REPO_ROOT,
+        env=env,
+        check=False,
     )
 
     if REMEDIATION_FILE.exists():
         return json.loads(REMEDIATION_FILE.read_text())
     return {}
-
-
 def generate_prompt(remediation: dict) -> str:
-    """Generate a focused coding agent prompt from findings."""
     findings = remediation.get("findings", [])
     branch = remediation.get("branch", "unknown")
     pr_number = remediation.get("pr", "?")
@@ -81,14 +153,14 @@ def generate_prompt(remediation: dict) -> str:
 ## Findings to Fix
 
 """
-    for i, f in enumerate(findings, 1):
-        sev = f["severity"].upper()
-        prompt += f"### {i}. [{sev}] {f['file']}\n"
-        prompt += f"**Issue:** {f['message']}\n"
-        if f.get("suggestion"):
-            prompt += f"**Fix:** {f['suggestion']}\n"
-        if f.get("category"):
-            prompt += f"**Category:** {f['category']}\n"
+    for index, finding in enumerate(findings, 1):
+        severity = str(finding.get("severity", "")).upper()
+        prompt += f"### {index}. [{severity}] {finding.get('file', '')}\n"
+        prompt += f"**Issue:** {finding.get('message', '')}\n"
+        if finding.get("suggestion"):
+            prompt += f"**Fix:** {finding['suggestion']}\n"
+        if finding.get("category"):
+            prompt += f"**Category:** {finding['category']}\n"
         prompt += "\n"
 
     prompt += """## Rules
@@ -100,87 +172,258 @@ def generate_prompt(remediation: dict) -> str:
 - Do NOT push — the orchestrator will push after validating.
 """
     return prompt
-
-
-def spawn_agent(prompt: str, branch: str):
-    """Spawn Claude Code to apply fixes."""
+def spawn_agent(prompt: str, branch: str) -> bool:
     print(f"\n🤖 Spawning coding agent on branch `{branch}`...")
-
-    # Ensure we're on the right branch
-    subprocess.run(["git", "checkout", branch], cwd=REPO_ROOT, capture_output=True)
-
-    # Write prompt to temp file for the agent
-    prompt_file = REPO_ROOT / ".remediation-prompt.md"
-    prompt_file.write_text(prompt)
-
-    # Spawn Claude Code
-    cmd = [
-        "claude", "--dangerously-skip-permissions",
-        "-p", prompt,
-    ]
-
-    print(f"   Running: claude --dangerously-skip-permissions -p <prompt>")
+    subprocess.run(["git", "checkout", branch], cwd=REPO_ROOT, capture_output=True, check=False)
     result = subprocess.run(
-        cmd, cwd=REPO_ROOT, capture_output=True, text=True, timeout=300,
+        ["claude", "--dangerously-skip-permissions", "-p", prompt],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        timeout=300,
+        check=False,
     )
-
     if result.returncode == 0:
         print("   ✅ Agent completed fixes")
         print(result.stdout[-500:] if len(result.stdout) > 500 else result.stdout)
-    else:
-        print(f"   ❌ Agent failed (exit {result.returncode})")
-        if result.stderr:
-            print(result.stderr[-500:])
-
-    # Clean up temp files
-    prompt_file.unlink(missing_ok=True)
-
-    return result.returncode == 0
-
-
-def push_fixes(branch: str):
-    """Push fix commits to the PR branch."""
-    # Check if there are new commits
-    result = subprocess.run(
+        return True
+    print(f"   ❌ Agent failed (exit {result.returncode})")
+    if result.stderr:
+        print(result.stderr[-500:])
+    return False
+def push_local_fixes(branch: str) -> bool:
+    status = subprocess.run(
         ["git", "status", "--porcelain"],
-        capture_output=True, text=True, cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        cwd=REPO_ROOT,
+        check=False,
     )
-    if not result.stdout.strip():
-        # Check for unpushed commits
-        result = subprocess.run(
+    if not status.stdout.strip():
+        unpushed = subprocess.run(
             ["git", "log", f"origin/{branch}..HEAD", "--oneline"],
-            capture_output=True, text=True, cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            cwd=REPO_ROOT,
+            check=False,
         )
-        if not result.stdout.strip():
+        if not unpushed.stdout.strip():
             print("   No changes to push")
             return False
 
-    print(f"   Pushing to origin/{branch}...")
     push = subprocess.run(
         ["git", "push", "origin", branch],
-        capture_output=True, text=True, cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        cwd=REPO_ROOT,
+        check=False,
     )
     if push.returncode == 0:
         print("   ✅ Pushed — CI will re-review with new SHA")
         return True
-    else:
-        print(f"   ❌ Push failed: {push.stderr}")
-        return False
+    print(f"   ❌ Push failed: {push.stderr}")
+    return False
+def read_findings_from_machine_file() -> dict:
+    if FINDINGS_FILE.exists():
+        return json.loads(FINDINGS_FILE.read_text())
+    return {}
+def parse_findings_from_review_comment(body: str) -> list[dict]:
+    findings: list[dict] = []
+    severity = None
+    current = None
+    for raw_line in body.splitlines():
+        line = raw_line.rstrip()
+        if "### 🚨 Critical Issues" in line:
+            severity = "CRITICAL"
+            continue
+        if line.startswith("### "):
+            severity = None
+            continue
+        if severity != "CRITICAL":
+            continue
+        if line.startswith("- **"):
+            match = re.match(r"- \*\*(.+?)\*\*: (.+)", line)
+            if not match:
+                continue
+            current = {
+                "severity": severity,
+                "file": match.group(1),
+                "line": None,
+                "message": match.group(2),
+                "suggestion": "",
+            }
+            findings.append(current)
+            continue
+        if current and "💡" in line:
+            current["suggestion"] = line.split("💡", 1)[1].strip()
+    return findings
+def load_ci_findings(pr_number: int, head_sha: str) -> tuple[list[dict], str]:
+    machine = read_findings_from_machine_file()
+    if machine.get("findings") and machine.get("sha") == head_sha:
+        findings = [
+            finding for finding in machine["findings"]
+            if str(finding.get("severity", "")).upper() == "CRITICAL"
+        ]
+        return findings, "machine-file"
 
+    comments = get_pr_comments(pr_number)
+    for comment in reversed(comments):
+        body = comment.get("body", "")
+        if REVIEW_MARKER in body and f"sha:{head_sha[:7]}" in body:
+            findings = parse_findings_from_review_comment(body)
+            return findings, "review-comment"
+    return [], "none"
+def count_attempts(comments: list[dict], sha: str) -> int:
+    needle = f"sha:{sha[:7]}"
+    return sum(
+        1
+        for comment in comments
+        if REMEDIATION_MARKER in comment.get("body", "")
+        and needle in comment.get("body", "")
+        and "attempt" in comment.get("body", "").lower()
+    )
+def post_attempt_comment(pr_number: int, sha: str, attempt: int):
+    body = (
+        f"{REMEDIATION_MARKER}\n"
+        f"🔧 Auto-remediation attempt {attempt}/{MAX_ATTEMPTS} for `sha:{sha[:7]}`\n"
+        "Review bot found CRITICAL issues. CI is generating fixes now.\n"
+    )
+    post_pr_comment(pr_number, body)
+def post_failure_comment(pr_number: int, sha: str):
+    body = (
+        f"{REMEDIATION_MARKER}\n"
+        f"❌ Auto-remediation failed after {MAX_ATTEMPTS} attempts for `sha:{sha[:7]}` "
+        "— needs human review.\n"
+    )
+    post_pr_comment(pr_number, body)
+def post_success_comment(pr_number: int, sha: str, commit_sha: str):
+    body = (
+        f"{REMEDIATION_MARKER}\n"
+        f"✅ Auto-remediation complete for `sha:{sha[:7]}` — pushed fixes in `{commit_sha[:7]}`. "
+        "Re-review triggered.\n"
+    )
+    post_pr_comment(pr_number, body)
+def group_findings_by_file(findings: list[dict]) -> dict[str, list[dict]]:
+    grouped: dict[str, list[dict]] = {}
+    for finding in findings:
+        path = finding.get("file", "")
+        if not path:
+            continue
+        grouped.setdefault(path, []).append(finding)
+    return grouped
+def apply_ci_fixes(findings: list[dict], dry_run: bool) -> tuple[list[str], list[dict]]:
+    sys.path.insert(0, str(REPO_ROOT / "scripts"))
+    from llm_review import generate_fix
 
-def main():
-    args = [a for a in sys.argv[1:] if not a.startswith("-")]
-    flags = [a for a in sys.argv[1:] if a.startswith("-")]
+    changed_files: list[str] = []
+    summaries: list[dict] = []
+    for filepath, file_findings in group_findings_by_file(findings).items():
+        path = REPO_ROOT / filepath
+        if not path.exists():
+            raise FileNotFoundError(f"Finding references missing file: {filepath}")
+        original = path.read_text()
+        result = generate_fix(filepath, original, file_findings)
+        updated = result.get("content", original)
+        summary = result.get("summary", "")
+        model = result.get("model")
+        summaries.append({"file": filepath, "summary": summary, "model": model})
+        if updated == original:
+            continue
+        changed_files.append(filepath)
+        if not dry_run:
+            path.write_text(updated)
+    return changed_files, summaries
+def stage_commit_and_push(branch: str, dry_run: bool) -> str:
+    if dry_run:
+        return ""
+    changed = subprocess.run(
+        ["git", "status", "--porcelain"],
+        capture_output=True,
+        text=True,
+        cwd=REPO_ROOT,
+        check=False,
+    )
+    changed_files = []
+    for line in changed.stdout.splitlines():
+        if not line.strip():
+            continue
+        changed_files.append(line[3:])
+    if not changed_files:
+        return ""
 
-    if not args:
-        print("Usage: scripts/remediate <PR_NUMBER> [--auto] [--prompt]")
+    subprocess.run(["git", "config", "user.name", "github-actions[bot]"], cwd=REPO_ROOT, check=False)
+    subprocess.run(
+        ["git", "config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com"],
+        cwd=REPO_ROOT,
+        check=False,
+    )
+    subprocess.run(["git", "add", *changed_files], cwd=REPO_ROOT, check=True)
+    subprocess.run(["git", "commit", "-m", COMMIT_MESSAGE], cwd=REPO_ROOT, check=True)
+    subprocess.run(["git", "push", "origin", f"HEAD:{branch}"], cwd=REPO_ROOT, check=True)
+    sha = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        capture_output=True,
+        text=True,
+        cwd=REPO_ROOT,
+        check=True,
+    )
+    return sha.stdout.strip()
+def run_ci_mode(pr_number: int, dry_run: bool):
+    pr = get_pr(pr_number)
+    if not pr or "head" not in pr:
+        print(f"❌ Could not fetch PR #{pr_number}")
         sys.exit(1)
 
-    pr_number = int(args[0])
-    auto = "--auto" in flags
-    prompt_only = "--prompt" in flags
+    head_sha = pr["head"]["sha"]
+    branch = pr["head"]["ref"]
+    head_message = get_commit_message(head_sha)
+    if "[skip ci-review]" in head_message:
+        print("⏭️ HEAD commit opts out of auto-remediation.")
+        return
 
-    # Step 1: Run review to get findings
+    findings, source = load_ci_findings(pr_number, head_sha)
+    print(f"📋 Loaded {len(findings)} critical findings from {source}")
+    if not findings:
+        print("✅ No critical findings to remediate.")
+        return
+
+    comments = get_pr_comments(pr_number)
+    attempts = count_attempts(comments, head_sha)
+    if attempts >= MAX_ATTEMPTS:
+        if not dry_run:
+            post_failure_comment(pr_number, head_sha)
+            send_discord_message("❌ Auto-remediation failed — needs human review")
+        print(f"❌ Max attempts reached for sha:{head_sha[:7]}")
+        sys.exit(1)
+
+    if not dry_run:
+        send_discord_message(f"🔧 Auto-remediating PR #{pr_number} — {len(findings)} critical findings")
+        post_attempt_comment(pr_number, head_sha, attempts + 1)
+
+    changed_files, summaries = apply_ci_fixes(findings, dry_run=dry_run)
+    for summary in summaries:
+        model = summary.get("model") or "none"
+        print(f"  {summary['file']}: {summary['summary']} [{model}]")
+
+    if dry_run:
+        if changed_files:
+            print("\nDry run only. Would update:")
+            for filepath in changed_files:
+                print(f"  - {filepath}")
+        else:
+            print("\nDry run only. No file changes generated.")
+        return
+
+    commit_sha = stage_commit_and_push(branch, dry_run=False)
+    if not commit_sha:
+        send_discord_message("❌ Auto-remediation failed — needs human review")
+        print("❌ No changes were generated to commit.")
+        sys.exit(1)
+
+    post_success_comment(pr_number, head_sha, commit_sha)
+    send_discord_message("✅ Auto-remediation complete — pushed fixes, re-review triggered")
+    print(f"✅ Auto-remediation complete. Pushed {commit_sha[:7]}.")
+def run_local_mode(pr_number: int, auto: bool, prompt_only: bool):
     remediation = run_review(pr_number)
     findings = remediation.get("findings", [])
     branch = remediation.get("branch", "")
@@ -190,53 +433,51 @@ def main():
         print("\n✅ No findings — nothing to remediate!")
         return
 
-    # Check attempt count (prevent infinite loops)
-    state = load_state()
-    key = f"pr-{pr_number}-{sha}"
-    attempts = state.get(key, 0)
-    if attempts >= MAX_ATTEMPTS:
-        print(f"\n⚠️  Max remediation attempts ({MAX_ATTEMPTS}) reached for sha:{sha}")
-        print("   Human intervention needed.")
-        sys.exit(1)
-
-    # Step 2: Generate prompt
     prompt = generate_prompt(remediation)
-
     if prompt_only:
         print("\n" + "=" * 60)
         print(prompt)
         print("=" * 60)
         return
 
-    print(f"\n📋 {len(findings)} findings to fix (attempt {attempts + 1}/{MAX_ATTEMPTS})")
+    attempt_key = f"pr-{pr_number}-{sha}"
+    state = json.loads((REPO_ROOT / ".remediation-state.json").read_text()) if (REPO_ROOT / ".remediation-state.json").exists() else {}
+    attempts = state.get(attempt_key, 0)
+    if attempts >= 2:
+        print("\n⚠️  Max remediation attempts (2) reached for local auto mode.")
+        sys.exit(1)
 
+    print(f"\n📋 {len(findings)} findings to fix (attempt {attempts + 1}/2)")
     if not auto:
-        # Print prompt for manual use
         print("\n" + "=" * 60)
         print("REMEDIATION PROMPT (pass to coding agent):")
         print("=" * 60)
         print(prompt)
         print("=" * 60)
-        print("\nRun with --auto to spawn a coding agent automatically.")
         return
 
-    # Step 3: Record attempt
-    state[key] = attempts + 1
-    save_state(state)
-
-    # Step 4: Spawn agent
-    success = spawn_agent(prompt, branch)
-
-    if success:
-        # Step 5: Push fixes → triggers CI re-review (SHA discipline)
-        pushed = push_fixes(branch)
-        if pushed:
-            print(f"\n🔄 Fix pushed. CI will re-review PR #{pr_number} with new SHA.")
-            print("   If clean → auto-approve. If findings remain → escalate to human.")
-    else:
-        print(f"\n❌ Remediation failed. Manual fix needed for PR #{pr_number}.")
+    state[attempt_key] = attempts + 1
+    (REPO_ROOT / ".remediation-state.json").write_text(json.dumps(state, indent=2))
+    if spawn_agent(prompt, branch) and push_local_fixes(branch):
+        print(f"\n🔄 Fix pushed. CI will re-review PR #{pr_number} with new SHA.")
+        return
+    print(f"\n❌ Remediation failed. Manual fix needed for PR #{pr_number}.")
+    sys.exit(1)
+def main():
+    args = [arg for arg in sys.argv[1:] if not arg.startswith("-")]
+    flags = [arg for arg in sys.argv[1:] if arg.startswith("-")]
+    if not args:
+        print("Usage: scripts/remediate <PR_NUMBER> [--auto] [--prompt] [--ci] [--dry-run]")
         sys.exit(1)
 
-
+    pr_number = int(args[0])
+    if "--ci" in flags:
+        run_ci_mode(pr_number, dry_run="--dry-run" in flags)
+        return
+    run_local_mode(
+        pr_number,
+        auto="--auto" in flags,
+        prompt_only="--prompt" in flags,
+    )
 if __name__ == "__main__":
     main()

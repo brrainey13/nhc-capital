@@ -80,6 +80,10 @@ FINDINGS_SCHEMA = {
                         "type": "string",
                         "description": "File path where the issue was found",
                     },
+                    "line": {
+                        "type": "integer",
+                        "description": "Best-effort line number for the issue",
+                    },
                     "severity": {
                         "type": "string",
                         "enum": ["critical", "warning", "info"],
@@ -232,8 +236,102 @@ def review_diff(diff_text: str, changed_files: list[str], risk_tier: str) -> dic
     }
 
 
+def generate_fix(filepath: str, file_content: str, findings: list[dict]) -> dict:
+    """Generate an updated file for a set of review findings.
+
+    Returns:
+      {
+        "content": "...fixed file...",
+        "summary": "what changed",
+        "model": "provider/model"
+      }
+    """
+    findings_json = json.dumps(findings, indent=2)
+    user_msg = (
+        f"Fix the review findings in `{filepath}`.\n\n"
+        "Rules:\n"
+        "- Fix only the issues described in the findings.\n"
+        "- Preserve unrelated behavior and formatting where possible.\n"
+        "- Return valid JSON with keys: content, summary.\n"
+        "- `content` must contain the complete updated file contents.\n"
+        "- Do not wrap file contents in markdown fences.\n\n"
+        f"Findings:\n{findings_json}\n\n"
+        f"Current file content:\n```\n{file_content}\n```"
+    )
+
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are a senior software engineer applying precise code-review fixes. "
+                "Return only JSON matching the requested schema."
+            ),
+        },
+        {"role": "user", "content": user_msg},
+    ]
+
+    fix_schema = {
+        "type": "object",
+        "properties": {
+            "summary": {"type": "string"},
+            "content": {"type": "string"},
+        },
+        "required": ["summary", "content"],
+        "additionalProperties": False,
+    }
+
+    for provider in REVIEW_PROVIDERS:
+        api_key = os.environ.get(provider["api_key_env"], "")
+        if not api_key:
+            continue
+        result = _call_provider(
+            base_url=provider["base_url"],
+            api_key=api_key,
+            model=provider["model"],
+            messages=messages,
+            schema=fix_schema,
+        )
+        if result is not None:
+            result["model"] = provider["label"]
+            return result
+
+    openrouter_key = os.environ.get("OPENROUTER_API_KEY", "")
+    if openrouter_key:
+        for model in OPENROUTER_MODELS:
+            result = _call_provider(
+                base_url="https://openrouter.ai/api/v1",
+                api_key=openrouter_key,
+                model=model,
+                messages=messages,
+                schema=fix_schema,
+            )
+            if result is not None:
+                result["model"] = model
+                return result
+
+    nvidia_key = os.environ.get("NVIDIA_API_KEY", "")
+    if nvidia_key:
+        result = _call_provider(
+            base_url="https://integrate.api.nvidia.com/v1",
+            api_key=nvidia_key,
+            model="mistralai/mistral-large-3-675b-instruct-2512",
+            messages=messages,
+            schema=fix_schema,
+        )
+        if result is not None:
+            result["model"] = "nvidia/mistral-large-3-675b"
+            return result
+
+    return {
+        "content": file_content,
+        "summary": "All remediation models failed.",
+        "model": None,
+        "error": "all_models_failed",
+    }
+
+
 def _call_provider(
-    base_url: str, api_key: str, model: str, messages: list
+    base_url: str, api_key: str, model: str, messages: list, schema: dict | None = None
 ) -> dict | None:
     """Call an OpenAI-compatible provider with structured JSON output.
 
@@ -247,6 +345,7 @@ def _call_provider(
         "messages": messages,
         "max_tokens": 4096,
     }
+    schema = schema or FINDINGS_SCHEMA
 
     # Try structured_outputs first (OpenRouter/OpenAI style)
     # NVIDIA may not support json_schema — fall back to json_object
@@ -257,7 +356,7 @@ def _call_provider(
             "json_schema": {
                 "name": "code_review",
                 "strict": True,
-                "schema": FINDINGS_SCHEMA,
+                "schema": schema,
             },
         }
     else:
@@ -266,7 +365,7 @@ def _call_provider(
         # Inject schema into system message so model knows the format
         schema_hint = (
             "\n\nYou MUST respond with valid JSON matching this exact schema:\n"
-            + json.dumps(FINDINGS_SCHEMA, indent=2)
+            + json.dumps(schema, indent=2)
         )
         payload["messages"] = [
             {**messages[0], "content": messages[0]["content"] + schema_hint},
