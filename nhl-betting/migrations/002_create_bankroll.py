@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import os
 import sys
 
 import psycopg2
 
-DSN = "dbname=nhl_betting user=connorrainey"
+DSN = os.environ.get("DATABASE_URL", "dbname=nhl_betting")
 
 CREATE_TABLE = """
 CREATE TABLE IF NOT EXISTS bankroll (

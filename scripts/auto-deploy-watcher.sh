@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Auto-deploy watcher — polls origin/main for new commits and deploys
-# Runs as a LaunchAgent (connorrainey user), NOT through the agent
+# Runs as a LaunchAgent (host user), NOT through the agent
 #
 # Flow: git fetch → compare SHA → if new → deploy-dashboard --all → log → notify Discord
 #

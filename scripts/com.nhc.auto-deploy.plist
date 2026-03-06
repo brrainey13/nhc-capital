@@ -8,7 +8,8 @@
     <key>ProgramArguments</key>
     <array>
         <string>/bin/bash</string>
-        <string>/Users/connorrainey/nhc-capital/scripts/auto-deploy-watcher.sh</string>
+        <!-- UPDATE: Replace with your actual repo path -->
+        <string>/Users/YOURUSER/nhc-capital/scripts/auto-deploy-watcher.sh</string>
     </array>
 
     <key>StartInterval</key>
@@ -19,7 +20,8 @@
         <key>PATH</key>
         <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
         <key>HOME</key>
-        <string>/Users/connorrainey</string>
+        <!-- UPDATE: Replace with your HOME directory -->
+        <string>/Users/YOURUSER</string>
     </dict>
 
     <key>StandardOutPath</key>
