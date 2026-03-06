@@ -9,6 +9,7 @@ Usage:
   scripts/mr-review <PR_NUMBER> --auto-resolve     # Also resolve stale bot threads
   scripts/mr-review <PR_NUMBER> --remediate        # Output findings for remediation agent
   scripts/mr-review <PR_NUMBER> --ci               # CI mode (uses GITHUB_TOKEN env + API)
+  scripts/mr-review <PR_NUMBER> --machine          # Also write .review-findings.json
 
 Environment:
   GITHUB_TOKEN — for API access (required in CI mode, optional locally)
@@ -38,19 +39,13 @@ def _detect_repo() -> str:
 
 GITHUB_REPO = _detect_repo()
 
-# Load OPENROUTER_API_KEY from .env if not already in environment.
-# Only used locally — CI should set env vars directly.
-if not os.environ.get("OPENROUTER_API_KEY"):
-    _env_file = REPO_ROOT / "admin-dashboard" / ".env"
-    if _env_file.exists():
-        for _line in _env_file.read_text().splitlines():
-            if _line.startswith("OPENROUTER_API_KEY="):
-                os.environ["OPENROUTER_API_KEY"] = _line.split("=", 1)[1]
-                break
+# OPENROUTER_API_KEY must be provided via environment.
+# Local usage: `source admin-dashboard/.env` before running scripts.
 
 GITHUB_API = "https://api.github.com"
 REVIEW_MARKER = "<!-- nhc-review-agent -->"
 RERUN_MARKER = "<!-- nhc-review-rerun -->"
+FINDINGS_PATH = REPO_ROOT / ".review-findings.json"
 
 # Detect mode
 CI_MODE = "--ci" in sys.argv or os.environ.get("CI") == "true"
@@ -62,7 +57,7 @@ GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
 
 def _api_request(endpoint: str, method: str = "GET", data: dict | None = None):
     """Call GitHub API — uses urllib in CI, gh locally."""
-    if CI_MODE or GITHUB_TOKEN:
+    if GITHUB_TOKEN:
         return _http_api(endpoint, method, data)
     return _gh_api(endpoint, method, data)
 
@@ -149,7 +144,7 @@ def get_pr(number: int) -> dict:
 
 def get_pr_diff(number: int) -> str:
     """Get PR diff as text."""
-    if CI_MODE or GITHUB_TOKEN:
+    if GITHUB_TOKEN:
         req = urllib.request.Request(
             f"{GITHUB_API}/repos/{GITHUB_REPO}/pulls/{number}",
             headers={
@@ -200,6 +195,7 @@ def analyze_diff(diff_text: str, changes: list[dict], risk: dict) -> list[dict]:
         filepath = change.get("filename") or change.get("new_path", "")
         diff = change.get("patch") or change.get("diff", "")
         status = change.get("status")
+        line_number = extract_first_changed_line(diff)
         if status is None:
             status = "added" if change.get("new_file") else "modified"
         is_test = "test" in filepath.lower()
@@ -218,7 +214,10 @@ def analyze_diff(diff_text: str, changes: list[dict], risk: dict) -> list[dict]:
             for pattern, msg in secret_patterns:
                 if re.search(pattern, diff, re.IGNORECASE):
                     findings.append({
-                        "file": filepath, "severity": "critical", "message": msg,
+                        "file": filepath,
+                        "line": line_number,
+                        "severity": "critical",
+                        "message": msg,
                     })
 
         # DDL in non-dashboard code (skip tests)
@@ -229,7 +228,9 @@ def analyze_diff(diff_text: str, changes: list[dict], risk: dict) -> list[dict]:
             )
             if ddl_hits:
                 findings.append({
-                    "file": filepath, "severity": "warning",
+                    "file": filepath,
+                    "line": line_number,
+                    "severity": "warning",
                     "message": (
                         f"DDL statement detected ({len(ddl_hits)} occurrences). "
                         "Verify dashboard compatibility."
@@ -240,7 +241,9 @@ def analyze_diff(diff_text: str, changes: list[dict], risk: dict) -> list[dict]:
         if filepath.endswith(".py") and not is_test:
             if re.search(r"f['\"].*(?:SELECT|INSERT|UPDATE|DELETE).*\{", diff):
                 findings.append({
-                    "file": filepath, "severity": "warning",
+                    "file": filepath,
+                    "line": line_number,
+                    "severity": "warning",
                     "message": "Possible SQL injection — f-string in SQL. "
                     "Use parameterized queries.",
                 })
@@ -251,7 +254,9 @@ def analyze_diff(diff_text: str, changes: list[dict], risk: dict) -> list[dict]:
                 "config", "test", ".env", "CLAUDE", "AGENTS",
             ]):
                 findings.append({
-                    "file": filepath, "severity": "info",
+                    "file": filepath,
+                    "line": line_number,
+                    "severity": "info",
                     "message": "Hardcoded host:port. Consider env vars.",
                 })
 
@@ -260,7 +265,9 @@ def analyze_diff(diff_text: str, changes: list[dict], risk: dict) -> list[dict]:
             lines = change.get("additions", 0)
             if lines > 500:
                 findings.append({
-                    "file": filepath, "severity": "warning",
+                    "file": filepath,
+                    "line": line_number,
+                    "severity": "warning",
                     "message": f"New file ~{lines} lines. Split (<500 LOC).",
                 })
 
@@ -273,11 +280,50 @@ def analyze_diff(diff_text: str, changes: list[dict], risk: dict) -> list[dict]:
             )
             if not has_test:
                 findings.append({
-                    "file": filepath, "severity": "info",
+                    "file": filepath,
+                    "line": line_number,
+                    "severity": "info",
                     "message": "New Python file without test in this PR.",
                 })
 
     return findings
+
+
+def extract_first_changed_line(diff_text: str) -> int | None:
+    """Best-effort line number from a unified diff hunk."""
+    match = re.search(r"@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@", diff_text or "")
+    if not match:
+        return None
+    return int(match.group(1))
+
+
+def normalize_findings(findings: list[dict]) -> list[dict]:
+    """Normalize findings for machine-readable output."""
+    normalized = []
+    for finding in findings:
+        normalized.append({
+            "severity": str(finding.get("severity", "")).upper(),
+            "file": finding.get("file", ""),
+            "line": finding.get("line"),
+            "message": finding.get("message", ""),
+            "suggestion": finding.get("suggestion", ""),
+            "category": finding.get("category", ""),
+        })
+    return normalized
+
+
+def write_machine_findings(pr_number: int, head_sha: str, findings: list[dict]):
+    """Write machine-readable findings for downstream automation."""
+    payload = {
+        "sha": head_sha,
+        "pr_number": pr_number,
+        "findings": normalize_findings(findings),
+    }
+    # Safe: this file contains code-review findings for CI handoff, not credentials.
+    FINDINGS_PATH.write_text(  # codeql[py/clear-text-storage-sensitive-data]  # lgtm[py/clear-text-storage-sensitive-data]
+        json.dumps(payload, indent=2)
+    )
+    print(f"   Wrote machine findings to {FINDINGS_PATH}")
 
 
 def format_review(
@@ -417,6 +463,7 @@ def main():
     number = int(args[0])
     auto_resolve = "--auto-resolve" in flags
     remediate = "--remediate" in flags
+    machine = "--machine" in flags or CI_MODE
 
     print(f"🔍 Reviewing PR #{number}...")
 
@@ -473,6 +520,7 @@ def main():
             # Merge LLM findings (avoid duplicates with regex)
             existing_msgs = {f["message"].lower() for f in findings}
             for lf in llm_findings:
+                lf.setdefault("line", None)
                 if lf["message"].lower() not in existing_msgs:
                     findings.append(lf)
                     existing_msgs.add(lf["message"].lower())
@@ -540,6 +588,8 @@ def main():
     result_path = REPO_ROOT / ".review-result.json"
     result_path.write_text(json.dumps(result, indent=2))
     print(f"   Wrote review result to {result_path}")
+    if machine:
+        write_machine_findings(number, head_sha, findings)
 
     if remediate and findings:
         # Write detailed remediation file for coding agents
