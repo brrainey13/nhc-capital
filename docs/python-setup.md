@@ -2,6 +2,12 @@
 title: Python Environment Setup
 category: infrastructure
 updated: 2026-03-06
+summary: 'Python 3.13 pinned, per-project venvs with --copies flag, scripts/setup-venvs for setup'
+read_when:
+  - Setting up Python venvs for any project
+  - Debugging venv or import issues
+  - Adding new Python dependencies
+  - Creating a new project subfolder
 ---
 
 # Python Environment Setup
