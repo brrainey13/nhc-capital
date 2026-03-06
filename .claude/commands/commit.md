@@ -6,7 +6,7 @@ Format: `type: short description` (feat|fix|refactor|build|ci|chore|docs|style|p
 
 After committing, push to GitLab and open a merge request:
 ```bash
-git push -u gitlab feat/your-branch
+git push -u origin feat/your-branch
 gh pr create --title "type: description"
 ```
 **Never push directly to main.** Branch protection will reject it.

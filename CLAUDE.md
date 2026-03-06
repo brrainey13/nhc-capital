@@ -39,7 +39,6 @@ Then read the `CLAUDE.md` inside whichever project subfolder you're working in (
 │   ├── risk-classifier           ← Classifies changed files by risk tier
 │   └── pr-discord-notify         ← Generates Discord Components v2 PR cards
 ├── .claude/commands/             ← Slash commands (/build, /commit, /fix, /docs)
-├── .gitlab-ci.yml                ← Legacy GitLab CI config kept during migration
 ├── .github/workflows/            ← GitHub Actions (primary — branch protection enforced)
 │   ├── ci.yml                    ← Full CI (infra/shared changes)
 │   ├── ci-projects.yml           ← Path-filtered: NHL/Poly/RE only
