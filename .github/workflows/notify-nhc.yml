@@ -1,0 +1,71 @@
+# ═══════════════════════════════════════════════════════════════════════
+# Notify NHC — Post CI results to Discord for agent pickup
+#
+# After CI completes on a PR, posts a summary to #admin-dashboard.
+# NHC agent monitors Discord and can pick up actionable items.
+# ═══════════════════════════════════════════════════════════════════════
+
+name: Notify NHC
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+jobs:
+  notify:
+    name: "Notify: CI Results → Discord"
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.event == 'pull_request'
+    steps:
+      - name: Get PR info
+        id: pr
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const headBranch = context.payload.workflow_run.head_branch;
+            const prs = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              head: `${context.repo.owner}:${headBranch}`,
+              state: 'open',
+            });
+            if (prs.data.length === 0) {
+              core.setOutput('skip', 'true');
+              return;
+            }
+            const pr = prs.data[0];
+            core.setOutput('skip', 'false');
+            core.setOutput('pr_number', pr.number);
+            core.setOutput('pr_title', pr.title);
+            core.setOutput('pr_url', pr.html_url);
+            core.setOutput('branch', headBranch);
+
+      - name: Post to Discord
+        if: steps.pr.outputs.skip != 'true'
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        run: |
+          CONCLUSION="${{ github.event.workflow_run.conclusion }}"
+          PR_NUM="${{ steps.pr.outputs.pr_number }}"
+          PR_TITLE="${{ steps.pr.outputs.pr_title }}"
+          PR_URL="${{ steps.pr.outputs.pr_url }}"
+          RUN_URL="${{ github.event.workflow_run.html_url }}"
+
+          if [ "$CONCLUSION" = "success" ]; then
+            EMOJI="✅"
+            COLOR="3066993"
+            MSG="All checks passed — ready for review + merge."
+          elif [ "$CONCLUSION" = "failure" ]; then
+            EMOJI="❌"
+            COLOR="15158332"
+            MSG="CI failed — auto-fix workflow may push corrections. If issues persist, manual fix needed."
+          else
+            EMOJI="⚠️"
+            COLOR="16776960"
+            MSG="CI completed with status: $CONCLUSION"
+          fi
+
+          curl -s -H "Content-Type: application/json" \
+            -d "{\"embeds\":[{\"title\":\"${EMOJI} PR #${PR_NUM}: ${PR_TITLE}\",\"description\":\"${MSG}\n\n**PR:** [View PR](${PR_URL})\n**Pipeline:** [View logs](${RUN_URL})\",\"color\":${COLOR}}]}" \
+            "$DISCORD_WEBHOOK"
