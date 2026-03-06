@@ -1,6 +1,5 @@
 """Strategy configurations and data preparation for validation diagnostics."""
 
-import os
 import warnings
 from pathlib import Path
 
@@ -9,9 +8,22 @@ import numpy as np
 import pandas as pd
 import psycopg2
 
+try:
+    from .db_config import get_database_url
+    from .goalie_strategy import (
+        compute_strategy_thresholds,
+        get_strategy_feature_columns,
+    )
+except ImportError:
+    from db_config import get_database_url
+    from goalie_strategy import (
+        compute_strategy_thresholds,
+        get_strategy_feature_columns,
+    )
+
 warnings.filterwarnings('ignore')
 
-DB_CONN = os.environ.get("DATABASE_URL", "postgresql://nhc_agent@localhost:5432/nhl_betting")
+DB_CONN = get_database_url()
 MODEL_DIR = Path(__file__).resolve().parent
 
 
@@ -128,12 +140,9 @@ def get_strategy_bets(matrix, splits):
     """Return dict of {strategy_name: DataFrame of bets per split}."""
     strategies = {}
 
-    feats = ['sa_avg_10', 'sa_avg_20', 'svpct_avg_10', 'svpct_avg_20', 'is_home',
-             'opp_team_sog_avg_10', 'days_rest', 'own_def_missing_toi',
-             'opp_corsi_pct_avg_10', 'opp_corsi_diff_avg_10',
-             'own_corsi_pct_avg_10', 'pull_rate_10', 'starts_last_7d',
-             'opp_team_pp_opps_avg_10', 'line']
-    feats = [f for f in feats if f in matrix.columns]
+    feats = get_strategy_feature_columns(matrix)
+    if 'line' in matrix.columns:
+        feats = [*feats, 'line']
 
     for sname in ['PF1_over_corsi3', 'PF2_over_corsi_puck', 'MF1_under_model2_corsi_diff',
                     'MF2_under_model2_b2b', 'MF3_under_model1_corsi']:
@@ -148,6 +157,7 @@ def get_strategy_bets(matrix, splits):
         v_valid = val[feats].notna().any(axis=1)
         train_f = train[t_valid]
         val_f = val[v_valid]
+        thresholds = compute_strategy_thresholds(train)
 
         model = lgb.LGBMRegressor(objective='regression', num_leaves=10, max_depth=4,
                                    min_child_samples=50, learning_rate=0.05, n_estimators=300,
@@ -166,9 +176,14 @@ def get_strategy_bets(matrix, splits):
         # PF1
         if 'opp_corsi_pct_avg_10' in val.columns and 'opp_corsi_diff_avg_10' in val.columns and 'opp_puck_control_avg_10' in val.columns:
             v = val.dropna(subset=['opp_corsi_pct_avg_10', 'opp_corsi_diff_avg_10', 'opp_puck_control_avg_10'])
-            mask = ((v['opp_corsi_pct_avg_10'] > v['opp_corsi_pct_avg_10'].quantile(0.75)) &
-                    (v['opp_corsi_diff_avg_10'] > v['opp_corsi_diff_avg_10'].quantile(0.75)) &
-                    (v['opp_puck_control_avg_10'] > v['opp_puck_control_avg_10'].quantile(0.75)))
+            mask = (
+                (thresholds.get('opp_corsi_q75') is not None)
+                & (thresholds.get('opp_corsi_diff_q75') is not None)
+                & (thresholds.get('opp_puck_q75') is not None)
+                & (v['opp_corsi_pct_avg_10'] > thresholds['opp_corsi_q75'])
+                & (v['opp_corsi_diff_avg_10'] > thresholds['opp_corsi_diff_q75'])
+                & (v['opp_puck_control_avg_10'] > thresholds['opp_puck_q75'])
+            )
             filtered = v[mask]
             if len(filtered) > 0:
                 strategies['PF1_over_corsi3'][sname] = simulate_bets_detailed(filtered, 'over')
@@ -176,8 +191,12 @@ def get_strategy_bets(matrix, splits):
         # PF2
         if 'opp_corsi_pct_avg_10' in val.columns and 'opp_puck_control_avg_10' in val.columns:
             v = val.dropna(subset=['opp_corsi_pct_avg_10', 'opp_puck_control_avg_10'])
-            mask = ((v['opp_corsi_pct_avg_10'] > v['opp_corsi_pct_avg_10'].quantile(0.75)) &
-                    (v['opp_puck_control_avg_10'] > v['opp_puck_control_avg_10'].quantile(0.75)))
+            mask = (
+                (thresholds.get('opp_corsi_q75') is not None)
+                & (thresholds.get('opp_puck_q75') is not None)
+                & (v['opp_corsi_pct_avg_10'] > thresholds['opp_corsi_q75'])
+                & (v['opp_puck_control_avg_10'] > thresholds['opp_puck_q75'])
+            )
             filtered = v[mask]
             if len(filtered) > 0:
                 strategies['PF2_over_corsi_puck'][sname] = simulate_bets_detailed(filtered, 'over')
@@ -185,8 +204,12 @@ def get_strategy_bets(matrix, splits):
         # MF1
         if 'opp_corsi_diff_avg_10' in val.columns:
             v = val.dropna(subset=['opp_corsi_diff_avg_10', 'pred'])
-            mask = ((v['model_side'] == 'under') & (v['model_gap'] >= 2) &
-                    (v['opp_corsi_diff_avg_10'] < v['opp_corsi_diff_avg_10'].quantile(0.25)))
+            mask = (
+                (thresholds.get('opp_corsi_diff_q25') is not None)
+                & (v['model_side'] == 'under')
+                & (v['model_gap'] >= 2)
+                & (v['opp_corsi_diff_avg_10'] < thresholds['opp_corsi_diff_q25'])
+            )
             filtered = v[mask]
             if len(filtered) > 0:
                 strategies['MF1_under_model2_corsi_diff'][sname] = simulate_bets_detailed(filtered, 'under')
@@ -201,8 +224,12 @@ def get_strategy_bets(matrix, splits):
         # MF3
         if 'opp_corsi_pct_avg_10' in val.columns:
             v = val.dropna(subset=['opp_corsi_pct_avg_10', 'pred'])
-            mask = ((v['model_side'] == 'under') & (v['model_gap'] >= 1) &
-                    (v['opp_corsi_pct_avg_10'] < v['opp_corsi_pct_avg_10'].quantile(0.25)))
+            mask = (
+                (thresholds.get('opp_corsi_q25') is not None)
+                & (v['model_side'] == 'under')
+                & (v['model_gap'] >= 1)
+                & (v['opp_corsi_pct_avg_10'] < thresholds['opp_corsi_q25'])
+            )
             filtered = v[mask]
             if len(filtered) > 0:
                 strategies['MF3_under_model1_corsi'][sname] = simulate_bets_detailed(filtered, 'under')

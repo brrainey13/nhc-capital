@@ -7,8 +7,9 @@ import urllib.request
 from datetime import datetime
 
 import psycopg2
+from model.db_config import get_dsn
 
-DB_CONN = "dbname=nhl_betting user=connorrainey"
+DB_CONN = get_dsn()
 
 
 def refresh_rosters(verbose=True):

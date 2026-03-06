@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pandas as pd
 import requests
+from model.db_config import get_database_url
 
 MODEL_DIR = Path(__file__).resolve().parent.parent / "model"
 sys.path.insert(0, str(MODEL_DIR))
@@ -17,7 +18,7 @@ from validate_strategies import derive_corsi_features  # noqa: E402
 
 log = logging.getLogger(__name__)
 
-DB_CONN = os.environ.get("DATABASE_URL", "postgresql://nhc_agent@localhost:5432/nhl_betting")
+DB_CONN = get_database_url()
 
 API_BASE = "https://api.bettingpros.com/v3"
 API_KEY = os.environ.get("ODDS_API_KEY", "")
