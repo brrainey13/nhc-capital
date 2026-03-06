@@ -13,13 +13,9 @@ import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from dotenv import load_dotenv
-
-# Load .env BEFORE importing modules that read os.environ at import time
-load_dotenv(Path(__file__).parent.parent / ".env")
-
-from auth import AuthMiddleware  # noqa: E402 — must come after load_dotenv
+from auth import AuthMiddleware
 from db import close_pools, init_pools
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -32,6 +28,8 @@ from routes.query import router as query_router
 from routes.real_estate import router as real_estate_router
 from routes.tables import router as tables_router
 from routes.usage import router as usage_router
+
+load_dotenv(Path(__file__).parent.parent / ".env")
 
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend" / "dist"
 PUBLIC_DIR = Path(__file__).parent.parent / "frontend" / "public"
