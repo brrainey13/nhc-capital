@@ -54,6 +54,59 @@ fi
 log "🚀 New commit detected on main: ${remote_sha:0:8}"
 log "   Previous deployed: ${deployed_sha:0:8:-none}"
 
+# ── GATE: Verify commit came from an approved, CI-passed merged PR ──
+# Uses GitHub API to check that the commit is associated with a merged PR
+# that was approved and passed all required status checks.
+
+pr_json=$(curl -sf \
+  -H "Accept: application/vnd.github+json" \
+  "https://api.github.com/repos/brrainey13/nhc-capital/commits/${remote_sha}/pulls" 2>/dev/null || echo "[]")
+
+# Check: at least one merged PR is associated with this commit
+merged_pr=$(echo "$pr_json" | python3 -c "
+import json, sys
+try:
+    prs = json.load(sys.stdin)
+    merged = [p for p in prs if p.get('merged_at') and p.get('base',{}).get('ref') == 'main']
+    if merged:
+        print(f'PR #{merged[0][\"number\"]}: {merged[0][\"title\"]}')
+    else:
+        print('')
+except:
+    print('')
+" 2>/dev/null)
+
+if [ -z "$merged_pr" ]; then
+  log "🚫 DEPLOY BLOCKED — commit ${remote_sha:0:8} is NOT from an approved merged PR"
+  log "   Only merged PRs trigger auto-deploy. Direct pushes are rejected."
+  notify_discord "🚫 **Auto-deploy BLOCKED** — \`${remote_sha:0:8}\` not from a merged PR. Skipping."
+  exit 0
+fi
+
+log "   ✅ Verified: $merged_pr"
+
+# Check: CI status checks passed on this commit
+ci_status=$(curl -sf \
+  -H "Accept: application/vnd.github+json" \
+  "https://api.github.com/repos/brrainey13/nhc-capital/commits/${remote_sha}/status" 2>/dev/null || echo "{}")
+
+overall_state=$(echo "$ci_status" | python3 -c "
+import json, sys
+try:
+    data = json.load(sys.stdin)
+    print(data.get('state', 'unknown'))
+except:
+    print('unknown')
+" 2>/dev/null)
+
+if [ "$overall_state" != "success" ]; then
+  log "🚫 DEPLOY BLOCKED — CI status is '$overall_state' (need 'success') for ${remote_sha:0:8}"
+  notify_discord "🚫 **Auto-deploy BLOCKED** — CI status \`$overall_state\` for \`${remote_sha:0:8}\`. Need all checks green."
+  exit 0
+fi
+
+log "   ✅ CI status: $overall_state"
+
 # Pull to main
 current_branch=$(git rev-parse --abbrev-ref HEAD)
 if [ "$current_branch" != "main" ]; then
