@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+# setup-venvs — Create/recreate all project venvs pinned to Python 3.13
+#
+# MUST use --copies flag (Homebrew Python symlink chains break venv detection)
+# Each project gets its own isolated venv with its own requirements.txt
+#
+# Usage: scripts/setup-venvs          # recreate all venvs
+#        scripts/setup-venvs nhl      # recreate just nhl-betting
+
+set -euo pipefail
+
+PYTHON="/opt/homebrew/opt/python@3.13/bin/python3.13"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
+if ! command -v "$PYTHON" &>/dev/null; then
+  echo "❌ Python 3.13 not found. Install: brew install python@3.13"
+  exit 1
+fi
+
+echo "Python: $($PYTHON --version)"
+
+setup_venv() {
+  local project="$1"
+  local dir="$ROOT/$project"
+  local reqs="$dir/requirements.txt"
+
+  # admin-dashboard has requirements in backend/
+  if [ "$project" = "admin-dashboard" ]; then
+    reqs="$dir/backend/requirements.txt"
+  fi
+
+  if [ ! -f "$reqs" ]; then
+    echo "⚠️  $project: no requirements.txt — skipping"
+    return
+  fi
+
+  echo ""
+  echo "━━━ $project ━━━"
+  echo "  Creating venv (--copies)..."
+  "$PYTHON" -m venv "$dir/.venv" --clear --copies
+
+  echo "  Installing deps..."
+  "$dir/.venv/bin/pip" install --quiet -r "$reqs"
+
+  # Verify
+  local ver
+  ver="$("$dir/.venv/bin/python" -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}')")"
+  local in_venv
+  in_venv="$("$dir/.venv/bin/python" -c "import sys; print(sys.prefix != sys.base_prefix)")"
+
+  if [ "$in_venv" = "True" ]; then
+    echo "  ✅ Python $ver | venv active | deps installed"
+  else
+    echo "  ❌ venv NOT detected (sys.prefix == sys.base_prefix)"
+    exit 1
+  fi
+}
+
+PROJECTS=(nhl-betting admin-dashboard real-estate polymarket)
+
+if [ $# -gt 0 ]; then
+  case "$1" in
+    nhl|nhl-betting)       setup_venv "nhl-betting" ;;
+    dashboard|admin*)      setup_venv "admin-dashboard" ;;
+    real*|re)              setup_venv "real-estate" ;;
+    poly*)                 setup_venv "polymarket" ;;
+    all|"")                for p in "${PROJECTS[@]}"; do setup_venv "$p"; done ;;
+    *)                     echo "Unknown project: $1"; exit 1 ;;
+  esac
+else
+  for p in "${PROJECTS[@]}"; do setup_venv "$p"; done
+fi
+
+echo ""
+echo "Done! All venvs pinned to Python 3.13 (Homebrew, --copies mode)."
+echo "Usage: <project>/.venv/bin/python -m <module>"

@@ -174,6 +174,8 @@ def _fetch_team_context(cur, team_id: int, game_date) -> dict[str, float] | None
 def _build_live_goalie_features(events: list[dict], target_date: str) -> list[dict]:
     """Build live goalie features for tonight using DB history."""
     target_dt = pd.to_datetime(target_date).date()
+    # game_date column is text in DB — use string for SQL comparisons
+    target_dt_str = str(target_dt)
     conn = _get_conn()
     cur = conn.cursor()
 
@@ -228,7 +230,7 @@ def _build_live_goalie_features(events: list[dict], target_date: str) -> list[di
             ORDER BY g.game_date DESC
             LIMIT 1
             """,
-            (player_name, target_dt),
+            (player_name, target_dt_str),
         )
         goalie = cur.fetchone()
 
@@ -248,7 +250,7 @@ def _build_live_goalie_features(events: list[dict], target_date: str) -> list[di
                 ORDER BY g.game_date DESC
                 LIMIT 1
                 """,
-                (last_name, target_dt),
+                (last_name, target_dt_str),
             )
             goalie = cur.fetchone()
 
@@ -283,7 +285,7 @@ def _build_live_goalie_features(events: list[dict], target_date: str) -> list[di
             ORDER BY g.game_date DESC
             LIMIT 20
             """,
-            (player_id, target_dt),
+            (player_id, target_dt_str),
         )
         history = list(reversed(cur.fetchall()))
         if len(history) < 5:
@@ -308,7 +310,7 @@ def _build_live_goalie_features(events: list[dict], target_date: str) -> list[di
             ORDER BY g.game_date DESC
             LIMIT 10
             """,
-            (team_id, target_dt),
+            (team_id, target_dt_str),
         )
         own_history = cur.fetchall()
         own_corsi = []
@@ -329,7 +331,7 @@ def _build_live_goalie_features(events: list[dict], target_date: str) -> list[di
             if total > 0:
                 own_corsi.append((shots_attempted or 0) / total)
 
-        opp_context = _fetch_team_context(cur, opp_team_id, target_dt)
+        opp_context = _fetch_team_context(cur, opp_team_id, target_dt_str)
         if not opp_context or not own_corsi:
             continue
 

@@ -1,8 +1,10 @@
-psycopg2-binary
-requests
-pytest
-ruff
-pandas
-numpy
-scikit-learn
-lightgbm
+# Python 3.13 — pinned versions (2026-03-06)
+psycopg2-binary==2.9.11
+requests==2.32.5
+pytest==9.0.2
+ruff==0.15.5
+pandas==3.0.1
+numpy==2.4.2
+scikit-learn==1.8.0
+lightgbm==4.6.0
+pytz==2026.1.post1
