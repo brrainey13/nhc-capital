@@ -334,11 +334,20 @@ async def foreclosure_photo(foreclosure_id: int):
 
     cache_dir = "/tmp/nhc_photo_cache"
     os.makedirs(cache_dir, exist_ok=True)
-    cache_path = os.path.join(cache_dir, f"{foreclosure_id}.jpg")
+
+    # Sanitize: foreclosure_id is already typed as int by FastAPI,
+    # but belt-and-suspenders to prevent path traversal
+    safe_name = str(int(foreclosure_id))
+    cache_path = os.path.join(cache_dir, f"{safe_name}.jpg")
+
+    # Verify resolved path stays inside cache_dir
+    real_cache = os.path.realpath(cache_path)
+    if not real_cache.startswith(os.path.realpath(cache_dir)):
+        return Response(status_code=400)
 
     # Serve from cache if available
-    if os.path.exists(cache_path) and os.path.getsize(cache_path) > 0:
-        return FileResponse(cache_path, media_type="image/jpeg")
+    if os.path.exists(real_cache) and os.path.getsize(real_cache) > 0:
+        return FileResponse(real_cache, media_type="image/jpeg")
 
     # Fetch URL from DB
     p = pools["real_estate"]
@@ -354,10 +363,10 @@ async def foreclosure_photo(foreclosure_id: int):
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get(row["photo_url"])
             if resp.status_code == 200:
-                with open(cache_path, "wb") as f:
+                with open(real_cache, "wb") as f:
                     f.write(resp.content)
                 return FileResponse(
-                    cache_path, media_type="image/jpeg"
+                    real_cache, media_type="image/jpeg"
                 )
     except Exception:
         pass

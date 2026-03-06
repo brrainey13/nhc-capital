@@ -85,27 +85,46 @@ fi
 
 log "   ✅ Verified: $merged_pr"
 
-# Check: CI status checks passed on this commit
-ci_status=$(curl -sf \
+# Check: CI check runs passed on this commit (GitHub Actions uses check runs, not statuses)
+ci_result=$(curl -sf \
   -H "Accept: application/vnd.github+json" \
-  "https://api.github.com/repos/brrainey13/nhc-capital/commits/${remote_sha}/status" 2>/dev/null || echo "{}")
+  "https://api.github.com/repos/brrainey13/nhc-capital/commits/${remote_sha}/check-runs" 2>/dev/null || echo "{}")
 
-overall_state=$(echo "$ci_status" | python3 -c "
+ci_verdict=$(echo "$ci_result" | python3 -c "
 import json, sys
 try:
     data = json.load(sys.stdin)
-    print(data.get('state', 'unknown'))
+    runs = data.get('check_runs', [])
+    if not runs:
+        print('none')
+    elif all(r.get('conclusion') == 'success' for r in runs):
+        print('success')
+    elif any(r.get('status') != 'completed' for r in runs):
+        print('pending')
+    else:
+        failed = [r['name'] for r in runs if r.get('conclusion') != 'success']
+        print(f'failed:{','.join(failed)}')
 except:
     print('unknown')
 " 2>/dev/null)
 
-if [ "$overall_state" != "success" ]; then
-  log "🚫 DEPLOY BLOCKED — CI status is '$overall_state' (need 'success') for ${remote_sha:0:8}"
-  notify_discord "🚫 **Auto-deploy BLOCKED** — CI status \`$overall_state\` for \`${remote_sha:0:8}\`. Need all checks green."
+if [ "$ci_verdict" = "none" ]; then
+  log "⚠️ No CI check runs found for ${remote_sha:0:8} — skipping (will retry next cycle)"
   exit 0
 fi
 
-log "   ✅ CI status: $overall_state"
+if [ "$ci_verdict" = "pending" ]; then
+  log "⏳ CI still running for ${remote_sha:0:8} — will retry next cycle"
+  exit 0
+fi
+
+if [ "$ci_verdict" != "success" ]; then
+  log "🚫 DEPLOY BLOCKED — CI checks: $ci_verdict for ${remote_sha:0:8}"
+  notify_discord "🚫 **Auto-deploy BLOCKED** — CI checks \`$ci_verdict\` for \`${remote_sha:0:8}\`. Need all green."
+  exit 0
+fi
+
+log "   ✅ CI checks: all passed"
 
 # Pull to main
 current_branch=$(git rev-parse --abbrev-ref HEAD)

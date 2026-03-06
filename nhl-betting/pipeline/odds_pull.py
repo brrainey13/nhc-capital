@@ -9,9 +9,13 @@ from collections import defaultdict
 import requests
 
 API_KEYS = [
-    os.environ.get("ODDS_API_KEY", "53b74c4c440a14071dac325d834a55b8"),
-    "2d240c499924015358260c955bbc4cb9",
+    k for k in [
+        os.environ.get("ODDS_API_KEY", ""),
+        os.environ.get("ODDS_API_KEY_2", ""),
+    ] if k
 ]
+if not API_KEYS:
+    raise RuntimeError("ODDS_API_KEY not set — add it to admin-dashboard/.env")
 API_KEY = API_KEYS[0]  # Active key, rotated on quota exhaustion
 BOOKS = "draftkings,fanduel,betmgm,hardrockbet"
 REGIONS = "us,us2"
