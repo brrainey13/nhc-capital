@@ -39,7 +39,6 @@ Then read the `CLAUDE.md` inside whichever project subfolder you're working in (
 │   ├── risk-classifier           ← Classifies changed files by risk tier
 │   └── pr-discord-notify         ← Generates Discord Components v2 PR cards
 ├── .claude/commands/             ← Slash commands (/build, /commit, /fix, /docs)
-├── .gitlab-ci.yml                ← Legacy GitLab CI config kept during migration
 ├── .github/workflows/            ← GitHub Actions (primary — branch protection enforced)
 │   ├── ci.yml                    ← Full CI (infra/shared changes)
 │   ├── ci-projects.yml           ← Path-filtered: NHL/Poly/RE only
@@ -196,6 +195,25 @@ API keys are in `admin-dashboard/.env` (gitignored): `NVIDIA_API_KEY`, `OPENROUT
 
 - **chrome-devtools** — 26 tools: navigate, snapshot, click, fill, network, console, performance traces
 - **deepwiki** — Query documentation for open-source projects
+- **mcporter** — CLI to call any MCP tool: `mcporter call <server.tool> key=value`
+
+## Skills (skills.sh)
+
+Use **[skills.sh](https://skills.sh)** community skills instead of writing custom guides. These are maintained by the community and stay current.
+
+### Installed Skills
+- **[vercel-react-best-practices](https://skills.sh/vercel-labs/agent-skills/vercel-react-best-practices)** — 58 React/Next.js performance rules (waterfalls, bundle size, SSR, re-renders). **Use this for ALL frontend work.**
+- **[pandas-pro](https://skills.sh/jeffallan/claude-skills/pandas-pro)** — Vectorized pandas patterns, memory optimization, groupby/merge/cleaning. **Use this for ALL data pipeline work.**
+- **[find-skills](https://skills.sh/vercel-labs/skills/find-skills)** — Meta-skill: search skills.sh for new capabilities when you hit unfamiliar domains.
+
+### How to Use
+1. **Before starting work**, check if a relevant skill exists: `npx skills find <topic>`
+2. **Install new skills**: `npx skills add <owner/repo@skill-name>`
+3. **Check for updates**: `npx skills check`
+4. Browse all skills at: https://skills.sh
+
+### Rule
+If a skills.sh community skill exists for your task, **use it** — do not write custom instructions that duplicate what a maintained skill already covers.
 
 ## Team
 

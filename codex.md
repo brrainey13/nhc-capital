@@ -38,3 +38,23 @@ Also read the `CLAUDE.md` in whatever project subfolder you're working in.
 - **Update docs when you change things** — stale docs waste everyone's time
 - **NEVER run uvicorn directly** — use `scripts/deploy-dashboard --all` for ALL deployment
 - If you finish, exit cleanly
+
+## Frontend Development
+
+When working on `admin-dashboard/frontend/`:
+- **React 18+** with Vite + TypeScript
+- **Tailwind CSS** for all styling
+- **@tanstack/react-virtual** for large lists/tables
+- **Recharts** or **visx** for charts
+- Components < 200 LOC, TypeScript interfaces for props + API responses
+- `npm run build` must succeed before committing frontend changes
+
+## Skills (skills.sh)
+
+Use community skills from **[skills.sh](https://skills.sh)** for best practices:
+- **React/Next.js**: `npx skills find react performance` → use `vercel-react-best-practices`
+- **Pandas/Data**: `npx skills find pandas` → use `pandas-pro`
+- **Anything else**: `npx skills find <topic>` before writing custom code
+
+Install: `npx skills add <owner/repo@skill-name>`
+Browse: https://skills.sh

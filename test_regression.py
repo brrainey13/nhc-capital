@@ -16,7 +16,6 @@ REQUIRED_DOCS = [
 ]
 REQUIRED_ROOT_FILES = [
     "CLAUDE.md", "AGENTS.md", "codex.md", "Makefile", "pyproject.toml",
-    ".gitlab-ci.yml",
 ]
 
 

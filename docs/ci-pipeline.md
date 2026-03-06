@@ -61,12 +61,6 @@ Files: `.github/workflows/*.yml`
 | 🟡 MEDIUM | Pipelines, models, scrapers | gate + test + lint |
 | 🟢 LOW | Docs, markdown | gate + lint |
 
-## Legacy GitLab Config
-
-File: `.gitlab-ci.yml`
-
-GitLab config may remain in the repo during migration, but GitHub Actions is authoritative for branch protection, reviews, and mergeability.
-
 ## Running Locally
 
 ```bash
