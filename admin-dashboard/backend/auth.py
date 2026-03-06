@@ -5,13 +5,21 @@ import os
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
-ALLOWED_EMAILS = {
-    e.strip().lower()
-    for e in os.environ.get("ALLOWED_EMAILS", "").split(",")
-    if e.strip()
-}
 
-API_KEY = os.environ.get("DASHBOARD_API_KEY")
+def _get_allowed_emails():
+    """Read ALLOWED_EMAILS from env at call time (not import time).
+
+    This ensures .env is loaded before we read, regardless of import order.
+    """
+    return {
+        e.strip().lower()
+        for e in os.environ.get("ALLOWED_EMAILS", "").split(",")
+        if e.strip()
+    }
+
+
+def _get_api_key():
+    return os.environ.get("DASHBOARD_API_KEY")
 
 PUBLIC_PATHS = {"/api/health"}
 
@@ -36,7 +44,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # 1. Cloudflare Access email header (set by Cloudflare tunnel)
         email = request.headers.get("cf-access-authenticated-user-email")
         if email:
-            if email.lower() in ALLOWED_EMAILS:
+            if email.lower() in _get_allowed_emails():
                 return await call_next(request)
             return JSONResponse(
                 status_code=403,
@@ -54,7 +62,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         # 4. API key auth (for agents, scripts, etc.)
         api_key = request.headers.get("x-api-key") or request.query_params.get("api_key")
-        if API_KEY and api_key == API_KEY:
+        configured_key = _get_api_key()
+        if configured_key and api_key == configured_key:
             return await call_next(request)
 
         return JSONResponse(status_code=401, content={"detail": "Authentication required"})
