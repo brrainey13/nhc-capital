@@ -1,0 +1,171 @@
+#!/bin/bash
+# health-snapshot — Lightweight system health dump for Mac mini.
+# Runs via macOS launchd (NOT OpenClaw) every 30 min.
+# OpenClaw reads the output file on demand / via cron check.
+#
+# Output: /tmp/nhc-health.json (atomic write)
+# History: /tmp/nhc-health-history.jsonl (append, last 48 entries = 24h)
+
+set -euo pipefail
+
+# Ensure Homebrew Postgres is in PATH
+export PATH="/opt/homebrew/bin:/opt/homebrew/Cellar/postgresql@17/17.8/bin:$PATH"
+
+HEALTH_DIR="${HOME}/.nhc-health"
+mkdir -p "$HEALTH_DIR"
+chmod 700 "$HEALTH_DIR"
+OUT="${HEALTH_DIR}/health.json"
+HIST="${HEALTH_DIR}/history.jsonl"
+MAX_HIST=48
+
+ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+ts_local=$(date +"%Y-%m-%d %H:%M:%S %Z")
+
+# CPU
+cpu_line=$(top -l 1 -n 0 -s 0 2>/dev/null | grep "CPU usage" || echo "")
+cpu_user=$(echo "$cpu_line" | grep -oE '[0-9.]+% user' | grep -oE '[0-9.]+' || echo "0")
+cpu_sys=$(echo "$cpu_line" | grep -oE '[0-9.]+% sys' | grep -oE '[0-9.]+' || echo "0")
+cpu_idle=$(echo "$cpu_line" | grep -oE '[0-9.]+% idle' | grep -oE '[0-9.]+' || echo "0")
+
+# Memory (pages * 16384 bytes on Apple Silicon)
+page_size=16384
+pages_free=$(vm_stat | awk '/Pages free/ {gsub(/\./,"",$3); print $3}' || echo "0")
+pages_active=$(vm_stat | awk '/Pages active/ {gsub(/\./,"",$3); print $3}' || echo "0")
+pages_inactive=$(vm_stat | awk '/Pages inactive/ {gsub(/\./,"",$3); print $3}' || echo "0")
+pages_wired=$(vm_stat | awk '/Pages wired/ {gsub(/\./,"",$4); print $4}' || echo "0")
+pages_compressed=$(vm_stat | awk '/occupied by compressor/ {gsub(/\./,"",$5); print $5}' || echo "0")
+: "${pages_free:=0}" "${pages_active:=0}" "${pages_inactive:=0}" "${pages_wired:=0}" "${pages_compressed:=0}"
+
+mem_free_mb=$(( (pages_free * page_size) / 1048576 ))
+mem_active_mb=$(( (pages_active * page_size) / 1048576 ))
+mem_wired_mb=$(( (pages_wired * page_size) / 1048576 ))
+mem_compressed_mb=$(( (pages_compressed * page_size) / 1048576 ))
+
+swap_line=$(sysctl vm.swapusage 2>/dev/null)
+swap_used=$(echo "$swap_line" | grep -oE 'used = [0-9.]+M' | grep -oE '[0-9.]+' || echo "0")
+swap_free=$(echo "$swap_line" | grep -oE 'free = [0-9.]+M' | grep -oE '[0-9.]+' || echo "0")
+
+# Disk
+disk_used=$(df -h / | tail -1 | awk '{print $3}')
+disk_avail=$(df -h / | tail -1 | awk '{print $4}')
+disk_pct=$(df -h / | tail -1 | awk '{gsub(/%/,""); print $5}')
+
+# Processes
+proc_total=$(ps aux | wc -l | tr -d ' ')
+thread_count=$(top -l 1 -n 0 -s 0 2>/dev/null | grep -oE '[0-9]+ threads' | grep -oE '[0-9]+' || echo "0")
+
+# Postgres: active queries (non-idle)
+pg_active=0
+pg_long_running=""
+if command -v psql &>/dev/null; then
+  pg_active=$(psql -h localhost -U connorrainey -d postgres -tAc \
+    "SELECT count(*) FROM pg_stat_activity WHERE state NOT IN ('idle','') AND pid != pg_backend_pid();" 2>/dev/null || echo "0")
+  pg_long_running=$(psql -h localhost -U connorrainey -d postgres -tAc \
+    "SELECT json_agg(row_to_json(t)) FROM (
+       SELECT pid, now()-query_start as duration, state, left(query,100) as query, datname
+       FROM pg_stat_activity
+       WHERE state NOT IN ('idle','')
+         AND pid != pg_backend_pid()
+         AND now()-query_start > interval '5 minutes'
+       ORDER BY duration DESC LIMIT 5
+     ) t;" 2>/dev/null || echo "null")
+fi
+[ -z "$pg_long_running" ] && pg_long_running="null"
+
+# Stale Claude sessions
+claude_stale=$(ps aux | grep -E "claude.*--dangerously|claude.*--allowed-tools" | { grep -v grep || true; } | wc -l | tr -d ' ')
+claude_pids=$(ps aux | grep -E "claude.*--dangerously|claude.*--allowed-tools" | { grep -v grep || true; } | awk '{print $2}' | tr '\n' ',' | sed 's/,$//')
+[ -z "$claude_pids" ] && claude_pids="none"
+
+# OpenClaw gateway
+openclaw_pid=$(pgrep -f "openclaw-gateway" | head -1 || echo "")
+openclaw_rss=0
+if [ -n "$openclaw_pid" ]; then
+  openclaw_rss=$(ps -p "$openclaw_pid" -o rss= 2>/dev/null | tr -d ' ' || echo "0")
+fi
+openclaw_mb=$(( openclaw_rss / 1024 ))
+
+# Alerts
+alerts=""
+if (( $(echo "$cpu_idle < 30" | bc -l 2>/dev/null || echo 0) )); then
+  alerts="${alerts}HIGH_CPU,"
+fi
+if [ "$mem_free_mb" -lt 500 ]; then
+  alerts="${alerts}LOW_MEMORY,"
+fi
+if [ "${disk_pct:-0}" -gt 85 ]; then
+  alerts="${alerts}DISK_PRESSURE,"
+fi
+if [ "${pg_active:-0}" -gt 0 ] && [ "$pg_long_running" != "null" ]; then
+  alerts="${alerts}LONG_QUERY,"
+fi
+if [ "${claude_stale:-0}" -gt 2 ]; then
+  alerts="${alerts}STALE_CLAUDE,"
+fi
+swap_used_int=${swap_used%.*}
+if [ "${swap_used_int:-0}" -gt 2000 ]; then
+  alerts="${alerts}HIGH_SWAP,"
+fi
+alerts=${alerts%,}
+[ -z "$alerts" ] && alerts="none"
+
+# Build JSON
+cat > "${OUT}.tmp" <<EOF
+{
+  "timestamp": "$ts",
+  "timestamp_local": "$ts_local",
+  "cpu": {
+    "user_pct": $cpu_user,
+    "sys_pct": $cpu_sys,
+    "idle_pct": $cpu_idle
+  },
+  "memory": {
+    "free_mb": $mem_free_mb,
+    "active_mb": $mem_active_mb,
+    "wired_mb": $mem_wired_mb,
+    "compressed_mb": $mem_compressed_mb,
+    "swap_used_mb": $swap_used,
+    "swap_free_mb": $swap_free
+  },
+  "disk": {
+    "used": "$disk_used",
+    "available": "$disk_avail",
+    "used_pct": $disk_pct
+  },
+  "processes": {
+    "total": $proc_total,
+    "threads": $thread_count
+  },
+  "postgres": {
+    "active_queries": $pg_active,
+    "long_running": $pg_long_running
+  },
+  "claude_sessions": {
+    "stale_count": $claude_stale,
+    "pids": "$claude_pids"
+  },
+  "openclaw": {
+    "pid": ${openclaw_pid:-0},
+    "rss_mb": $openclaw_mb
+  },
+  "alerts": "$alerts"
+}
+EOF
+
+# Atomic write
+mv "${OUT}.tmp" "$OUT"
+
+# Append to history (keep last MAX_HIST entries)
+# Compact to single line for JSONL
+python3 -c "import json,sys; print(json.dumps(json.load(open('$OUT'))))" >> "$HIST" 2>/dev/null || \
+  cat "$OUT" | tr -d '\n' >> "$HIST" && echo >> "$HIST"
+
+# Trim history
+if [ -f "$HIST" ]; then
+  lines=$(wc -l < "$HIST" | tr -d ' ')
+  if [ "$lines" -gt "$MAX_HIST" ]; then
+    tail -n "$MAX_HIST" "$HIST" > "${HIST}.tmp" && mv "${HIST}.tmp" "$HIST"
+  fi
+fi
+
+echo "Health snapshot written to $OUT (alerts: $alerts)"

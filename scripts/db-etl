@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+# db-etl — Gated database write access for ETL scripts
+#
+# Uses nhc_etl role (SELECT + INSERT + UPDATE only — no DELETE/DROP/ALTER/TRUNCATE).
+# REQUIRES the ETL script to be committed to main branch.
+#
+# Usage: scripts/db-etl <script.py> [args...]
+#
+# Enforces:
+#   1. Script must be tracked by git
+#   2. Script must not have uncommitted changes
+#   3. Must be on main or script unchanged from main
+#   4. Connects as nhc_etl (restricted role)
+
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
+if [ $# -lt 1 ]; then
+  echo "Usage: scripts/db-etl <script.py> [args...]"
+  echo "  scripts/db-etl real-estate/scripts/etl_ct_opm_sales.py"
+  exit 1
+fi
+
+SCRIPT_PATH="$1"
+shift
+
+# Resolve to repo-relative path
+if [[ "$SCRIPT_PATH" = /* ]]; then
+  SCRIPT_REL="${SCRIPT_PATH#$REPO_ROOT/}"
+else
+  SCRIPT_REL="$SCRIPT_PATH"
+fi
+SCRIPT_ABS="$REPO_ROOT/$SCRIPT_REL"
+
+if [ ! -f "$SCRIPT_ABS" ]; then
+  echo "❌ Script not found: $SCRIPT_ABS"
+  exit 1
+fi
+
+# Gate 1: Script must be tracked by git
+cd "$REPO_ROOT"
+if ! git ls-files --error-unmatch "$SCRIPT_REL" &>/dev/null; then
+  echo "❌ ETL BLOCKED — script is not tracked by git: $SCRIPT_REL"
+  echo "   Commit it through an MR first."
+  exit 1
+fi
+
+# Gate 2: Script must not have uncommitted changes
+if ! git diff --quiet HEAD -- "$SCRIPT_REL" 2>/dev/null; then
+  echo "❌ ETL BLOCKED — uncommitted changes to: $SCRIPT_REL"
+  echo "   Commit changes through an MR before running ETL."
+  exit 1
+fi
+
+# Gate 3: Must be on main or script identical to main
+current_branch=$(git rev-parse --abbrev-ref HEAD)
+if [ "$current_branch" != "main" ]; then
+  main_hash=$(git show main:"$SCRIPT_REL" 2>/dev/null | git hash-object --stdin || echo "none")
+  head_hash=$(git show HEAD:"$SCRIPT_REL" 2>/dev/null | git hash-object --stdin || echo "none2")
+  if [ "$main_hash" != "$head_hash" ]; then
+    echo "❌ ETL BLOCKED — not on main and script differs from main"
+    echo "   Merge your MR first, then run ETL from main."
+    exit 1
+  fi
+  echo "⚠️  Not on main, but script matches main — proceeding"
+fi
+
+echo "✅ ETL gate passed"
+echo "   Script: $SCRIPT_REL"
+echo "   Branch: $current_branch"
+echo "   Role: nhc_etl (INSERT/UPDATE only — no DELETE/DROP)"
+echo ""
+
+# Determine venv
+if [[ "$SCRIPT_REL" == real-estate/* ]]; then
+  PYTHON="$REPO_ROOT/real-estate/.venv/bin/python"
+elif [[ "$SCRIPT_REL" == admin-dashboard/* ]]; then
+  PYTHON="$REPO_ROOT/admin-dashboard/.venv/bin/python"
+else
+  PYTHON="python3"
+fi
+
+[ -f "$PYTHON" ] || { echo "❌ Python not found: $PYTHON"; exit 1; }
+
+# Run with nhc_etl credentials
+export PGUSER="nhc_etl"
+export PGPASSWORD="nhc_etl_write_2026"
+export DATABASE_USER="nhc_etl"
+export DATABASE_PASS="nhc_etl_write_2026"
+
+exec "$PYTHON" "$SCRIPT_ABS" "$@"

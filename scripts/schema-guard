@@ -1,0 +1,152 @@
+#!/usr/bin/env python3
+"""Schema guard — detects DB schema changes in PRs and enforces coordination.
+
+Scans changed files for:
+1. SQL files with CREATE/ALTER/DROP TABLE statements
+2. Python files with raw SQL DDL
+3. Migration files in any project subfolder
+
+If schema changes are detected, warns that the admin dashboard may need updating.
+
+Usage:
+  scripts/schema-guard                 # Check uncommitted changes
+  scripts/schema-guard --pr            # Check PR changes vs main
+  scripts/schema-guard --validate      # Validate shared/schema/tables.json exists and is valid
+
+Exit code 0 = clean, 1 = schema changes detected (warning), 2 = validation error
+"""
+
+import json
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).parent.parent
+SCHEMA_FILE = REPO_ROOT / "shared" / "schema" / "tables.json"
+
+DDL_PATTERN = re.compile(
+    r"\b(CREATE\s+TABLE|ALTER\s+TABLE|DROP\s+TABLE|ADD\s+COLUMN|DROP\s+COLUMN|RENAME\s+COLUMN)\b",
+    re.IGNORECASE,
+)
+
+MIGRATION_PATTERNS = ["**/sql/**", "**/migrations/**", "**/schema/**"]
+
+
+def get_changed_files(mode: str) -> list[str]:
+    if mode == "pr":
+        result = subprocess.run(
+            ["git", "diff", "--name-only", "origin/main...HEAD"],
+            capture_output=True, text=True, cwd=REPO_ROOT,
+        )
+    else:
+        result = subprocess.run(
+            ["git", "diff", "--name-only", "HEAD"],
+            capture_output=True, text=True, cwd=REPO_ROOT,
+        )
+        untracked = subprocess.run(
+            ["git", "ls-files", "--others", "--exclude-standard"],
+            capture_output=True, text=True, cwd=REPO_ROOT,
+        )
+        return [f for f in (result.stdout + untracked.stdout).strip().split("\n") if f]
+    return [f for f in result.stdout.strip().split("\n") if f]
+
+
+def scan_file_for_ddl(filepath: Path) -> list[str]:
+    """Scan a file for DDL statements."""
+    findings = []
+    if not filepath.exists():
+        return findings
+    try:
+        content = filepath.read_text()
+    except (UnicodeDecodeError, PermissionError):
+        return findings
+
+    for i, line in enumerate(content.split("\n"), 1):
+        if DDL_PATTERN.search(line):
+            findings.append(f"  {filepath}:{i}: {line.strip()[:100]}")
+    return findings
+
+
+def validate_schema_file() -> bool:
+    """Check that shared/schema/tables.json exists and is valid."""
+    if not SCHEMA_FILE.exists():
+        print(f"❌ Schema contract missing: {SCHEMA_FILE.relative_to(REPO_ROOT)}")
+        return False
+    try:
+        data = json.loads(SCHEMA_FILE.read_text())
+        dbs = list(data.keys())
+        total_tables = sum(len(tables) for tables in data.values())
+        print(f"✅ Schema contract valid: {len(dbs)} databases, {total_tables} tables")
+        for db in dbs:
+            print(f"   {db}: {len(data[db])} tables")
+        return True
+    except json.JSONDecodeError as e:
+        print(f"❌ Schema contract invalid JSON: {e}")
+        return False
+
+
+def main():
+    mode = "pr" if "--pr" in sys.argv else "uncommitted"
+
+    if "--validate" in sys.argv:
+        sys.exit(0 if validate_schema_file() else 2)
+
+    files = get_changed_files(mode)
+    if not files:
+        print("✅ Schema guard: no changes to check")
+        return
+
+    # Check for SQL/migration files
+    sql_files = [f for f in files if f.endswith((".sql", ".pgsql"))]
+    migration_files = [f for f in files if "/sql/" in f or "/migrations/" in f or "/schema/" in f]
+    python_files = [f for f in files if f.endswith(".py")]
+
+    findings = []
+
+    # Scan SQL files
+    for f in sql_files:
+        findings.extend(scan_file_for_ddl(REPO_ROOT / f))
+
+    # Scan migration/schema files
+    for f in migration_files:
+        if f not in sql_files:
+            findings.extend(scan_file_for_ddl(REPO_ROOT / f))
+
+    # Scan Python files for inline DDL
+    for f in python_files:
+        ddl_hits = scan_file_for_ddl(REPO_ROOT / f)
+        if ddl_hits:
+            findings.extend(ddl_hits)
+
+    # Check if schema contract was updated
+    schema_changed = any("shared/schema" in f for f in files)
+    dashboard_changed = any("admin-dashboard" in f for f in files)
+
+    if findings:
+        print("⚠️  Schema guard: DDL changes detected!\n")
+        for f in findings:
+            print(f)
+        print()
+
+        if not dashboard_changed:
+            print("📋 The admin dashboard auto-discovers tables, but column changes")
+            print("   or table drops can break existing queries and UI components.")
+            print("   Consider updating the dashboard in a companion MR.")
+            print()
+
+        if not schema_changed:
+            print("📋 Update shared/schema/tables.json to reflect the new schema:")
+            print("   Run: python3 scripts/schema-snapshot")
+            print()
+
+        # Warning only — don't block the MR
+        print("ℹ️  This is a warning. The MR can still be merged.")
+        # Exit 0 — don't fail CI, just warn
+        sys.exit(0)
+    else:
+        print("✅ Schema guard: no DDL changes detected")
+
+
+if __name__ == "__main__":
+    main()

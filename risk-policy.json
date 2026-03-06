@@ -1,0 +1,90 @@
+{
+  "version": "1",
+  "description": "Machine-readable risk classification and merge policy contract. All CI workflows and agents MUST respect this.",
+  "riskTierRules": {
+    "high": [
+      "admin-dashboard/backend/**",
+      "admin-dashboard/frontend/src/**",
+      "scripts/deploy-dashboard",
+      ".github/workflows/**",
+      "risk-policy.json",
+      "pyproject.toml",
+      "Makefile"
+    ],
+    "medium": [
+      "nhl-betting/pipeline/**",
+      "nhl-betting/model/**",
+      "polymarket/scrapers/**",
+      "real-estate/scripts/**",
+      "scripts/**",
+      "lib/**"
+    ],
+    "low": [
+      "docs/**",
+      "**/*.md",
+      "**"
+    ]
+  },
+  "mergePolicy": {
+    "high": {
+      "requiredChecks": [
+        "risk-policy-gate",
+        "ci-test",
+        "ci-lint",
+        "code-review"
+      ],
+      "description": "Dashboard, CI infra, and control-plane changes require full gate + review"
+    },
+    "medium": {
+      "requiredChecks": [
+        "risk-policy-gate",
+        "ci-test",
+        "ci-lint"
+      ],
+      "description": "Data pipeline and model changes require tests + lint"
+    },
+    "low": {
+      "requiredChecks": [
+        "risk-policy-gate",
+        "ci-lint"
+      ],
+      "description": "Docs and markdown need lint only"
+    }
+  },
+  "docsDriftRules": {
+    "trigger": [
+      ".github/workflows/**",
+      "risk-policy.json",
+      "scripts/**",
+      "Makefile"
+    ],
+    "require": "If control-plane files change, corresponding docs must be updated in the same PR"
+  },
+  "schemaProtection": {
+    "protectedPatterns": [
+      "**/schema/**",
+      "**/migrations/**",
+      "**/sql/**",
+      "**/CREATE TABLE*",
+      "**/ALTER TABLE*",
+      "**/DROP TABLE*"
+    ],
+    "rule": "Schema changes require coordinated PRs \u2014 if a project changes DB schema, a companion admin-dashboard PR must verify compatibility"
+  },
+  "evidenceRequirements": {
+    "uiChanges": {
+      "patterns": [
+        "admin-dashboard/frontend/src/**"
+      ],
+      "required": [
+        "screenshot or browser evidence of affected UI flows"
+      ],
+      "description": "Frontend changes should include visual evidence of the change"
+    }
+  },
+  "remediation": {
+    "enabled": true,
+    "maxAttempts": 2,
+    "description": "NHC can spawn a coding agent to fix review findings in-branch"
+  }
+}

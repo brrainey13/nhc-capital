@@ -1,0 +1,8 @@
+psycopg2-binary
+requests
+pytest
+ruff
+pandas
+numpy
+scikit-learn
+lightgbm

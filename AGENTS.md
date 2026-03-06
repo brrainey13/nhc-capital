@@ -1,0 +1,102 @@
+# AGENTS.md — NHC Monorepo
+
+Coding agent instructions. Read this + `CLAUDE.md`. Do the task, commit, exit.
+
+## 🚨 GIT WORKFLOW — READ THIS FIRST
+
+**Primary remote is GitHub (`origin`).** Branch protection is enforced — you CANNOT push to `main`.
+
+```bash
+# 1. Always work on a branch
+git checkout -b feat/your-task
+
+# 2. Do work, test
+make ci
+
+# 3. Commit (never git add .)
+scripts/committer "feat: description" file1 file2
+
+# 4. Push to GitHub
+git push -u origin feat/your-task
+
+# 5. Open a pull request
+gh pr create --title "feat: description" --body "What and why"
+```
+
+- **Push target:** `origin`
+- **PR required:** Required checks must pass before merge. Direct push to main = rejected.
+- **Reviewers:** brrainey13, Rainman95, nhccapitalinc
+- **Risk tiers:** See `risk-policy.json` — HIGH changes need code review
+
+**Do not push directly to `main`.** Use `git push origin feat/branch` and open a PR.
+
+## ⚠️ STEP ZERO: Run `scripts/docs-list` and read matching docs. Always.
+
+## Quick Ref
+
+- Repo: `~/nhc-capital/` (monorepo, 4 project folders — each has its own `CLAUDE.md`)
+- **Git remote:** `origin` = GitHub (`nhccapitalinc-gif/nhc-capital`)
+- DB: `nhl_betting` @ localhost:5432, user connorrainey, trust auth
+- psql: `/opt/homebrew/Cellar/postgresql@17/17.8/bin/psql`
+- Commit: `scripts/committer "type: msg" file1 file2` (never `git add .`)
+- Test: `make ci` (ruff + pytest, must pass before commit)
+- Docs: `scripts/docs-list` (read matching docs before coding)
+- Deploy: `scripts/deploy-dashboard` (the ONLY way to deploy dashboard)
+- **PR:** `gh pr create` (never push directly to main)
+
+## ⚠️ Virtual Environments — MANDATORY
+
+**Every project has its own `.venv/`.** Never use system Python for project code.
+
+| Project | Python | Setup |
+|---|---|---|
+| `nhl-betting/` | `nhl-betting/.venv/bin/python` | `cd nhl-betting && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt` |
+| `admin-dashboard/` | `admin-dashboard/.venv/bin/python` | `cd admin-dashboard && python3 -m venv .venv && .venv/bin/pip install -r backend/requirements.txt` |
+| `polymarket/` | `polymarket/.venv/bin/python` | `cd polymarket && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt` |
+| `real-estate/` | `real-estate/.venv/bin/python` | `cd real-estate && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt` |
+
+If a venv doesn't exist, create it before running anything. Use `make setup-venvs` to create all at once.
+
+**Running scripts:** Always use the project venv:
+```bash
+cd nhl-betting && .venv/bin/python scrapers/scrape_saves_odds.py
+```
+
+## Project Folders
+
+| Folder | Status | Key Files |
+|---|---|---|
+| `nhl-betting/` | Active — 28 tables, 400K+ rows, scrapers + models | `scrapers/`, `model/`, `CLAUDE.md` |
+| `admin-dashboard/` | Live — FastAPI + React, Cloudflare, NL query | `backend/main.py`, `frontend/`, `CLAUDE.md` |
+| `real-estate/` | Early — Cook County + SF data in DB | `CLAUDE.md` |
+| `polymarket/` | Placeholder — needs scoping | `CLAUDE.md` |
+
+## Conventions
+
+- Conventional Commits (`feat|fix|refactor|...`)
+- Tests first, code second
+- Files < 500 LOC
+- Python: ruff-compliant, type hints
+- No secrets in code, no model artifacts in git
+- `docs/networking-security.md` before exposing anything
+- **Update docs when you change things** — stale docs waste everyone's time
+
+## Keeping Docs Current
+
+When you add, remove, or change:
+- **Tables/columns** → update `docs/nhl-betting.md` (or relevant project doc) + project `CLAUDE.md`
+- **API endpoints** → update `docs/admin-dashboard.md` + project `CLAUDE.md`
+- **Scrapers** → update `docs/nhl-betting.md` + project `CLAUDE.md`
+- **Infrastructure** → update `docs/infrastructure.md`
+- **New project** → create `docs/<project>.md` with front-matter + project `CLAUDE.md`
+- **Deploy changes** → update `docs/admin-dashboard.md` or `docs/networking-security.md`
+
+Front-matter template for new docs:
+```yaml
+---
+summary: 'One-line description of what this doc covers.'
+read_when:
+  - When you should read this doc
+  - Another trigger condition
+---
+```

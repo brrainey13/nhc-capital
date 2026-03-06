@@ -1,0 +1,64 @@
+{
+  "features": [
+    "sa_avg_10",
+    "sa_avg_20",
+    "svpct_avg_10",
+    "svpct_avg_20",
+    "is_home",
+    "opp_team_sog_avg_10",
+    "days_rest",
+    "own_def_missing_toi",
+    "opp_corsi_pct_avg_10",
+    "opp_corsi_diff_avg_10",
+    "own_corsi_pct_avg_10",
+    "pull_rate_10",
+    "starts_last_7d",
+    "opp_team_pp_opps_avg_10",
+    "line"
+  ],
+  "params": {
+    "objective": "regression",
+    "metric": "mae",
+    "num_leaves": 10,
+    "max_depth": 4,
+    "min_child_samples": 50,
+    "learning_rate": 0.05,
+    "n_estimators": 300,
+    "reg_alpha": 0.5,
+    "reg_lambda": 0.5,
+    "feature_fraction": 0.6,
+    "bagging_fraction": 0.7,
+    "bagging_freq": 5,
+    "verbose": -1
+  },
+  "thresholds": {
+    "corsi_q25": 0.4746222799272001,
+    "corsi_q30": 0.4800897492582924,
+    "corsi_q75": 0.5256382761714781,
+    "corsi_diff_q75": 3.0,
+    "puck_control_q75": -0.9
+  },
+  "training_rows": 2790,
+  "training_date_range": [
+    "2022-10-07 00:00:00",
+    "2026-02-05 00:00:00"
+  ],
+  "training_mae": 4.880305758378568,
+  "feature_importances": {
+    "own_corsi_pct_avg_10": 244,
+    "svpct_avg_10": 234,
+    "opp_team_sog_avg_10": 233,
+    "sa_avg_20": 230,
+    "own_def_missing_toi": 226,
+    "svpct_avg_20": 219,
+    "sa_avg_10": 206,
+    "opp_corsi_pct_avg_10": 201,
+    "opp_corsi_diff_avg_10": 177,
+    "opp_team_pp_opps_avg_10": 175,
+    "line": 149,
+    "days_rest": 62,
+    "starts_last_7d": 39,
+    "is_home": 29,
+    "pull_rate_10": 9
+  }
+}

@@ -1,0 +1,259 @@
+#!/usr/bin/env python3
+"""PR Discord Notification — Posts actionable PR status to Discord.
+
+Called after PR pipeline completes. Posts real PR data with action buttons.
+Implements the "Human review + merge" step from the Deterministic PR Agent Loop.
+
+Usage:
+  scripts/mr-discord-notify <PR_NUMBER>              # Post notification for PR
+  scripts/mr-discord-notify <PR_NUMBER> --check      # Check status only (dry run)
+  scripts/mr-discord-notify --poll                   # Poll all open PRs for ready-to-merge
+
+Environment:
+  GITHUB_TOKEN — for API access (optional, uses gh CLI as fallback)
+"""
+
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).parent.parent
+GITHUB_REPO = os.environ.get("GITHUB_REPOSITORY", "nhccapitalinc-gif/nhc-capital")
+
+# Discord channel for admin-dashboard PR notifications
+DISCORD_CHANNEL = "1473074663356629078"
+
+
+def gh_json(cmd: list[str]) -> dict | list | None:
+    """Run a gh command and parse JSON output."""
+    try:
+        r = subprocess.run(
+            ["gh"] + cmd,
+            capture_output=True, text=True, timeout=15,
+            cwd=str(REPO_ROOT),
+        )
+        if r.returncode != 0:
+            return None
+        return json.loads(r.stdout)
+    except (subprocess.TimeoutExpired, json.JSONDecodeError):
+        return None
+
+
+def gh_api(endpoint: str, fields: str | None = None) -> dict | list | None:
+    """Call GitHub's REST API via gh api."""
+    cmd = ["api"]
+    if fields:
+        cmd.extend(["--jq", fields])
+    cmd.append(f"repos/{GITHUB_REPO}/{endpoint}")
+    return gh_json(cmd)
+
+
+def get_pr_info(number: str) -> dict | None:
+    """Get PR details from GitHub."""
+    pr = gh_api(f"pulls/{number}")
+    if not isinstance(pr, dict):
+        return None
+    return {
+        "number": pr.get("number"),
+        "title": pr.get("title"),
+        "author": {"login": pr.get("user", {}).get("login", "unknown")},
+        "headRefName": pr.get("head", {}).get("ref"),
+        "headRefOid": pr.get("head", {}).get("sha"),
+        "state": pr.get("state"),
+        "url": pr.get("html_url"),
+        "labels": pr.get("labels", []),
+        "additions": pr.get("additions", 0),
+        "deletions": pr.get("deletions", 0),
+        "changedFiles": pr.get("changed_files", 0),
+    }
+
+
+def get_pr_checks(number: str) -> list[dict]:
+    """Get workflow/check statuses for a PR head SHA."""
+    pr = get_pr_info(number)
+    if not pr:
+        return []
+    sha = pr.get("headRefOid")
+    if not sha:
+        return []
+
+    runs = gh_api(f"commits/{sha}/check-runs")
+    if not isinstance(runs, dict):
+        return []
+
+    checks = []
+    for run in runs.get("check_runs", []):
+        checks.append({
+            "name": run.get("name", ""),
+            "state": run.get("status", ""),
+            "conclusion": run.get("conclusion", ""),
+        })
+    return checks
+
+
+def classify_checks(checks: list[dict]) -> dict:
+    """Classify check statuses matching the pipeline stages."""
+    stages = {
+        "gate": {"status": "unknown", "jobs": []},
+        "review": {"status": "unknown", "jobs": []},
+        "test": {"status": "unknown", "jobs": []},
+    }
+
+    stage_map = {
+        "risk-policy-gate": "gate",
+        "lint": "review",
+        "docs-guard": "review",
+        "schema-guard": "review",
+        "code-review": "review",
+        "test-projects": "test",
+        "test-dashboard": "test",
+        "test-full": "test",
+    }
+
+    for check in checks:
+        name = check.get("name", "")
+        conclusion = check.get("conclusion", "")
+        state = check.get("state", "")
+
+        # Map check name to stage
+        stage_name = stage_map.get(name)
+        if not stage_name:
+            # Try prefix matching
+            for prefix, s in stage_map.items():
+                if name.startswith(prefix):
+                    stage_name = s
+                    break
+        if stage_name:
+            normalized_conclusion = str(conclusion).lower()
+            normalized_state = str(state).lower()
+            status = "passed" if normalized_conclusion == "success" else (
+                "failed" if normalized_conclusion in ("failure", "cancelled", "timed_out", "action_required") else (
+                    "running" if normalized_state in ("pending", "queued", "in_progress", "waiting", "requested") else "unknown"
+                )
+            )
+            stages[stage_name]["jobs"].append({"name": name, "status": status})
+
+    # Determine stage status
+    for stage_name, stage_data in stages.items():
+        if not stage_data["jobs"]:
+            stage_data["status"] = "skipped"
+            continue
+        statuses = [j["status"] for j in stage_data["jobs"]]
+        if any(s == "failed" for s in statuses):
+            stage_data["status"] = "failed"
+        elif all(s in ("passed", "skipped") for s in statuses):
+            stage_data["status"] = "passed"
+        elif any(s in ("running",) for s in statuses):
+            stage_data["status"] = "running"
+        else:
+            stage_data["status"] = "unknown"
+
+    return stages
+
+
+def get_risk_tier(pr_info: dict) -> str:
+    """Extract risk tier from PR labels."""
+    labels = [l.get("name", l) if isinstance(l, dict) else str(l)
+              for l in pr_info.get("labels", [])]
+    for label in labels:
+        if "high" in label.lower():
+            return "HIGH"
+        if "medium" in label.lower():
+            return "MEDIUM"
+    return "LOW"
+
+
+def format_stage_emoji(status: str) -> str:
+    return {"passed": "✅", "failed": "❌", "running": "⏳", "skipped": "⏭️"}.get(status, "❓")
+
+
+def build_notification(pr_info: dict, stages: dict, risk: str) -> dict:
+    """Build the notification payload."""
+    number = pr_info.get("number", "?")
+    title = pr_info.get("title", "Untitled")
+    author = pr_info.get("author", {}).get("login", "unknown")
+    branch = pr_info.get("headRefName", "unknown")
+    sha = pr_info.get("headRefOid", "")[:7]
+    url = pr_info.get("url", f"https://github.com/{GITHUB_REPO}/pull/{number}")
+    additions = pr_info.get("additions", 0)
+    deletions = pr_info.get("deletions", 0)
+    files = pr_info.get("changedFiles", 0)
+
+    all_passed = all(s["status"] in ("passed", "skipped") for s in stages.values())
+    risk_emoji = {"HIGH": "🔴", "MEDIUM": "🟡", "LOW": "🟢"}.get(risk, "⚪")
+
+    gate_e = format_stage_emoji(stages["gate"]["status"])
+    review_e = format_stage_emoji(stages["review"]["status"])
+    test_e = format_stage_emoji(stages["test"]["status"])
+
+    pipeline_line = f"gate {gate_e} → review {review_e} → test {test_e}"
+
+    if all_passed:
+        header = f"🚀 **PR #{number} ready for human review**"
+    else:
+        failed = [k for k, v in stages.items() if v["status"] == "failed"]
+        header = f"⚠️ **PR #{number} pipeline failed** — {', '.join(failed)}"
+
+    return {
+        "header": header,
+        "title": title,
+        "author": author,
+        "branch": branch,
+        "sha": sha,
+        "risk": f"{risk_emoji} {risk}",
+        "files": f"{files} files (+{additions} −{deletions})",
+        "pipeline": pipeline_line,
+        "url": url,
+        "number": number,
+        "all_passed": all_passed,
+    }
+
+
+def main():
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    flags = [a for a in sys.argv[1:] if a.startswith("--")]
+
+    if "--poll" in flags:
+        # Poll all open PRs
+        result = gh_api("pulls?state=open")
+        if not result:
+            print("No open PRs")
+            return
+        for pr in result:
+            number = str(pr.get("number", ""))
+            if number:
+                process_pr(number, "--check" in flags)
+        return
+
+    if not args:
+        print(f"Usage: {sys.argv[0]} <PR_NUMBER> [--check]")
+        sys.exit(1)
+
+    process_pr(args[0], "--check" in flags)
+
+
+def process_pr(number: str, dry_run: bool = False):
+    """Process a single PR."""
+    pr = get_pr_info(number)
+    if not pr:
+        print(f"PR #{number} not found")
+        return
+
+    checks = get_pr_checks(number)
+    stages = classify_checks(checks)
+    risk = get_risk_tier(pr)
+
+    notif = build_notification(pr, stages, risk)
+
+    if dry_run:
+        print(json.dumps(notif, indent=2))
+        return
+
+    # Output as JSON for NHC to post via Discord message tool
+    print(json.dumps(notif))
+
+
+if __name__ == "__main__":
+    main()

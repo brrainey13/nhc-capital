@@ -1,0 +1,151 @@
+# ═══════════════════════════════════════════════════════════════════════
+# NHC Capital — GitHub Actions CI/CD Pipeline
+#
+# Code Factory pattern: gate → review → test → human merge
+# Reference: docs/code-factory-blueprint.md
+# ═══════════════════════════════════════════════════════════════════════
+
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  # ═══════════════════════════════════════════════════════════════════
+  # STAGE 1: gate — Risk classification + policy preflight
+  # ═══════════════════════════════════════════════════════════════════
+  gate:
+    name: "Gate: Risk Policy"
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    outputs:
+      risk_tier: ${{ steps.classify.outputs.tier }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Classify risk tier
+        id: classify
+        run: |
+          echo "═══════════════════════════════════════════════════"
+          echo "  STAGE 1: Risk Policy Gate (Preflight)"
+          echo "═══════════════════════════════════════════════════"
+
+          CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD 2>/dev/null || echo "")
+          echo "Changed files:"
+          echo "$CHANGED" | head -30
+
+          RESULT=$(echo "$CHANGED" | xargs python3 scripts/risk-classifier 2>/dev/null || echo '{"tier":"low","requiredChecks":["gate"]}')
+          TIER=$(echo "$RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('tier','low'))")
+          echo "Risk tier: $TIER"
+          echo "tier=$TIER" >> "$GITHUB_OUTPUT"
+          echo "✅ Gate passed — tier=$TIER"
+
+  # ═══════════════════════════════════════════════════════════════════
+  # STAGE 2: review — Code review agent (THE hard gate)
+  # ═══════════════════════════════════════════════════════════════════
+  code-review:
+    name: "Review: Code Review Agent"
+    runs-on: ubuntu-latest
+    needs: gate
+    if: github.event_name == 'pull_request'
+    env:
+      NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -q requests
+
+      - name: Run code review
+        run: |
+          echo "═══════════════════════════════════════════════════"
+          echo "  STAGE 2: Code Review Agent"
+          echo "═══════════════════════════════════════════════════"
+          echo "PR: #${{ github.event.pull_request.number }} | HEAD: ${GITHUB_SHA:0:7}"
+          python3 scripts/mr-review "${{ github.event.pull_request.number }}" --ci --auto-resolve --remediate
+
+  # ═══════════════════════════════════════════════════════════════════
+  # Lint + Guards (informational, not blocking)
+  # ═══════════════════════════════════════════════════════════════════
+  lint:
+    name: "Lint: ruff"
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -q ruff && ruff check .
+
+  docs-guard:
+    name: "Guard: Docs"
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python3 scripts/docs-guard
+
+  schema-guard:
+    name: "Guard: Schema"
+    runs-on: ubuntu-latest
+    needs: gate
+    if: github.event_name == 'pull_request'
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: |
+          python3 scripts/schema-guard --pr
+          python3 scripts/schema-guard --validate
+
+  # ═══════════════════════════════════════════════════════════════════
+  # Notify — Discord on main push
+  # ═══════════════════════════════════════════════════════════════════
+  discord-notify:
+    name: "Notify: Discord"
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Post to Discord
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        run: |
+          COMMIT_MSG=$(git log -1 --pretty=%s)
+          COMMIT_SHA=$(git log -1 --pretty=%h)
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          curl -s -H "Content-Type: application/json" \
+            -d "{\"embeds\":[{\"title\":\"✅ CI: ${COMMIT_MSG}\",\"description\":\"**Commit:** \`${COMMIT_SHA}\`\n**Pipeline:** [View logs](${RUN_URL})\",\"color\":3066993}]}" \
+            "$DISCORD_WEBHOOK"

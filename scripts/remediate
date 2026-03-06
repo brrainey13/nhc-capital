@@ -1,0 +1,242 @@
+#!/usr/bin/env python3
+"""Remediation Loop Driver — Carson Step 5.
+
+Reads review findings from .review-remediation.json, generates a prompt
+for a coding agent, and optionally spawns Claude Code to auto-fix.
+
+Usage:
+  scripts/remediate <PR_NUMBER>           # Review + generate remediation prompt
+  scripts/remediate <PR_NUMBER> --auto    # Review + spawn coding agent to fix
+  scripts/remediate <PR_NUMBER> --prompt  # Just print the prompt (no agent spawn)
+
+Flow:
+  1. Run mr-review --remediate to get findings
+  2. Parse .review-remediation.json
+  3. Generate a focused coding prompt
+  4. (--auto) Spawn Claude Code / Codex to apply fixes
+  5. Agent pushes fix commit → CI re-reviews automatically (SHA discipline)
+
+Safety:
+  - Max 2 remediation attempts per SHA (prevents infinite loops)
+  - Never bypasses policy gates
+  - Human must merge — agent can only push to the PR branch
+"""
+
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).parent.parent
+REMEDIATION_FILE = REPO_ROOT / ".review-remediation.json"
+RESULT_FILE = REPO_ROOT / ".review-result.json"
+STATE_FILE = REPO_ROOT / ".remediation-state.json"
+MAX_ATTEMPTS = 2
+
+
+def load_state() -> dict:
+    if STATE_FILE.exists():
+        return json.loads(STATE_FILE.read_text())
+    return {}
+
+
+def save_state(state: dict):
+    STATE_FILE.write_text(json.dumps(state, indent=2))
+
+
+def run_review(pr_number: int) -> dict:
+    """Run mr-review --remediate and return the result."""
+    print(f"🔍 Running review for PR #{pr_number}...")
+    env = os.environ.copy()
+    # Load .env if needed
+    env_file = REPO_ROOT / "admin-dashboard" / ".env"
+    if env_file.exists():
+        for line in env_file.read_text().splitlines():
+            if "=" in line and not line.startswith("#"):
+                k, v = line.split("=", 1)
+                env.setdefault(k.strip(), v.strip())
+
+    subprocess.run(
+        ["python3", str(REPO_ROOT / "scripts" / "mr-review"), str(pr_number), "--remediate"],
+        cwd=REPO_ROOT, env=env,
+    )
+
+    if REMEDIATION_FILE.exists():
+        return json.loads(REMEDIATION_FILE.read_text())
+    return {}
+
+
+def generate_prompt(remediation: dict) -> str:
+    """Generate a focused coding agent prompt from findings."""
+    findings = remediation.get("findings", [])
+    branch = remediation.get("branch", "unknown")
+    pr_number = remediation.get("pr", "?")
+
+    if not findings:
+        return ""
+
+    prompt = f"""You are fixing code review findings for PR #{pr_number} on branch `{branch}`.
+
+## Findings to Fix
+
+"""
+    for i, f in enumerate(findings, 1):
+        sev = f["severity"].upper()
+        prompt += f"### {i}. [{sev}] {f['file']}\n"
+        prompt += f"**Issue:** {f['message']}\n"
+        if f.get("suggestion"):
+            prompt += f"**Fix:** {f['suggestion']}\n"
+        if f.get("category"):
+            prompt += f"**Category:** {f['category']}\n"
+        prompt += "\n"
+
+    prompt += """## Rules
+- Fix ONLY the issues listed above. Do not refactor unrelated code.
+- Run tests after each fix: `pytest <project>/ -v --tb=short`
+- Keep files under 500 lines.
+- Use parameterized queries for any SQL (never f-strings).
+- Commit with: `scripts/committer "fix: <description>" <changed_files>`
+- Do NOT push — the orchestrator will push after validating.
+"""
+    return prompt
+
+
+def spawn_agent(prompt: str, branch: str):
+    """Spawn Claude Code to apply fixes."""
+    print(f"\n🤖 Spawning coding agent on branch `{branch}`...")
+
+    # Ensure we're on the right branch
+    subprocess.run(["git", "checkout", branch], cwd=REPO_ROOT, capture_output=True)
+
+    # Write prompt to temp file for the agent
+    prompt_file = REPO_ROOT / ".remediation-prompt.md"
+    prompt_file.write_text(prompt)
+
+    # Spawn Claude Code
+    cmd = [
+        "claude", "--dangerously-skip-permissions",
+        "-p", prompt,
+    ]
+
+    print(f"   Running: claude --dangerously-skip-permissions -p <prompt>")
+    result = subprocess.run(
+        cmd, cwd=REPO_ROOT, capture_output=True, text=True, timeout=300,
+    )
+
+    if result.returncode == 0:
+        print("   ✅ Agent completed fixes")
+        print(result.stdout[-500:] if len(result.stdout) > 500 else result.stdout)
+    else:
+        print(f"   ❌ Agent failed (exit {result.returncode})")
+        if result.stderr:
+            print(result.stderr[-500:])
+
+    # Clean up temp files
+    prompt_file.unlink(missing_ok=True)
+
+    return result.returncode == 0
+
+
+def push_fixes(branch: str):
+    """Push fix commits to the PR branch."""
+    # Check if there are new commits
+    result = subprocess.run(
+        ["git", "status", "--porcelain"],
+        capture_output=True, text=True, cwd=REPO_ROOT,
+    )
+    if not result.stdout.strip():
+        # Check for unpushed commits
+        result = subprocess.run(
+            ["git", "log", f"origin/{branch}..HEAD", "--oneline"],
+            capture_output=True, text=True, cwd=REPO_ROOT,
+        )
+        if not result.stdout.strip():
+            print("   No changes to push")
+            return False
+
+    print(f"   Pushing to origin/{branch}...")
+    push = subprocess.run(
+        ["git", "push", "origin", branch],
+        capture_output=True, text=True, cwd=REPO_ROOT,
+    )
+    if push.returncode == 0:
+        print("   ✅ Pushed — CI will re-review with new SHA")
+        return True
+    else:
+        print(f"   ❌ Push failed: {push.stderr}")
+        return False
+
+
+def main():
+    args = [a for a in sys.argv[1:] if not a.startswith("-")]
+    flags = [a for a in sys.argv[1:] if a.startswith("-")]
+
+    if not args:
+        print("Usage: scripts/remediate <PR_NUMBER> [--auto] [--prompt]")
+        sys.exit(1)
+
+    pr_number = int(args[0])
+    auto = "--auto" in flags
+    prompt_only = "--prompt" in flags
+
+    # Step 1: Run review to get findings
+    remediation = run_review(pr_number)
+    findings = remediation.get("findings", [])
+    branch = remediation.get("branch", "")
+    sha = remediation.get("sha", "")
+
+    if not findings:
+        print("\n✅ No findings — nothing to remediate!")
+        return
+
+    # Check attempt count (prevent infinite loops)
+    state = load_state()
+    key = f"pr-{pr_number}-{sha}"
+    attempts = state.get(key, 0)
+    if attempts >= MAX_ATTEMPTS:
+        print(f"\n⚠️  Max remediation attempts ({MAX_ATTEMPTS}) reached for sha:{sha}")
+        print("   Human intervention needed.")
+        sys.exit(1)
+
+    # Step 2: Generate prompt
+    prompt = generate_prompt(remediation)
+
+    if prompt_only:
+        print("\n" + "=" * 60)
+        print(prompt)
+        print("=" * 60)
+        return
+
+    print(f"\n📋 {len(findings)} findings to fix (attempt {attempts + 1}/{MAX_ATTEMPTS})")
+
+    if not auto:
+        # Print prompt for manual use
+        print("\n" + "=" * 60)
+        print("REMEDIATION PROMPT (pass to coding agent):")
+        print("=" * 60)
+        print(prompt)
+        print("=" * 60)
+        print("\nRun with --auto to spawn a coding agent automatically.")
+        return
+
+    # Step 3: Record attempt
+    state[key] = attempts + 1
+    save_state(state)
+
+    # Step 4: Spawn agent
+    success = spawn_agent(prompt, branch)
+
+    if success:
+        # Step 5: Push fixes → triggers CI re-review (SHA discipline)
+        pushed = push_fixes(branch)
+        if pushed:
+            print(f"\n🔄 Fix pushed. CI will re-review PR #{pr_number} with new SHA.")
+            print("   If clean → auto-approve. If findings remain → escalate to human.")
+    else:
+        print(f"\n❌ Remediation failed. Manual fix needed for PR #{pr_number}.")
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

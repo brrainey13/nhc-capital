@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.nhc.health-snapshot</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <!-- TODO: Update path below to match your local nhc-capital checkout -->
+        <string>/PATH/TO/nhc-capital/scripts/health-snapshot</string>
+    </array>
+    <key>StartInterval</key>
+    <integer>1800</integer>
+    <key>StandardOutPath</key>
+    <!-- TODO: Update path below to match your home directory -->
+    <string>/PATH/TO/.nhc-health/snapshot.log</string>
+    <key>StandardErrorPath</key>
+    <!-- TODO: Update path below to match your home directory -->
+    <string>/PATH/TO/.nhc-health/snapshot.log</string>
+    <key>RunAtLoad</key>
+    <true/>
+</dict>
+</plist>
