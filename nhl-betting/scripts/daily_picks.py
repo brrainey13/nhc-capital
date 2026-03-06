@@ -2,6 +2,7 @@
 NHC Daily Picks Pipeline
 Pulls live odds, runs V2 model + hit rate filter, outputs picks with confidence.
 """
+import os
 import subprocess
 import time
 from collections import defaultdict
@@ -10,7 +11,9 @@ from io import StringIO
 import pandas as pd
 import requests
 
-API_KEY = '53b74c4c440a14071dac325d834a55b8'
+API_KEY = os.environ.get("ODDS_API_KEY", "")
+if not API_KEY:
+    raise RuntimeError("ODDS_API_KEY not set — add it to admin-dashboard/.env")
 PSQL = '/opt/homebrew/Cellar/postgresql@17/17.8/bin/psql'
 DB = 'nhl_betting'
 
