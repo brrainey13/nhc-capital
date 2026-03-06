@@ -1,0 +1,149 @@
+#!/usr/bin/env python3
+"""
+ETL: Parcel Sales from SODA API (wvhk-k5uv) into PostgreSQL.
+Schema: schema/real_estate.md — parcel_sales.
+"""
+
+import json
+import os
+import sys
+import time
+from pathlib import Path
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if ROOT not in sys.path:
+    sys.path.insert(0, ROOT)
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+import requests
+from utils.db import ensure_schema, get_connection, log_refresh  # noqa: E402
+
+# Type coercion map: column name → cast function
+INT_COLS = {"year", "num_parcels_sale"}
+BOOL_COLS = {"is_mydec_date", "is_multisale", "sale_filter_same_sale_within_365",
+             "sale_filter_less_than_10k", "sale_filter_deed_type"}
+NUMERIC_COLS = {"sale_price"}
+
+
+def _cast(col: str, val):
+    """Cast SODA API string values to proper Python types for Postgres."""
+    if val is None:
+        return None
+    if col in INT_COLS:
+        try:
+            return int(float(val))
+        except (ValueError, TypeError):
+            return None
+    if col in BOOL_COLS:
+        if isinstance(val, bool):
+            return val
+        return str(val).lower() in ("true", "1", "yes")
+    if col in NUMERIC_COLS:
+        try:
+            return float(val)
+        except (ValueError, TypeError):
+            return None
+    return val
+
+
+BASE = "https://datacatalog.cookcountyil.gov/resource"
+DATASET_ID = "wvhk-k5uv"
+COLS = [
+    "row_id", "pin", "year", "township_code", "nbhd", "class", "sale_date",
+    "is_mydec_date", "sale_price", "doc_no", "deed_type", "mydec_deed_type",
+    "seller_name", "buyer_name", "is_multisale", "num_parcels_sale", "sale_type",
+    "sale_filter_same_sale_within_365", "sale_filter_less_than_10k", "sale_filter_deed_type",
+]
+
+
+def fetch_batch(limit: int = 50000, where: str = None, offset: int = 0) -> list:
+    token = os.environ.get("SODA_APP_TOKEN", "")
+    headers = {"X-App-Token": token} if token else {}
+    params = {"$limit": limit, "$offset": offset, "$order": "sale_date DESC"}
+    if where:
+        params["$where"] = where
+    r = requests.get(f"{BASE}/{DATASET_ID}.json", headers=headers, params=params, timeout=300)
+    r.raise_for_status()
+    return r.json()
+
+
+def run(limit: int = None, where: str = None, dry_run: bool = False) -> dict:
+    start = time.perf_counter()
+    fetched = 0
+    inserted = 0
+
+    if dry_run:
+        data = fetch_batch(limit=limit or 100, where=where)
+        fetched = len(data)
+        print(f"[dry run] Would upsert {fetched} rows into parcel_sales")
+        return {"rows_fetched": fetched, "rows_inserted": 0, "duration_sec": 0, "data": data}
+
+    from psycopg2.extras import execute_values as _exec_vals
+
+    with get_connection() as conn:
+        ensure_schema(conn)
+
+    offset = 0
+    batch_size = 10000
+    cols_sql = ", ".join(COLS) + ", raw_json"
+    upsert_sql = f"""
+        INSERT INTO parcel_sales ({cols_sql})
+        VALUES %s
+        ON CONFLICT (row_id) DO UPDATE SET
+            pin = EXCLUDED.pin, year = EXCLUDED.year, township_code = EXCLUDED.township_code,
+            nbhd = EXCLUDED.nbhd, class = EXCLUDED.class, sale_date = EXCLUDED.sale_date,
+            is_mydec_date = EXCLUDED.is_mydec_date, sale_price = EXCLUDED.sale_price,
+            doc_no = EXCLUDED.doc_no, deed_type = EXCLUDED.deed_type, mydec_deed_type = EXCLUDED.mydec_deed_type,
+            seller_name = EXCLUDED.seller_name, buyer_name = EXCLUDED.buyer_name,
+            is_multisale = EXCLUDED.is_multisale, num_parcels_sale = EXCLUDED.num_parcels_sale,
+            sale_type = EXCLUDED.sale_type,
+            sale_filter_same_sale_within_365 = EXCLUDED.sale_filter_same_sale_within_365,
+            sale_filter_less_than_10k = EXCLUDED.sale_filter_less_than_10k,
+            sale_filter_deed_type = EXCLUDED.sale_filter_deed_type,
+            raw_json = EXCLUDED.raw_json
+    """
+
+    while True:
+        print(f"  Fetching offset={offset} batch_size={batch_size}...", flush=True)
+        data = fetch_batch(limit=batch_size, where=where, offset=offset)
+        if not data:
+            break
+        fetched += len(data)
+        print(f"  Got {len(data)} rows (total: {fetched})", flush=True)
+        rows = []
+        for rec in data:
+            row = [_cast(c, rec.get(c)) for c in COLS]
+            row.append(json.dumps(rec) if isinstance(rec, dict) else None)
+            rows.append(tuple(row))
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                _exec_vals(cur, upsert_sql, rows, page_size=1000)
+                inserted += cur.rowcount
+        batch_len = len(rows)
+        del data, rows
+        if limit and fetched >= limit:
+            break
+        if batch_len < batch_size:
+            break
+        offset += batch_size
+
+    duration = time.perf_counter() - start
+    return {"rows_fetched": fetched, "rows_inserted": inserted, "duration_sec": duration}
+
+
+if __name__ == "__main__":
+    import argparse
+    p = argparse.ArgumentParser(description="ETL Parcel Sales → PostgreSQL")
+    p.add_argument("--limit", type=int, default=None)
+    p.add_argument("--where", type=str, default=None)
+    p.add_argument("--dry-run", action="store_true")
+    args = p.parse_args()
+    stats = run(limit=args.limit, where=args.where, dry_run=args.dry_run)
+    if not args.dry_run and stats.get("rows_fetched"):
+        with get_connection() as conn:
+            log_refresh(
+                conn, "parcel_sales", "full",
+                stats["rows_fetched"], stats.get("rows_inserted", 0), 0,
+                stats.get("duration_sec", 0), "success",
+            )
+    print("Done:", stats)

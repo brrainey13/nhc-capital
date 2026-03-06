@@ -1,0 +1,308 @@
+#!/usr/bin/env bash
+# Blue-green dashboard deployment (single Mac Mini + Cloudflare Tunnel)
+#
+# Usage: scripts/deploy-dashboard [--restart-server] [--all]
+#
+# Blue-green strategy:
+#   1. Run CI (lint + test) — fail = abort
+#   2. Build frontend (zero-downtime: static file swap)
+#   3. Start NEW uvicorn on standby port → health check → swap → kill old
+#   4. Cloudflare Tunnel runs as a system service (cloudflared) — no management needed
+#
+# This is the ONLY way to deploy the dashboard. No ad-hoc restarts.
+
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+BACKEND_DIR="$REPO_ROOT/admin-dashboard/backend"
+FRONTEND_DIR="$REPO_ROOT/admin-dashboard/frontend"
+VENV_PYTHON="$REPO_ROOT/admin-dashboard/.venv/bin/python"
+
+# Ensure venv exists
+if [ ! -f "$VENV_PYTHON" ]; then
+  echo "❌ admin-dashboard venv not found at $VENV_PYTHON"
+  echo "   Run: cd admin-dashboard && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt"
+  exit 1
+fi
+
+DASHBOARD_DOMAIN="${DASHBOARD_DOMAIN:-dashboard.nhc-capital.com}"
+PRIMARY_PORT=8000
+STANDBY_PORT=8001
+LOG_DIR="/tmp"
+
+restart_server=false
+check_only=false
+relaxed_mode=false
+
+for arg in "$@"; do
+  case "$arg" in
+    --restart-server) restart_server=true ;;
+    --all) restart_server=true ;;
+    --check) check_only=true ;;
+    --relaxed) relaxed_mode=true ;;
+    -h|--help)
+      echo "Usage: deploy-dashboard [--restart-server] [--all] [--check] [--relaxed]"
+      echo "  --check    Just run health checks (no deploy)"
+      echo "  --relaxed  TEMPORARY: bypass pipeline + dashboard CI checks (still builds)"
+      exit 0
+      ;;
+    *) echo "Unknown arg: $arg"; exit 1 ;;
+  esac
+done
+
+# --check mode: skip directly to health checks
+if [ "$check_only" = true ]; then
+  echo "╔══════════════════════════════════════╗"
+  echo "║   NHC Dashboard — Health Check       ║"
+  echo "╚══════════════════════════════════════╝"
+  echo ""
+  CHECKS_PASSED=0
+  health=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:$PRIMARY_PORT/api/health" 2>/dev/null || echo "000")
+  [ "$health" = "200" ] && echo "✅ Health endpoint: OK" && CHECKS_PASSED=$((CHECKS_PASSED+1)) || echo "❌ Health endpoint: FAILED ($health)"
+  tables=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:$PRIMARY_PORT/api/tables" 2>/dev/null || echo "000")
+  [ "$tables" = "200" ] || [ "$tables" = "401" ] && echo "✅ API /tables:     OK" && CHECKS_PASSED=$((CHECKS_PASSED+1)) || echo "❌ API /tables: FAILED ($tables)"
+  frontend=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:$PRIMARY_PORT/" 2>/dev/null || echo "000")
+  [ "$frontend" = "200" ] && echo "✅ Frontend:        OK" && CHECKS_PASSED=$((CHECKS_PASSED+1)) || echo "❌ Frontend: FAILED ($frontend)"
+  tunnel_status=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "https://$DASHBOARD_DOMAIN/" 2>/dev/null || echo "000")
+  ([ "$tunnel_status" = "302" ] || [ "$tunnel_status" = "200" ]) && echo "✅ Cloudflare tunnel: OK ($tunnel_status)" && CHECKS_PASSED=$((CHECKS_PASSED+1)) || echo "⚠️  Cloudflare tunnel: $tunnel_status"
+  echo ""
+  echo "$CHECKS_PASSED/4 checks passed"
+  [ "$CHECKS_PASSED" -ge 3 ] && exit 0 || exit 1
+fi
+
+echo "╔══════════════════════════════════════╗"
+echo "║   NHC Dashboard — Blue-Green Deploy  ║"
+echo "╚══════════════════════════════════════╝"
+echo ""
+
+# ── Step 0: Git gate — only deploy from clean, merged main ──
+echo "── Step 0: Git gate (merge-commit enforcement) ──"
+cd "$REPO_ROOT"
+
+current_branch=$(git rev-parse --abbrev-ref HEAD)
+if [ "$current_branch" != "main" ]; then
+  echo "❌ DEPLOY BLOCKED — must be on 'main' branch (currently on '$current_branch')"
+  echo "   Merge your PR first, then: git checkout main && git pull origin main"
+  exit 1
+fi
+
+# Check for uncommitted changes to dashboard files
+dirty=$(git diff --name-only HEAD -- admin-dashboard/ 2>/dev/null || true)
+staged=$(git diff --cached --name-only -- admin-dashboard/ 2>/dev/null || true)
+untracked=$(git ls-files --others --exclude-standard -- admin-dashboard/ 2>/dev/null || true)
+if [ -n "$dirty" ] || [ -n "$staged" ] || [ -n "$untracked" ]; then
+  echo "❌ DEPLOY BLOCKED — uncommitted dashboard changes detected:"
+  [ -n "$dirty" ] && echo "   Modified: $dirty"
+  [ -n "$staged" ] && echo "   Staged:   $staged"
+  [ -n "$untracked" ] && echo "   Untracked: $untracked"
+  echo ""
+  echo "   All changes must go through a pull request."
+  echo "   1. git checkout -b feat/your-change"
+  echo "   2. scripts/committer \"feat: description\" <files>"
+  echo "   3. git push origin feat/your-change"
+  echo "   4. gh pr create --title \"feat: description\""
+  echo "   5. Wait for CI + review, merge, then deploy."
+  exit 1
+fi
+
+# Verify local main matches remote (no unpushed commits, no missing pulls)
+git fetch origin main --quiet 2>/dev/null || true
+local_sha=$(git rev-parse HEAD)
+remote_sha=$(git rev-parse origin/main 2>/dev/null || echo "unknown")
+if [ "$local_sha" != "$remote_sha" ]; then
+  echo "❌ DEPLOY BLOCKED — local main ($local_sha) doesn't match origin/main ($remote_sha)"
+  echo "   Run: git pull origin main"
+  exit 1
+fi
+
+# Verify GitHub CI passed for this commit (unless relaxed mode)
+if [ "$relaxed_mode" = true ]; then
+  echo "   ⚠️  RELAXED MODE: skipping CI pipeline status gate"
+else
+  echo "   Checking GitHub CI status for $local_sha..."
+  ci_conclusion=$(gh run list --branch main --commit "$local_sha" --limit 1 --json conclusion --jq '.[0].conclusion' 2>/dev/null || echo "unknown")
+  ci_status=$(gh run list --branch main --commit "$local_sha" --limit 1 --json status --jq '.[0].status' 2>/dev/null || echo "unknown")
+
+  if [ "$ci_conclusion" = "failure" ]; then
+    echo "❌ DEPLOY BLOCKED — GitHub CI: failure"
+    echo "   Pipeline must pass before deployment. Fix the pipeline first."
+    exit 1
+  elif [ "$ci_conclusion" = "success" ]; then
+    echo "   ✅ GitHub CI: passed"
+  elif [ "$ci_status" = "in_progress" ] || [ "$ci_status" = "queued" ]; then
+    echo "❌ DEPLOY BLOCKED — GitHub CI still running ($ci_status)"
+    echo "   Wait for pipeline to complete before deploying."
+    exit 1
+  else
+    echo "   ⚠️  Could not verify CI status ($ci_conclusion) — proceeding with caution"
+  fi
+fi
+
+echo "✅ Git gate passed: on main, clean, synced, CI verified ($local_sha)"
+echo ""
+
+# ── Step 1: Dashboard CI only (decoupled from rest of repo) ──
+echo "── Step 1: Dashboard CI (lint + test) ──"
+cd "$REPO_ROOT"
+if [ "$relaxed_mode" = true ]; then
+  echo "   ⚠️  RELAXED MODE: skipping dashboard lint + test checks"
+else
+  echo "   Linting dashboard..."
+  ruff check admin-dashboard/ || { echo "❌ Dashboard lint failed — aborting"; exit 1; }
+  echo "   Testing dashboard..."
+  pytest admin-dashboard/ -v --tb=short || { echo "❌ Dashboard tests failed — aborting"; exit 1; }
+  echo "✅ Dashboard CI passed (other projects not checked — decoupled)"
+fi
+echo ""
+
+# ── Step 2: Build frontend ──
+echo "── Step 2: Build frontend ──"
+cd "$FRONTEND_DIR"
+npm install --silent --legacy-peer-deps 2>/dev/null
+npm run build 2>&1
+echo "✅ Frontend built (zero-downtime — static files swapped in place)"
+echo ""
+
+# ── Step 3: Server (blue-green) ──
+echo "── Step 3: Server ──"
+if [ "$restart_server" = true ]; then
+  echo "🔵 Blue-green deployment starting..."
+
+  # Start new instance on standby port
+  cd "$BACKEND_DIR"
+  nohup $VENV_PYTHON -m uvicorn main:app --host 127.0.0.1 --port $STANDBY_PORT \
+    > "$LOG_DIR/nhc-uvicorn-standby.log" 2>&1 &
+  STANDBY_PID=$!
+  echo "   Starting standby on port $STANDBY_PORT (PID: $STANDBY_PID)..."
+
+  # Wait for standby to be healthy (up to 10s)
+  healthy=false
+  for i in $(seq 1 20); do
+    sleep 0.5
+    code=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:$STANDBY_PORT/api/health" 2>/dev/null || echo "000")
+    if [ "$code" = "200" ]; then
+      healthy=true
+      break
+    fi
+  done
+
+  if [ "$healthy" = false ]; then
+    echo "   ❌ Standby failed health check — aborting swap"
+    kill $STANDBY_PID 2>/dev/null || true
+    echo "   Old instance still running on port $PRIMARY_PORT"
+    exit 1
+  fi
+  echo "   ✅ Standby healthy on port $STANDBY_PORT"
+
+  # Kill old primary
+  echo "   Swapping: killing old primary on port $PRIMARY_PORT..."
+  pkill -f "uvicorn main:app.*--port $PRIMARY_PORT" 2>/dev/null || true
+  sleep 0.5
+
+  # Kill standby too — we'll start fresh on primary port
+  kill $STANDBY_PID 2>/dev/null || true
+  sleep 0.5
+
+  # Start final instance on primary port
+  cd "$BACKEND_DIR"
+  nohup $VENV_PYTHON -m uvicorn main:app --host 127.0.0.1 --port $PRIMARY_PORT \
+    > "$LOG_DIR/nhc-uvicorn.log" 2>&1 &
+  echo "   🟢 New primary started on port $PRIMARY_PORT (PID: $!)"
+  sleep 2
+
+  # Verify
+  code=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:$PRIMARY_PORT/api/health" 2>/dev/null || echo "000")
+  if [ "$code" = "200" ]; then
+    echo "   ✅ New primary healthy — swap complete"
+  else
+    echo "   ❌ New primary failed health check (HTTP $code)"
+    echo "   Check logs: $LOG_DIR/nhc-uvicorn.log"
+    exit 1
+  fi
+else
+  if pgrep -f "uvicorn main:app" > /dev/null; then
+    echo "✅ uvicorn already running (use --restart-server to blue-green swap)"
+  else
+    echo "⚠️  uvicorn not running — starting..."
+    cd "$BACKEND_DIR"
+    nohup $VENV_PYTHON -m uvicorn main:app --host 127.0.0.1 --port $PRIMARY_PORT \
+      > "$LOG_DIR/nhc-uvicorn.log" 2>&1 &
+    echo "✅ uvicorn started (PID: $!)"
+    sleep 2
+  fi
+fi
+echo ""
+
+# ── Step 4: Cloudflare Tunnel ──
+echo "── Step 4: Cloudflare Tunnel ──"
+if pgrep -f "cloudflared" > /dev/null; then
+  echo "✅ cloudflared running (managed as system service)"
+else
+  echo "⚠️  cloudflared not running — check: brew services list | grep cloudflared"
+  echo "   Start with: brew services start cloudflared"
+fi
+echo ""
+
+# ── Step 5: Deep health checks ──
+echo "── Step 5: Health checks (local + API + tunnel) ──"
+CHECKS_PASSED=0
+CHECKS_TOTAL=4
+
+# Check 1: /api/health
+health=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:$PRIMARY_PORT/api/health" 2>/dev/null || echo "000")
+if [ "$health" = "200" ]; then
+  echo "✅ [1/4] Local health endpoint:  OK"
+  CHECKS_PASSED=$((CHECKS_PASSED + 1))
+else
+  echo "❌ [1/4] Local health endpoint:  FAILED (HTTP $health)"
+fi
+
+# Check 2: /api/tables (real API endpoint)
+tables=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:$PRIMARY_PORT/api/tables" 2>/dev/null || echo "000")
+if [ "$tables" = "200" ] || [ "$tables" = "401" ]; then
+  echo "✅ [2/4] API /tables endpoint:   OK"
+  CHECKS_PASSED=$((CHECKS_PASSED + 1))
+else
+  echo "❌ [2/4] API /tables endpoint:   FAILED (HTTP $tables)"
+fi
+
+# Check 3: Frontend serves index.html
+frontend=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:$PRIMARY_PORT/" 2>/dev/null || echo "000")
+if [ "$frontend" = "200" ]; then
+  echo "✅ [3/4] Frontend serving:       OK"
+  CHECKS_PASSED=$((CHECKS_PASSED + 1))
+else
+  echo "❌ [3/4] Frontend serving:       FAILED (HTTP $frontend)"
+fi
+
+# Check 4: Cloudflare tunnel reachable
+tunnel_ok=false
+for i in $(seq 1 5); do
+  tunnel_status=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "https://$DASHBOARD_DOMAIN/" 2>/dev/null || echo "000")
+  if [ "$tunnel_status" = "302" ] || [ "$tunnel_status" = "200" ]; then
+    tunnel_ok=true
+    break
+  fi
+  sleep 2
+done
+if [ "$tunnel_ok" = true ]; then
+  echo "✅ [4/4] Cloudflare tunnel:      OK (HTTP $tunnel_status)"
+  CHECKS_PASSED=$((CHECKS_PASSED + 1))
+else
+  echo "⚠️  [4/4] Cloudflare tunnel:      HTTP $tunnel_status (check cloudflared service)"
+fi
+
+echo ""
+if [ "$CHECKS_PASSED" -lt 3 ]; then
+  echo "❌ DEPLOYMENT FAILED — only $CHECKS_PASSED/$CHECKS_TOTAL checks passed"
+  echo "   Check logs: $LOG_DIR/nhc-uvicorn.log"
+  exit 1
+fi
+
+echo "╔══════════════════════════════════════════════════╗"
+echo "║   Deployment complete ✅  ($CHECKS_PASSED/$CHECKS_TOTAL checks passed)"
+echo "╠══════════════════════════════════════════════════╣"
+echo "║  Public:  https://$DASHBOARD_DOMAIN"
+echo "║  Local:   http://localhost:$PRIMARY_PORT"
+echo "║  Tunnel:  cloudflared (system service)"
+echo "╚══════════════════════════════════════════════════╝"

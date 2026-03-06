@@ -1,0 +1,576 @@
+#!/usr/bin/env python3
+"""PR Review Agent — SHA-disciplined code review for GitHub pull requests.
+
+Reads the PR diff, classifies risk, analyzes changes, and posts findings
+as PR comments with SHA tags. Implements steps 3-6 of the Code Factory pattern.
+
+Usage:
+  scripts/mr-review <PR_NUMBER>                    # Review a PR
+  scripts/mr-review <PR_NUMBER> --auto-resolve     # Also resolve stale bot threads
+  scripts/mr-review <PR_NUMBER> --remediate        # Output findings for remediation agent
+  scripts/mr-review <PR_NUMBER> --ci               # CI mode (uses GITHUB_TOKEN env + API)
+
+Environment:
+  GITHUB_TOKEN — for API access (required in CI mode, optional locally)
+"""
+
+import json
+import os
+import re
+import subprocess
+import sys
+import urllib.request
+import urllib.error
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).parent.parent
+
+# Detect repo owner/name from git remote
+def _detect_repo() -> str:
+    """Detect GitHub owner/repo from git remote."""
+    result = subprocess.run(
+        ["gh", "repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"],
+        capture_output=True, text=True, cwd=REPO_ROOT,
+    )
+    if result.returncode == 0 and result.stdout.strip():
+        return result.stdout.strip()
+    return os.environ.get("GITHUB_REPOSITORY", "nhccapitalinc-gif/nhc-capital")
+
+GITHUB_REPO = _detect_repo()
+
+# Load OPENROUTER_API_KEY from .env if not already in environment.
+# Only used locally — CI should set env vars directly.
+if not os.environ.get("OPENROUTER_API_KEY"):
+    _env_file = REPO_ROOT / "admin-dashboard" / ".env"
+    if _env_file.exists():
+        for _line in _env_file.read_text().splitlines():
+            if _line.startswith("OPENROUTER_API_KEY="):
+                os.environ["OPENROUTER_API_KEY"] = _line.split("=", 1)[1]
+                break
+
+GITHUB_API = "https://api.github.com"
+REVIEW_MARKER = "<!-- nhc-review-agent -->"
+RERUN_MARKER = "<!-- nhc-review-rerun -->"
+
+# Detect mode
+CI_MODE = "--ci" in sys.argv or os.environ.get("CI") == "true"
+GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
+
+
+# ─── API helpers (dual mode: gh CLI or HTTP) ───────────────────────
+
+
+def _api_request(endpoint: str, method: str = "GET", data: dict | None = None):
+    """Call GitHub API — uses urllib in CI, gh locally."""
+    if CI_MODE or GITHUB_TOKEN:
+        return _http_api(endpoint, method, data)
+    return _gh_api(endpoint, method, data)
+
+
+def _http_api(endpoint: str, method: str = "GET", data: dict | None = None):
+    """Direct HTTP call to GitHub API."""
+    url = f"{GITHUB_API}/repos/{GITHUB_REPO}/{endpoint}"
+    headers = {
+        "Authorization": f"Bearer {GITHUB_TOKEN}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    body = None
+    if data:
+        headers["Content-Type"] = "application/json"
+        body = json.dumps(data).encode()
+
+    req = urllib.request.Request(url, data=body, headers=headers, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return json.loads(resp.read().decode())
+    except urllib.error.HTTPError as e:
+        print(f"  API error: {e.code} {e.reason} — {endpoint}", file=sys.stderr)
+        try:
+            return json.loads(e.read().decode())
+        except Exception:
+            return {}
+    except Exception as e:
+        print(f"  API error: {e} — {endpoint}", file=sys.stderr)
+        return {}
+
+
+def _gh_api(endpoint: str, method: str = "GET", data: dict | None = None):
+    """Call GitHub API via gh CLI (local dev)."""
+    cmd = ["gh", "api", f"repos/{GITHUB_REPO}/{endpoint}"]
+    if method != "GET":
+        cmd.extend(["-X", method])
+    if data:
+        for k, v in data.items():
+            cmd.extend(["-f", f"{k}={v}"])
+    result = subprocess.run(cmd, capture_output=True, text=True, cwd=REPO_ROOT)
+    try:
+        return json.loads(result.stdout)
+    except (json.JSONDecodeError, IndexError):
+        return {}
+
+
+def _gh_text(endpoint: str, accept: str) -> str:
+    """Fetch plain-text GitHub API responses via gh CLI."""
+    result = subprocess.run(
+        [
+            "gh", "api",
+            "-H", f"Accept: {accept}",
+            f"repos/{GITHUB_REPO}/{endpoint}",
+        ],
+        capture_output=True, text=True, cwd=REPO_ROOT,
+    )
+    if result.returncode != 0:
+        return ""
+    return result.stdout
+
+
+# ─── Risk classification ─────────────────────────────────────────────
+
+
+def classify_files(files: list[str]) -> dict:
+    """Classify changed files using risk-policy.json."""
+    result = subprocess.run(
+        ["python3", str(REPO_ROOT / "scripts" / "risk-classifier")] + files,
+        capture_output=True, text=True, cwd=REPO_ROOT,
+    )
+    try:
+        return json.loads(result.stdout.strip().split("\n")[0])
+    except (json.JSONDecodeError, IndexError):
+        return {"tier": "low", "files": {}, "requiredChecks": []}
+
+
+# ─── PR operations ───────────────────────────────────────────────────
+
+
+def get_pr(number: int) -> dict:
+    return _api_request(f"pulls/{number}")
+
+
+def get_pr_diff(number: int) -> str:
+    """Get PR diff as text."""
+    if CI_MODE or GITHUB_TOKEN:
+        req = urllib.request.Request(
+            f"{GITHUB_API}/repos/{GITHUB_REPO}/pulls/{number}",
+            headers={
+                "Authorization": f"Bearer {GITHUB_TOKEN}",
+                "Accept": "application/vnd.github.v3.diff",
+                "X-GitHub-Api-Version": "2022-11-28",
+            },
+            method="GET",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                return resp.read().decode()
+        except Exception as exc:
+            print(f"  API error: {exc} — pulls/{number} diff", file=sys.stderr)
+            return ""
+    return _gh_text(f"pulls/{number}", "application/vnd.github.v3.diff")
+
+
+def get_pr_files(number: int) -> list[dict]:
+    """Get list of changed files in the PR."""
+    return _api_request(f"pulls/{number}/files") or []
+
+
+def get_pr_comments(number: int) -> list[dict]:
+    """Get issue comments on the PR."""
+    return _api_request(f"issues/{number}/comments") or []
+
+
+def post_pr_comment(number: int, body: str) -> dict:
+    return _api_request(f"issues/{number}/comments", "POST", {"body": body})
+
+
+def approve_pr(number: int) -> dict:
+    return _api_request(f"pulls/{number}/reviews", "POST", {
+        "event": "APPROVE",
+        "body": "Automated review passed — no critical findings.",
+    })
+
+
+# ─── Review logic ────────────────────────────────────────────────────
+
+
+def analyze_diff(diff_text: str, changes: list[dict], risk: dict) -> list[dict]:
+    """Analyze PR diff and return findings."""
+    findings = []
+
+    for change in changes:
+        filepath = change.get("filename", "")
+        diff = change.get("patch", "")
+        is_test = "test" in filepath.lower()
+
+        # Hardcoded secrets (skip test files and review tooling)
+        is_review_tool = "scripts/" in filepath and "review" in filepath
+        if not is_test and not is_review_tool:
+            secret_patterns = [
+                (r"(?:password|passwd|pwd)\s*=\s*['\"][^'\"]+['\"]",
+                 "Possible hardcoded password"),
+                (r"(?:api_key|apikey|api_secret)\s*=\s*['\"][^'\"]+['\"]",
+                 "Possible hardcoded API key"),
+                (r"(?:token)\s*=\s*['\"](?:ghp_|glpat-|sk-)[^'\"]+['\"]",
+                 "Possible hardcoded token"),
+            ]
+            for pattern, msg in secret_patterns:
+                if re.search(pattern, diff, re.IGNORECASE):
+                    findings.append({
+                        "file": filepath, "severity": "critical", "message": msg,
+                    })
+
+        # DDL in non-dashboard code (skip tests)
+        if (filepath.endswith(".py")
+                and "admin-dashboard" not in filepath and not is_test):
+            ddl_hits = re.findall(
+                r"(?:CREATE|ALTER|DROP|TRUNCATE)\s+TABLE", diff, re.IGNORECASE,
+            )
+            if ddl_hits:
+                findings.append({
+                    "file": filepath, "severity": "warning",
+                    "message": (
+                        f"DDL statement detected ({len(ddl_hits)} occurrences). "
+                        "Verify dashboard compatibility."
+                    ),
+                })
+
+        # SQL injection risk (skip tests)
+        if filepath.endswith(".py") and not is_test:
+            if re.search(r"f['\"].*(?:SELECT|INSERT|UPDATE|DELETE).*\{", diff):
+                findings.append({
+                    "file": filepath, "severity": "warning",
+                    "message": "Possible SQL injection — f-string in SQL. "
+                    "Use parameterized queries.",
+                })
+
+        # Hardcoded hosts in non-config files
+        if re.search(r"(?:localhost|127\.0\.0\.1|0\.0\.0\.0):\d+", diff):
+            if not any(x in filepath for x in [
+                "config", "test", ".env", "CLAUDE", "AGENTS",
+            ]):
+                findings.append({
+                    "file": filepath, "severity": "info",
+                    "message": "Hardcoded host:port. Consider env vars.",
+                })
+
+        # Files > 500 LOC
+        if change.get("status") == "added":
+            lines = change.get("additions", 0)
+            if lines > 500:
+                findings.append({
+                    "file": filepath, "severity": "warning",
+                    "message": f"New file ~{lines} lines. Split (<500 LOC).",
+                })
+
+        # New Python files without tests
+        if (change.get("status") == "added" and filepath.endswith(".py")
+                and "test" not in filepath):
+            has_test = any(
+                "test_" in c.get("filename", "") or "test" in c.get("filename", "")
+                for c in changes
+            )
+            if not has_test:
+                findings.append({
+                    "file": filepath, "severity": "info",
+                    "message": "New Python file without test in this PR.",
+                })
+
+    return findings
+
+
+def format_review(
+    pr: dict, risk: dict, findings: list[dict], head_sha: str,
+    llm_summary: str | None = None, llm_model: str | None = None,
+) -> str:
+    """Format the review as a GitHub PR comment."""
+    tier_emoji = {"high": "🔴", "medium": "🟡", "low": "🟢"}
+    tier = risk.get("tier", "low")
+
+    # Model origin labels so non-technical people know what's reviewing
+    model_labels = {
+        "nvidia/kimi-k2.5": "🌙 Kimi K2.5 — Moonshot AI (Chinese AI lab, Beijing)",
+        "nvidia/glm5": "🇨🇳 GLM-5 — Zhipu AI (Chinese AI lab, Beijing)",
+        "nvidia/qwen3-235b": "🇨🇳 Qwen3 235B — Alibaba (Chinese tech giant)",
+        "nvidia/llama-3.3-70b": "🇺🇸 Llama 3.3 70B — Meta (USA)",
+        "nvidia/deepseek-v3.2": "🇨🇳 DeepSeek V3.2 — DeepSeek (Chinese AI lab, Hangzhou)",
+        "qwen/qwen3-235b-a22b-thinking-2507": "🇨🇳 Qwen3 235B Thinking — Alibaba (Chinese tech giant)",
+        "qwen/qwen3-next-80b-a3b-instruct:free": "🇨🇳 Qwen3 80B — Alibaba (Chinese tech giant)",
+        "mistralai/mistral-small-3.1-24b-instruct:free": "🇫🇷 Mistral Small 3.1 — Mistral AI (French AI lab, Paris)",
+        "arcee-ai/trinity-large-preview:free": "🇺🇸 Arcee Trinity — Arcee AI (USA)",
+    }
+    model_info = model_labels.get(llm_model, f"🤖 {llm_model}") if llm_model else "🤖 Regex only (no LLM)"
+
+    body = f"{REVIEW_MARKER}\n"
+    body += f"## 🤖 NHC Automated Code Review — `sha:{head_sha[:7]}`\n\n"
+    body += f"> **Hi! I'm NHC, NH Capital's AI review bot.** This review was generated by an AI model — not a human.\n"
+    body += f"> **Reviewed by:** {model_info}\n"
+    body += f"> *The model reads the code diff and flags issues automatically. A human still merges.*\n\n"
+    body += f"**Risk Tier:** {tier_emoji.get(tier, '📋')} {tier.upper()}\n"
+    body += (
+        f"**Required Checks:** {', '.join(risk.get('requiredChecks', []))}\n"
+    )
+    body += "\n"
+
+    if llm_summary:
+        body += f"**Summary:** {llm_summary}\n\n"
+
+    if not findings:
+        body += "### ✅ No issues found\n\n"
+        body += "Code looks clean. All checks should pass.\n"
+    else:
+        critical = [f for f in findings if f["severity"] == "critical"]
+        warnings = [f for f in findings if f["severity"] == "warning"]
+        infos = [f for f in findings if f["severity"] == "info"]
+
+        if critical:
+            body += "### 🚨 Critical Issues\n\n"
+            for f in critical:
+                body += f"- **{f['file']}**: {f['message']}\n"
+                if f.get("suggestion"):
+                    body += f"  - 💡 {f['suggestion']}\n"
+            body += "\n"
+
+        if warnings:
+            body += "### ⚠️ Warnings\n\n"
+            for f in warnings:
+                body += f"- **{f['file']}**: {f['message']}\n"
+                if f.get("suggestion"):
+                    body += f"  - 💡 {f['suggestion']}\n"
+            body += "\n"
+
+        if infos:
+            body += "### ℹ️ Notes\n\n"
+            for f in infos:
+                body += f"- **{f['file']}**: {f['message']}\n"
+                if f.get("suggestion"):
+                    body += f"  - 💡 {f['suggestion']}\n"
+            body += "\n"
+
+        body += f"**Total findings:** {len(findings)} "
+        body += f"({len(critical)} critical, {len(warnings)} warnings, "
+        body += f"{len(infos)} info)\n"
+
+    body += f"\n---\n*Review by NHC agent • SHA: `{head_sha[:7]}` • "
+    body += "[risk-policy.json](../blob/main/risk-policy.json)*\n"
+    return body
+
+
+# ─── SHA discipline ──────────────────────────────────────────────────
+
+
+def is_stale_review(comments: list[dict], head_sha: str) -> bool:
+    """Check if there's already a current-SHA review."""
+    for comment in comments:
+        body = comment.get("body", "")
+        if REVIEW_MARKER in body and f"sha:{head_sha[:7]}" in body:
+            return True
+    return False
+
+
+def has_rerun_request(comments: list[dict], head_sha: str) -> bool:
+    """Check if a rerun has already been requested for this SHA."""
+    for comment in comments:
+        body = comment.get("body", "")
+        if RERUN_MARKER in body and f"sha:{head_sha[:7]}" in body:
+            return True
+    return False
+
+
+def post_rerun_request(number: int, head_sha: str, comments: list[dict]):
+    """Post a single rerun request per SHA (Code Factory step 4)."""
+    if has_rerun_request(comments, head_sha):
+        print(f"  Rerun already requested for sha:{head_sha[:7]}")
+        return
+    body = (
+        f"{RERUN_MARKER}\n"
+        f"🔄 Review rerun requested for `sha:{head_sha[:7]}`\n"
+        f"Triggered by new push to PR branch.\n"
+    )
+    post_pr_comment(number, body)
+    print(f"  Posted rerun request for sha:{head_sha[:7]}")
+
+
+def auto_resolve_bot_threads(number: int, comments: list[dict]):
+    """Minimize stale bot-only review comments.
+
+    GitHub doesn't have resolvable discussion threads like GitLab.
+    Instead, we minimize stale bot comments by reacting with 'outdated'.
+    """
+    # On GitHub, we can't resolve threads in the same way.
+    # Instead, we just note this is a no-op for now.
+    print("  Auto-resolve: GitHub doesn't have resolvable threads (no-op)")
+
+
+# ─── Main ────────────────────────────────────────────────────────────
+
+
+def main():
+    args = [a for a in sys.argv[1:] if not a.startswith("-")]
+    flags = [a for a in sys.argv[1:] if a.startswith("-")]
+
+    if not args:
+        print("Usage: scripts/mr-review <PR_NUMBER> [--auto-resolve] [--ci]")
+        sys.exit(1)
+
+    number = int(args[0])
+    auto_resolve = "--auto-resolve" in flags
+    remediate = "--remediate" in flags
+
+    print(f"🔍 Reviewing PR #{number}...")
+
+    pr = get_pr(number)
+    if not pr or "head" not in pr:
+        print(f"❌ Could not fetch PR #{number}")
+        sys.exit(1)
+
+    head_sha = pr["head"]["sha"]
+    state = pr.get("state", "unknown")
+    print(f"   State: {state}, HEAD: {head_sha[:7]}")
+
+    if state != "open":
+        print(f"   PR is {state}, skipping review")
+        return
+
+    # SHA discipline (Code Factory step 3)
+    comments = get_pr_comments(number)
+    if isinstance(comments, list) and is_stale_review(comments, head_sha):
+        print(f"   Already reviewed sha:{head_sha[:7]}, skipping")
+        if auto_resolve:
+            auto_resolve_bot_threads(number, comments)
+        return
+
+    # Get diff and changed files
+    diff_text = get_pr_diff(number)
+    changes = get_pr_files(number)
+    changed_files = [c.get("filename", "") for c in changes if c.get("filename")]
+    print(f"   Changed files: {len(changed_files)}")
+
+    # Classify risk
+    risk = classify_files(changed_files)
+    tier = risk.get("tier", "low")
+    print(f"   Risk tier: {tier}")
+
+    # Analyze — regex patterns (fast, deterministic)
+    findings = analyze_diff(diff_text, changes, risk)
+    print(f"   Regex findings: {len(findings)}")
+
+    # LLM review — deep analysis (free models, structured output)
+    llm_summary = None
+    llm_model = None
+    if os.environ.get("OPENROUTER_API_KEY"):
+        print("   Running LLM review...")
+        sys.path.insert(0, str(REPO_ROOT / "scripts"))
+        from llm_review import review_diff
+        llm_result = review_diff(diff_text, changed_files, tier)
+        llm_model = llm_result.get("model")
+        llm_summary = llm_result.get("summary")
+        llm_findings = llm_result.get("findings", [])
+        if llm_model:
+            print(f"   LLM model: {llm_model}")
+            print(f"   LLM findings: {len(llm_findings)}")
+            # Merge LLM findings (avoid duplicates with regex)
+            existing_msgs = {f["message"].lower() for f in findings}
+            for lf in llm_findings:
+                if lf["message"].lower() not in existing_msgs:
+                    findings.append(lf)
+                    existing_msgs.add(lf["message"].lower())
+        elif llm_result.get("error"):
+            print(f"   LLM review: {llm_result['error']}")
+
+        # Low-tier models produce too many false-positive criticals.
+        # Only top-tier models can hard-block the pipeline with criticals.
+        # Low-tier criticals are downgraded to warnings (still visible, don't block).
+        HIGH_CONFIDENCE_MODELS = {
+            "moonshotai/kimi-k2.5",
+            "z-ai/glm5",
+            "qwen/qwen3-235b-a22b-thinking-2507",
+            "deepseek-ai/deepseek-v3.2",
+        }
+        if llm_model and llm_model not in HIGH_CONFIDENCE_MODELS:
+            downgraded = 0
+            for f in findings:
+                if f.get("severity") == "critical" and f.get("category") != "regex":
+                    f["severity"] = "warning"
+                    f["message"] = f["message"] + " (downgraded: low-confidence model)"
+                    downgraded += 1
+            if downgraded:
+                print(f"   ⚠️ Downgraded {downgraded} LLM criticals → warnings ({llm_model} is low-tier)")
+    else:
+        print("   LLM review: skipped (no OPENROUTER_API_KEY)")
+
+    print(f"   Total findings: {len(findings)}")
+
+    # Post review comment (SHA-tagged)
+    review_body = format_review(
+        pr, risk, findings, head_sha, llm_summary, llm_model,
+    )
+    post_pr_comment(number, review_body)
+    print(f"   Posted review for sha:{head_sha[:7]}")
+
+    # If clean — approve
+    critical = [f for f in findings if f["severity"] == "critical"]
+    if not critical:
+        approve_pr(number)
+        print("   ✅ Approved (no critical findings)")
+    else:
+        print(f"   ❌ Not approved ({len(critical)} critical findings)")
+
+    # Auto-resolve bot-only threads (Code Factory step 6)
+    if auto_resolve and not findings:
+        auto_resolve_bot_threads(number, comments)
+
+    # Remediation output (Carson step 5)
+    # Write machine-readable JSON that a coding agent can consume
+    result = {
+        "pr": number,
+        "sha": head_sha[:7],
+        "tier": tier,
+        "findings_count": len(findings),
+        "critical_count": len(critical),
+        "approved": len(critical) == 0,
+        "findings": findings if remediate else [],
+        "branch": pr.get("head", {}).get("ref", ""),
+        "target_branch": pr.get("base", {}).get("ref", "main"),
+        "title": pr.get("title", ""),
+    }
+
+    # Always write result to .review-result.json for automation
+    result_path = REPO_ROOT / ".review-result.json"
+    result_path.write_text(json.dumps(result, indent=2))
+    print(f"   Wrote review result to {result_path}")
+
+    if remediate and findings:
+        # Write detailed remediation file for coding agents
+        remediation = {
+            "pr": number,
+            "sha": head_sha[:7],
+            "branch": pr.get("head", {}).get("ref", ""),
+            "findings": findings,
+            "instructions": (
+                "Fix each finding below. For each fix:\n"
+                "1. Edit the file listed\n"
+                "2. Address the issue described in 'message'\n"
+                "3. Follow the 'suggestion' if provided\n"
+                "4. Run tests: pytest <project>/ -v --tb=short\n"
+                "5. Commit with: scripts/committer 'fix: <description>' <files>\n"
+                "6. Push to the same branch — CI will re-review automatically"
+            ),
+        }
+        remediation_path = REPO_ROOT / ".review-remediation.json"
+        remediation_path.write_text(json.dumps(remediation, indent=2))
+        print(f"\n📋 Remediation file written: {remediation_path}")
+        print(f"   {len(findings)} findings for coding agent to fix:")
+        for f in findings:
+            sev = f["severity"].upper()
+            print(f"   [{sev}] {f['file']}: {f['message']}")
+            if f.get("suggestion"):
+                print(f"         💡 {f['suggestion']}")
+
+    print(f"\n{json.dumps({k: v for k, v in result.items() if k != 'findings'})}")
+
+    # Exit non-zero if critical findings (fails CI gate)
+    if critical:
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

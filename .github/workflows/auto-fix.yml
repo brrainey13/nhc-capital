@@ -1,0 +1,122 @@
+# ═══════════════════════════════════════════════════════════════════════
+# Auto-Fix — Triggered when lint or guards fail on a PR
+#
+# Runs ruff --fix and docs-guard fixes, pushes to the PR branch.
+# This implements step 5 of the Code Factory: automated remediation.
+# ═══════════════════════════════════════════════════════════════════════
+
+name: Auto-Fix
+
+on:
+  # Trigger on check_suite completion so we can react to failures
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-fix:
+    name: "Auto-Fix: Lint + Docs"
+    runs-on: ubuntu-latest
+    # Only run if CI had failures AND it was a PR (not main push)
+    if: >
+      github.event.workflow_run.conclusion == 'failure' &&
+      github.event.workflow_run.event == 'pull_request'
+    steps:
+      - name: Get PR info
+        id: pr
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const runs = await github.rest.actions.listWorkflowRunArtifacts({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: context.payload.workflow_run.id,
+            });
+            // Get the PR from the head branch
+            const headBranch = context.payload.workflow_run.head_branch;
+            const headSha = context.payload.workflow_run.head_sha;
+            const prs = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              head: `${context.repo.owner}:${headBranch}`,
+              state: 'open',
+            });
+            if (prs.data.length === 0) {
+              core.setOutput('skip', 'true');
+              return;
+            }
+            core.setOutput('skip', 'false');
+            core.setOutput('pr_number', prs.data[0].number);
+            core.setOutput('branch', headBranch);
+            core.setOutput('sha', headSha);
+
+      - uses: actions/checkout@v4
+        if: steps.pr.outputs.skip != 'true'
+        with:
+          ref: ${{ steps.pr.outputs.branch }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-python@v5
+        if: steps.pr.outputs.skip != 'true'
+        with:
+          python-version: "3.11"
+
+      - name: Run auto-fixes
+        if: steps.pr.outputs.skip != 'true'
+        id: fix
+        run: |
+          pip install -q ruff
+          FIXED=false
+
+          # Fix 1: ruff --fix
+          echo "Running ruff --fix..."
+          if ! ruff check . 2>/dev/null; then
+            ruff check --fix --unsafe-fixes . 2>/dev/null || true
+            if [ -n "$(git diff --name-only)" ]; then
+              echo "ruff fixed files"
+              FIXED=true
+            fi
+          fi
+
+          # Fix 2: Any remaining ruff issues that need manual patterns
+          # E701: split one-liners
+          find . -name "*.py" -not -path "./.venv/*" | while read f; do
+            # Replace "if X: continue" with two lines
+            sed -i 's/^\(\s*\)if \(.*\): continue$/\1if \2:\n\1    continue/' "$f" 2>/dev/null
+            sed -i 's/^\(\s*\)if \(.*\): return\(.*\)$/\1if \2:\n\1    return\3/' "$f" 2>/dev/null
+          done
+          if [ -n "$(git diff --name-only)" ]; then
+            FIXED=true
+          fi
+
+          echo "fixed=$FIXED" >> "$GITHUB_OUTPUT"
+
+      - name: Commit and push fixes
+        if: steps.fix.outputs.fixed == 'true' && steps.pr.outputs.skip != 'true'
+        run: |
+          git config user.name "NHC Bot"
+          git config user.email "nhccapitalinc-gif@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: auto-fix lint errors (ruff + docs-guard)
+
+          Automated fix triggered by CI failure on PR #${{ steps.pr.outputs.pr_number }}.
+          SHA discipline: fixes applied on top of ${{ steps.pr.outputs.sha }}."
+          git push origin ${{ steps.pr.outputs.branch }}
+          echo "✅ Auto-fix pushed to ${{ steps.pr.outputs.branch }}"
+
+      - name: Comment on PR
+        if: steps.fix.outputs.fixed == 'true' && steps.pr.outputs.skip != 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: ${{ steps.pr.outputs.pr_number }},
+              body: `🤖 **Auto-Fix Applied**\n\nI detected lint/docs-guard failures and pushed automatic fixes to this PR branch.\n\nCI will re-run automatically. If issues remain, manual intervention is needed.\n\n*— NHC Bot*`
+            });

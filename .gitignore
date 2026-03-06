@@ -1,0 +1,61 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+venv/
+.venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets
+.env
+*.pem
+*.key
+
+# Data
+*.csv
+*.parquet
+!sql/**
+
+# Model artifacts
+*.pkl
+*.pickle
+*.joblib
+*.h5
+*.pt
+*.pth
+*.onnx
+*.model
+*.safetensors
+
+# Node
+node_modules/
+
+# Frontend build (rebuilt on deploy)
+admin-dashboard/frontend/dist/
+
+# Test
+.pytest_cache/
+
+# Linter cache
+.ruff_cache/
+
+# Remediation loop temp files (Carson step 5)
+.review-result.json
+.review-remediation.json
+.remediation-state.json
+.remediation-prompt.md
+.git-askpass-helper

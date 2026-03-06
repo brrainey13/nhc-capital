@@ -1,0 +1,199 @@
+{
+  "completed": [
+    "BridgewaterCT",
+    "BethlehemCT",
+    "BoltonCT",
+    "EastLymeCT",
+    "DeepRiverCT",
+    "CantonCT",
+    "CornwallCT",
+    "BrooklynCT",
+    "BurlingtonCT",
+    "EssexCT",
+    "EastHaddamCT",
+    "ClintonCT",
+    "GranbyCT",
+    "CoventryCT",
+    "BrookfieldCT",
+    "ChaplinCT",
+    "HarwintonCT",
+    "EastWindsorCT",
+    "LebanonCT",
+    "BranfordCT",
+    "EnfieldCT",
+    "FairfieldCT",
+    "GlastonburyCT",
+    "HamdenCT",
+    "HamptonCT",
+    "KentCT",
+    "LedyardCT",
+    "LisbonCT",
+    "MadisonCT",
+    "ManchesterCT",
+    "BristolCT",
+    "LymeCT"
+  ],
+  "failed": [],
+  "results": {
+    "BridgewaterCT": {
+      "town": "BridgewaterCT",
+      "total_found": 981,
+      "total_saved": 981
+    },
+    "BethlehemCT": {
+      "town": "BethlehemCT",
+      "total_found": 1758,
+      "total_saved": 1758
+    },
+    "BoltonCT": {
+      "town": "BoltonCT",
+      "total_found": 2339,
+      "total_saved": 2339
+    },
+    "EastLymeCT": {
+      "town": "EastLymeCT",
+      "total_found": 1673,
+      "total_saved": 1673
+    },
+    "DeepRiverCT": {
+      "town": "DeepRiverCT",
+      "total_found": 2112,
+      "total_saved": 2112
+    },
+    "CantonCT": {
+      "town": "CantonCT",
+      "total_found": 2591,
+      "total_saved": 2591
+    },
+    "CornwallCT": {
+      "town": "CornwallCT",
+      "total_found": 1248,
+      "total_saved": 1248
+    },
+    "BrooklynCT": {
+      "town": "BrooklynCT",
+      "total_found": 3529,
+      "total_saved": 3529
+    },
+    "BurlingtonCT": {
+      "town": "BurlingtonCT",
+      "total_found": 2414,
+      "total_saved": 2414
+    },
+    "EssexCT": {
+      "town": "EssexCT",
+      "total_found": 2507,
+      "total_saved": 2507
+    },
+    "EastHaddamCT": {
+      "town": "EastHaddamCT",
+      "total_found": 5806,
+      "total_saved": 5806
+    },
+    "ClintonCT": {
+      "town": "ClintonCT",
+      "total_found": 6121,
+      "total_saved": 6121
+    },
+    "GranbyCT": {
+      "town": "GranbyCT",
+      "total_found": 2449,
+      "total_saved": 2449
+    },
+    "CoventryCT": {
+      "town": "CoventryCT",
+      "total_found": 6399,
+      "total_saved": 6399
+    },
+    "BrookfieldCT": {
+      "town": "BrookfieldCT",
+      "total_found": 6334,
+      "total_saved": 6334
+    },
+    "ChaplinCT": {
+      "town": "ChaplinCT",
+      "total_found": 1241,
+      "total_saved": 1241
+    },
+    "HarwintonCT": {
+      "town": "HarwintonCT",
+      "total_found": 1928,
+      "total_saved": 1928
+    },
+    "EastWindsorCT": {
+      "town": "EastWindsorCT",
+      "total_found": 4935,
+      "total_saved": 4935
+    },
+    "LebanonCT": {
+      "town": "LebanonCT",
+      "total_found": 2308,
+      "total_saved": 2308
+    },
+    "BranfordCT": {
+      "town": "BranfordCT",
+      "total_found": 12536,
+      "total_saved": 12536
+    },
+    "EnfieldCT": {
+      "town": "EnfieldCT",
+      "total_found": 12901,
+      "total_saved": 12901
+    },
+    "FairfieldCT": {
+      "town": "FairfieldCT",
+      "total_found": 5586,
+      "total_saved": 5586
+    },
+    "GlastonburyCT": {
+      "town": "GlastonburyCT",
+      "total_found": 12729,
+      "total_saved": 12729
+    },
+    "HamdenCT": {
+      "town": "HamdenCT",
+      "total_found": 12776,
+      "total_saved": 12776
+    },
+    "HamptonCT": {
+      "town": "HamptonCT",
+      "total_found": 1082,
+      "total_saved": 1082
+    },
+    "KentCT": {
+      "town": "KentCT",
+      "total_found": 1199,
+      "total_saved": 1199
+    },
+    "LedyardCT": {
+      "town": "LedyardCT",
+      "total_found": 5736,
+      "total_saved": 5736
+    },
+    "LisbonCT": {
+      "town": "LisbonCT",
+      "total_found": 1285,
+      "total_saved": 1285
+    },
+    "MadisonCT": {
+      "town": "MadisonCT",
+      "total_found": 6345,
+      "total_saved": 6345
+    },
+    "ManchesterCT": {
+      "town": "ManchesterCT",
+      "total_found": 12797,
+      "total_saved": 12797
+    },
+    "BristolCT": {
+      "town": "BristolCT",
+      "total_found": 0,
+      "total_saved": 0
+    },
+    "LymeCT": {
+      "town": "LymeCT",
+      "total_found": 1546,
+      "total_saved": 1546
+    }
+  }
+}

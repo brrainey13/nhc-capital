@@ -1,0 +1,118 @@
+#!/usr/bin/env python3
+"""Snapshot current DB schemas to shared/schema/tables.json.
+
+Run this after making schema changes to update the contract.
+
+Usage:
+  scripts/schema-snapshot              # Snapshot all databases
+  scripts/schema-snapshot --diff       # Show what changed vs current snapshot
+"""
+
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).parent.parent
+SCHEMA_FILE = REPO_ROOT / "shared" / "schema" / "tables.json"
+PSQL = "/opt/homebrew/Cellar/postgresql@17/17.8/bin/psql"
+
+DATABASES = {
+    "nhl_betting": "postgresql://connorrainey@localhost:5432/nhl_betting",
+    "polymarket": "postgresql://connorrainey@localhost:5432/polymarket",
+    "cook_county": "postgresql://connorrainey@localhost:5432/cook_county",
+}
+
+
+def snapshot_db(db_name: str, db_url: str) -> dict:
+    """Get table schemas from a database."""
+    result = subprocess.run(
+        [PSQL, "-d", db_url, "-t", "-A", "-F", "|", "-c",
+         """SELECT table_name, column_name, data_type, is_nullable
+         FROM information_schema.columns
+         WHERE table_schema = 'public'
+         ORDER BY table_name, ordinal_position"""],
+        capture_output=True, text=True,
+    )
+
+    tables = {}
+    for line in result.stdout.strip().split("\n"):
+        if not line.strip():
+            continue
+        parts = line.split("|")
+        if len(parts) < 4:
+            continue
+        tbl, col, dtype, nullable = [p.strip() for p in parts]
+        if tbl not in tables:
+            tables[tbl] = {"columns": []}
+        tables[tbl]["columns"].append({
+            "name": col,
+            "type": dtype,
+            "nullable": nullable == "YES",
+        })
+    return tables
+
+
+def diff_schemas(old: dict, new: dict) -> list[str]:
+    """Compare two schema snapshots and return differences."""
+    diffs = []
+    all_dbs = sorted(set(list(old.keys()) + list(new.keys())))
+
+    for db in all_dbs:
+        old_tables = old.get(db, {})
+        new_tables = new.get(db, {})
+
+        # New tables
+        for t in sorted(set(new_tables) - set(old_tables)):
+            cols = len(new_tables[t]["columns"])
+            diffs.append(f"  + {db}.{t} ({cols} columns)")
+
+        # Dropped tables
+        for t in sorted(set(old_tables) - set(new_tables)):
+            diffs.append(f"  - {db}.{t} (DROPPED)")
+
+        # Changed tables
+        for t in sorted(set(old_tables) & set(new_tables)):
+            old_cols = {c["name"]: c for c in old_tables[t]["columns"]}
+            new_cols = {c["name"]: c for c in new_tables[t]["columns"]}
+
+            for c in sorted(set(new_cols) - set(old_cols)):
+                diffs.append(f"  + {db}.{t}.{c} ({new_cols[c]['type']})")
+            for c in sorted(set(old_cols) - set(new_cols)):
+                diffs.append(f"  - {db}.{t}.{c} (DROPPED)")
+            for c in sorted(set(old_cols) & set(new_cols)):
+                if old_cols[c]["type"] != new_cols[c]["type"]:
+                    diffs.append(f"  ~ {db}.{t}.{c}: {old_cols[c]['type']} → {new_cols[c]['type']}")
+
+    return diffs
+
+
+def main():
+    diff_mode = "--diff" in sys.argv
+
+    print("📸 Snapshotting database schemas...")
+    new_schema = {}
+    for db_name, db_url in DATABASES.items():
+        tables = snapshot_db(db_name, db_url)
+        new_schema[db_name] = tables
+        print(f"   {db_name}: {len(tables)} tables")
+
+    if diff_mode and SCHEMA_FILE.exists():
+        old_schema = json.loads(SCHEMA_FILE.read_text())
+        diffs = diff_schemas(old_schema, new_schema)
+        if diffs:
+            print(f"\n📋 Schema changes ({len(diffs)}):")
+            for d in diffs:
+                print(d)
+        else:
+            print("\n✅ No schema changes detected")
+        return
+
+    SCHEMA_FILE.parent.mkdir(parents=True, exist_ok=True)
+    SCHEMA_FILE.write_text(json.dumps(new_schema, indent=2) + "\n")
+    total = sum(len(t) for t in new_schema.values())
+    print(f"\n✅ Saved to {SCHEMA_FILE.relative_to(REPO_ROOT)} ({total} tables)")
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.nhc.dashboard</string>
+    <key>UserName</key>
+    <string>nhc-dashboard</string>
+    <key>ProgramArguments</key>
+    <array>
+        <!-- TODO: Update path below to match your local nhc-capital checkout -->
+        <string>/PATH/TO/nhc-capital/admin-dashboard/.venv/bin/python</string>
+        <string>-m</string>
+        <string>uvicorn</string>
+        <string>main:app</string>
+        <string>--host</string>
+        <string>127.0.0.1</string>
+        <string>--port</string>
+        <string>8000</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <!-- TODO: Update path below to match your local nhc-capital checkout -->
+    <string>/PATH/TO/nhc-capital/admin-dashboard/backend</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>DASHBOARD_DB_USER</key>
+        <string>dashboard_readonly</string>
+        <key>DASHBOARD_DB_PASS</key>
+        <string>nhc_readonly_2026</string>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/var/log/nhc-dashboard/uvicorn.log</string>
+    <key>StandardErrorPath</key>
+    <string>/var/log/nhc-dashboard/uvicorn-error.log</string>
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+</dict>
+</plist>

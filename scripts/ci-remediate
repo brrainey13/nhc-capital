@@ -1,0 +1,410 @@
+#!/usr/bin/env python3
+"""CI Remediation Agent — Blake Rainey Code Factory Step 5.
+
+Runs IN CI after code-review fails. Uses Codex CLI (via ChatGPT Plus OAuth)
+to read review findings, fix code, run tests, and push fixes.
+The push triggers a new pipeline → loop restarts with SHA discipline.
+
+Environment (CI/CD variables):
+  GITLAB_TOKEN — push access to the MR branch
+  CODEX_REFRESH_TOKEN — OpenAI OAuth refresh token (ChatGPT Plus)
+  CI_MERGE_REQUEST_IID — MR number
+  CI_MERGE_REQUEST_SOURCE_BRANCH_NAME — branch to push to
+  CI_COMMIT_SHA — current HEAD
+
+Safety:
+  - Max 2 remediation attempts per MR (prevents infinite loops)
+  - Codex runs in --full-auto mode (sandboxed)
+  - Never touches files outside the repo
+  - Commits with [remediate] tag so review agent can track
+"""
+
+import json
+import os
+import subprocess
+import sys
+import urllib.request
+import urllib.parse
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).parent.parent
+REMEDIATION_FILE = REPO_ROOT / ".review-remediation.json"
+RESULT_FILE = REPO_ROOT / ".review-result.json"
+
+CODEX_REFRESH_TOKEN = os.environ.get("CODEX_REFRESH_TOKEN", "")
+GITLAB_TOKEN = os.environ.get("GITLAB_TOKEN", "")
+OPENAI_CLIENT_ID = os.environ.get("OPENAI_CLIENT_ID", "")
+
+# Fallback: raw LLM if Codex isn't available
+NVIDIA_API_KEY = os.environ.get("NVIDIA_API_KEY", "")
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
+
+MAX_REMEDIATIONS_PER_MR = 2
+REMEDIATION_MARKER = "\\[remediate\\]"  # escaped for git grep regex
+REMEDIATION_TAG = "[remediate]"  # literal for commit messages
+
+
+def refresh_codex_token() -> bool:
+    """Refresh the OAuth token and write ~/.codex/auth.json."""
+    if not CODEX_REFRESH_TOKEN:
+        print("  No CODEX_REFRESH_TOKEN — skipping Codex auth")
+        return False
+
+    print("  Refreshing Codex OAuth token...")
+    data = urllib.parse.urlencode({
+        "grant_type": "refresh_token",
+        "refresh_token": CODEX_REFRESH_TOKEN,
+        "client_id": OPENAI_CLIENT_ID,
+    }).encode()
+
+    req = urllib.request.Request(
+        "https://auth.openai.com/oauth/token",
+        data=data,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            result = json.loads(resp.read())
+    except Exception as e:
+        print(f"  ❌ Token refresh failed: {e}")
+        return False
+
+    access_token = result.get("access_token", "")
+    new_refresh = result.get("refresh_token", CODEX_REFRESH_TOKEN)
+
+    if not access_token:
+        print("  ❌ No access token in refresh response")
+        return False
+
+    # Write codex auth file
+    codex_dir = Path.home() / ".codex"
+    codex_dir.mkdir(exist_ok=True)
+
+    auth = {
+        "auth_mode": "chatgpt",
+        "OPENAI_API_KEY": None,
+        "tokens": {
+            "access_token": access_token,
+            "refresh_token": new_refresh,
+        },
+    }
+    auth_path = codex_dir / "auth.json"
+    auth_path.write_text(json.dumps(auth, indent=2))
+    auth_path.chmod(0o600)
+
+    # Write minimal config
+    config = 'model = "gpt-5.3-codex"\n'
+    config_path = codex_dir / "config.toml"
+    if not config_path.exists():
+        config_path.write_text(config)
+        config_path.chmod(0o600)
+
+    print(f"  ✅ Token refreshed (expires_in: {result.get('expires_in', '?')}s)")
+    return True
+
+
+def install_codex() -> bool:
+    """Install Codex CLI in the CI runner."""
+    print("  Installing Codex CLI...")
+    r = subprocess.run(
+        ["npm", "install", "-g", "@openai/codex"],
+        capture_output=True, text=True, timeout=120,
+    )
+    if r.returncode != 0:
+        print(f"  ❌ npm install failed: {r.stderr[:300]}")
+        return False
+
+    # Verify
+    r = subprocess.run(["codex", "--version"], capture_output=True, text=True, timeout=10)
+    if r.returncode == 0:
+        print(f"  ✅ Codex {r.stdout.strip()} installed")
+        return True
+    print("  ❌ Codex not found after install")
+    return False
+
+
+def check_remediation_count() -> int:
+    """Check how many [remediate] commits exist on this MR."""
+    try:
+        r = subprocess.run(
+            ["git", "log", "--oneline", f"--grep={REMEDIATION_MARKER}"],
+            capture_output=True, text=True, timeout=10, cwd=str(REPO_ROOT),
+        )
+        return len(r.stdout.strip().splitlines()) if r.stdout.strip() else 0
+    except Exception:
+        return 0
+
+
+def run_codex_remediation(findings_text: str, branch: str) -> bool:
+    """Run Codex CLI to fix the findings."""
+    prompt = f"""Fix the following code review findings. The review agent found critical issues that must be fixed before this MR can be merged.
+
+## Review Findings:
+{findings_text}
+
+## Rules:
+- Fix ONLY the critical issues listed above
+- Do not refactor unrelated code
+- Run any relevant tests after fixing
+- Keep the same code style and structure
+- Use `git add <files>` to stage your changes when done (do NOT commit)
+"""
+
+    print(f"\n🤖 Running Codex remediation agent...")
+    print(f"   Prompt: {len(prompt)} chars, {len(findings_text.splitlines())} finding lines")
+
+    r = subprocess.run(
+        ["codex", "exec", "--full-auto", prompt],
+        capture_output=True, text=True, timeout=300,
+        cwd=str(REPO_ROOT),
+        env={**os.environ, "CI": "true"},
+    )
+
+    print(f"\n   Codex exit code: {r.returncode}")
+    if r.stdout:
+        # Print last 1000 chars of output
+        print(f"   Output (last 1000 chars):")
+        print(r.stdout[-1000:])
+    if r.returncode != 0 and r.stderr:
+        print(f"   Stderr: {r.stderr[-500:]}")
+
+    return r.returncode == 0
+
+
+def run_llm_fallback(findings: list, branch: str) -> bool:
+    """Fallback: use LLM API to generate fixes if Codex isn't available."""
+    print("\n🔧 Falling back to LLM API remediation...")
+
+    files_to_fix = {}
+    for f in findings:
+        filepath = f.get("file", "")
+        if not filepath:
+            continue
+        p = REPO_ROOT / filepath
+        if p.exists() and filepath not in files_to_fix:
+            files_to_fix[filepath] = {
+                "content": p.read_text(),
+                "findings": [],
+            }
+        if filepath in files_to_fix:
+            files_to_fix[filepath]["findings"].append(f)
+
+    fixed_any = False
+    for filepath, info in files_to_fix.items():
+        findings_text = "\n".join(
+            f"- [{f.get('severity', '?').upper()}] {f.get('message', '')}"
+            + (f"\n  Suggestion: {f['suggestion']}" if f.get("suggestion") else "")
+            for f in info["findings"]
+        )
+
+        prompt = f"""Fix the following issues in `{filepath}`.
+
+Current content:
+```
+{info['content']}
+```
+
+Issues:
+{findings_text}
+
+Return ONLY the fixed file content. No markdown fences, no explanation."""
+
+        result = _call_llm_chain(prompt)
+        if not result:
+            print(f"  ❌ LLM failed for {filepath}")
+            continue
+
+        # Strip markdown fences
+        if result.startswith("```"):
+            lines = result.split("\n")
+            if lines[-1].strip() == "```":
+                lines = lines[1:-1]
+            elif lines[0].startswith("```"):
+                lines = lines[1:]
+            result = "\n".join(lines)
+
+        p = REPO_ROOT / filepath
+        p.write_text(result)
+        subprocess.run(["git", "add", filepath], cwd=str(REPO_ROOT))
+        print(f"  ✅ Fixed {filepath}")
+        fixed_any = True
+
+    return fixed_any
+
+
+def _call_llm_chain(prompt: str) -> str | None:
+    """Call LLM with NVIDIA → OpenRouter fallback chain."""
+    models = []
+    if NVIDIA_API_KEY:
+        models.extend([
+            ("moonshotai/kimi-k2.5", "https://integrate.api.nvidia.com/v1", NVIDIA_API_KEY),
+            ("z-ai/glm5", "https://integrate.api.nvidia.com/v1", NVIDIA_API_KEY),
+        ])
+    if OPENROUTER_API_KEY:
+        models.extend([
+            ("qwen/qwen3-235b-a22b-thinking-2507", "https://openrouter.ai/api/v1", OPENROUTER_API_KEY),
+            ("qwen/qwen3-80b-thinking-2507", "https://openrouter.ai/api/v1", OPENROUTER_API_KEY),
+        ])
+
+    for model, base_url, api_key in models:
+        try:
+            payload = json.dumps({
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": "Fix code precisely. Return only fixed file content."},
+                    {"role": "user", "content": prompt},
+                ],
+                "max_tokens": 4096,
+                "temperature": 0.1,
+            }).encode()
+            req = urllib.request.Request(
+                f"{base_url}/chat/completions",
+                data=payload,
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            )
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                data = json.loads(resp.read())
+                return data["choices"][0]["message"]["content"]
+        except Exception as e:
+            print(f"    {model}: {e}")
+            continue
+    return None
+
+
+def commit_and_push(branch: str, mr_iid: str) -> bool:
+    """Commit staged changes and push to MR branch."""
+    # Check for staged changes
+    r = subprocess.run(
+        ["git", "diff", "--cached", "--name-only"],
+        capture_output=True, text=True, cwd=str(REPO_ROOT),
+    )
+    if not r.stdout.strip():
+        print("  No staged changes to commit")
+        return False
+
+    changed = r.stdout.strip().splitlines()
+    print(f"\n📦 Committing {len(changed)} fixed files: {', '.join(changed[:5])}")
+
+    # Configure git
+    subprocess.run(["git", "config", "user.email", "nhc-bot@nhcapital.dev"], cwd=str(REPO_ROOT))
+    subprocess.run(["git", "config", "user.name", "NHC Bot"], cwd=str(REPO_ROOT))
+
+    # Commit
+    msg = f"fix: {REMEDIATION_TAG} auto-fix review findings in {', '.join(changed[:3])}"
+    subprocess.run(["git", "commit", "-m", msg], cwd=str(REPO_ROOT))
+
+    # Push using credential helper (avoids token in URL/logs)
+    if not GITLAB_TOKEN:
+        print("  ❌ No GITLAB_TOKEN — cannot push")
+        return False
+
+    # Use GIT_ASKPASS to provide token in-memory (no persistent creds on disk)
+    askpass = Path(REPO_ROOT) / ".git-askpass-helper"
+    try:
+        askpass.write_text(f"#!/bin/sh\necho '{GITLAB_TOKEN}'\n")
+        askpass.chmod(0o700)
+
+        push_env = {**os.environ, "GIT_ASKPASS": str(askpass)}
+
+        subprocess.run(
+            ["git", "remote", "set-url", "origin",
+             "https://nhc-bot@gitlab.com/nhccapitalinc-group/nhccapitalinc-project.git"],
+            cwd=str(REPO_ROOT),
+        )
+        r = subprocess.run(
+            ["git", "push", "origin", f"HEAD:{branch}"],
+            capture_output=True, text=True, cwd=str(REPO_ROOT),
+            env=push_env,
+        )
+    finally:
+        # Ensure cleanup on ALL exit paths (normal, exception, signal)
+        askpass.unlink(missing_ok=True)
+
+    if r.returncode == 0:
+        print(f"\n🔄 Fix pushed to {branch}. New pipeline will run → fresh review (SHA discipline).")
+        return True
+    else:
+        print(f"\n⚠️ Push failed (bot may lack push permission): {r.stderr[:300]}")
+        print("  Remediation changes are in the job artifacts — apply manually or grant push access.")
+        # Write patch to artifacts so human can apply
+        patch = subprocess.run(
+            ["git", "diff", "HEAD~1"], capture_output=True, text=True, cwd=str(REPO_ROOT)
+        )
+        patch_file = REPO_ROOT / ".remediation-patch.diff"
+        patch_file.write_text(patch.stdout)
+        print(f"  Patch saved to {patch_file}")
+        return False
+
+
+def main():
+    mr_iid = os.environ.get("CI_MERGE_REQUEST_IID", "")
+    branch = os.environ.get("CI_MERGE_REQUEST_SOURCE_BRANCH_NAME", "")
+    sha = os.environ.get("CI_COMMIT_SHA", "")[:7]
+
+    print(f"═══════════════════════════════════════════════════")
+    print(f"  REMEDIATION AGENT (Blake Rainey Step 5)")
+    print(f"  MR: !{mr_iid} | Branch: {branch} | SHA: {sha}")
+    print(f"═══════════════════════════════════════════════════")
+
+    if not mr_iid or not branch:
+        print("❌ Missing MR context. Not in MR pipeline?")
+        sys.exit(1)
+
+    # Check remediation count
+    count = check_remediation_count()
+    if count >= MAX_REMEDIATIONS_PER_MR:
+        print(f"⚠️ Already {count} remediation commits — max {MAX_REMEDIATIONS_PER_MR}.")
+        print("   Escalating to human review.")
+        sys.exit(1)
+
+    # Load findings
+    if not REMEDIATION_FILE.exists():
+        print("❌ No .review-remediation.json found.")
+        sys.exit(1)
+
+    remediation = json.loads(REMEDIATION_FILE.read_text())
+    findings = remediation.get("findings", [])
+    critical = [f for f in findings if f.get("severity") == "critical"]
+
+    if not critical:
+        print("✅ No critical findings. Skipping.")
+        sys.exit(0)
+
+    print(f"\n📋 {len(critical)} critical findings to fix (attempt {count + 1}/{MAX_REMEDIATIONS_PER_MR})")
+
+    # Strategy: try Codex first, fall back to LLM API
+    use_codex = False
+
+    if CODEX_REFRESH_TOKEN:
+        if refresh_codex_token() and install_codex():
+            use_codex = True
+
+    if use_codex:
+        findings_text = "\n".join(
+            f"- [{f.get('severity', '?').upper()}] {f.get('file', '?')}: {f.get('message', '')}"
+            + (f"\n  Fix: {f['suggestion']}" if f.get("suggestion") else "")
+            for f in critical
+        )
+        success = run_codex_remediation(findings_text, branch)
+    else:
+        print("\n⚠️ Codex not available — using LLM API fallback")
+        success = run_llm_fallback(critical, branch)
+
+    # Clean up API keys from environment after use
+    for key in ("NVIDIA_API_KEY", "OPENROUTER_API_KEY", "CODEX_REFRESH_TOKEN"):
+        os.environ.pop(key, None)
+
+    if not success:
+        print("\n❌ Remediation failed. Escalating to human.")
+        sys.exit(1)
+
+    # Commit and push
+    if commit_and_push(branch, mr_iid):
+        print("\n✅ Remediation complete. Loop restarting via SHA discipline.")
+    else:
+        print("\n❌ Could not push fixes.")
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

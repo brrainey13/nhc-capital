@@ -1,0 +1,3411 @@
+{
+  "nhl_betting": {
+    "api_snapshots": {
+      "columns": [
+        {
+          "name": "snapshot_id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "endpoint",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "ref_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "fetched_at",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "status_code",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "payload_json",
+          "type": "text",
+          "nullable": true
+        }
+      ]
+    },
+    "game_team_stats": {
+      "columns": [
+        {
+          "name": "game_id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "team_id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "is_home",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "score",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "shots_on_goal",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "shots_attempted",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "power_play_goals",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "power_play_opportunities",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "pim",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "hits",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "blocked_shots",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "faceoff_win_pct",
+          "type": "double precision",
+          "nullable": true
+        },
+        {
+          "name": "giveaways",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "takeaways",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "toi_minutes",
+          "type": "double precision",
+          "nullable": true
+        },
+        {
+          "name": "won",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "game_result",
+          "type": "text",
+          "nullable": true
+        }
+      ]
+    },
+    "games": {
+      "columns": [
+        {
+          "name": "game_id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "season",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "game_type",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "game_date",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "start_time_utc",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "game_state",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "game_schedule_state",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "period",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "period_type",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "venue",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "away_team_id",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "home_team_id",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "away_score",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "home_score",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "away_sog",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "home_sog",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "winning_goalie_id",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "losing_goalie_id",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "decide_by",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "three_min_recap",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "condensed_game",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "last_updated",
+          "type": "text",
+          "nullable": true
+        }
+      ]
+    },
+    "games_analysis": {
+      "columns": [
+        {
+          "name": "game_id",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "season",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "game_type",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "game_date",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "start_time_utc",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "game_state",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "game_schedule_state",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "period",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "period_type",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "venue",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "away_team_id",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "home_team_id",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "away_score",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "home_score",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "away_sog",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "home_sog",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "winning_goalie_id",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "losing_goalie_id",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "decide_by",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "three_min_recap",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "condensed_game",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "last_updated",
+          "type": "text",
+          "nullable": true
+        }
+      ]
+    },
+    "goalie_advanced": {
+      "columns": [
+        {
+          "name": "game_id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "player_id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "game_date",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "team",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "opponent",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "home_road",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "games_started",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "quality_start",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "goals_against",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "goals_against_avg",
+          "type": "double precision",
+          "nullable": true
+        },
+        {
+          "name": "goals_for",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "goals_for_avg",
+          "type": "double precision",
+          "nullable": true
+        },
+        {
+          "name": "shots_against_per60",
+          "type": "double precision",
+          "nullable": true
+        },
+        {
+          "name": "save_pct",
+          "type": "double precision",
+          "nullable": true
+        },
+        {
+          "name": "complete_games",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "incomplete_games",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "time_on_ice",
+          "type": "text",
+          "nullable": true
+        }
+      ]
+    },
+    "goalie_saves_by_strength": {
+      "columns": [
+        {
+          "name": "game_id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "player_id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "game_date",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "team",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "opponent",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "home_road",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "ev_saves",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "ev_shots",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "ev_goals_against",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "ev_save_pct",
+          "type": "double precision",
+          "nullable": true
+        },
+        {
+          "name": "pp_saves",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "pp_shots",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "pp_goals_against",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "pp_save_pct",
+          "type": "double precision",
+          "nullable": true
+        },
+        {
+          "name": "sh_saves",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "sh_shots",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "sh_goals_against",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "sh_save_pct",
+          "type": "double precision",
+          "nullable": true
+        },
+        {
+          "name": "total_saves",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "total_shots",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "total_save_pct",
+          "type": "double precision",
+          "nullable": true
+        }
+      ]
+    },
+    "goalie_starts": {
+      "columns": [
+        {
+          "name": "game_id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "player_id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "game_date",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "team",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "opponent",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "home_road",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "games_started",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "games_relieved",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "started_saves",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "started_shots",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "started_save_pct",
+          "type": "double precision",
+          "nullable": true
+        },
+        {
+          "name": "started_goals_against",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "relieved_saves",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "relieved_shots",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "relieved_save_pct",
+          "type": "double precision",
+          "nullable": true
+        },
+        {
+          "name": "relieved_goals_against",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "total_save_pct",
+          "type": "double precision",
+          "nullable": true
+        }
+      ]
+    },
+    "goalie_stats": {
+      "columns": [
+        {
+          "name": "game_id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "player_id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "team_id",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "is_home",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "decision",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "toi_minutes",
+          "type": "double precision",
+          "nullable": true
+        },
+        {
+          "name": "shots_against",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "saves",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "goals_against",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "save_pct",
+          "type": "double precision",
+          "nullable": true
+        },
+        {
+          "name": "even_strength_saves",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "power_play_saves",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "shorthanded_saves",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "started",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "pulled",
+          "type": "integer",
+          "nullable": true
+        }
+      ]
+    },
+    "injuries": {
+      "columns": [
+        {
+          "name": "injury_id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "player_id",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "team_id",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "report_date",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "injury_note",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "return_date_estimate",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "source_endpoint",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "raw_json",
+          "type": "text",
+          "nullable": true
+        }
+      ]
+    },
+    "injuries_live": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "scraped_at",
+          "type": "timestamp without time zone",
+          "nullable": true
+        },
+        {
+          "name": "scraped_date",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "team_name",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "team_abbrev",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "player_name",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "player_espn_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "position",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "injury_date",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "detail",
+          "type": "text",
+          "nullable": true
+        }
+      ]
+    },
+    "kanban_events": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "task_id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "from_state",
+          "type": "character varying",
+          "nullable": true
+        },
+        {
+          "name": "to_state",
+          "type": "character varying",
+          "nullable": false
+        },
+        {
+          "name": "actor",
+          "type": "character varying",
+          "nullable": false
+        },
+        {
+          "name": "reason",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "metadata",
+          "type": "jsonb",
+          "nullable": true
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp without time zone",
+          "nullable": true
+        }
+      ]
+    },
+    "kanban_tasks": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "title",
+          "type": "character varying",
+          "nullable": false
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "status",
+          "type": "character varying",
+          "nullable": true
+        },
+        {
+          "name": "priority",
+          "type": "character varying",
+          "nullable": true
+        },
+        {
+          "name": "requested_by",
+          "type": "character varying",
+          "nullable": false
+        },
+        {
+          "name": "project",
+          "type": "character varying",
+          "nullable": true
+        },
+        {
+          "name": "run_file",
+          "type": "character varying",
+          "nullable": true
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp without time zone",
+          "nullable": true
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp without time zone",
+          "nullable": true
+        },
+        {
+          "name": "agent_session_key",
+          "type": "character varying",
+          "nullable": true
+        },
+        {
+          "name": "result_summary",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "completed_at",
+          "type": "timestamp without time zone",
+          "nullable": true
+        },
+        {
+          "name": "notify_channel",
+          "type": "character varying",
+          "nullable": true
+        },
+        {
+          "name": "context",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "task_type",
+          "type": "character varying",
+          "nullable": true
+        }
+      ]
+    },
+    "lineup_absences": {
+      "columns": [
+        {
+          "name": "game_id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "team_id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "game_date",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "fwd_regulars",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "fwd_missing",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "fwd_missing_toi",
+          "type": "double precision",
+          "nullable": true
+        },
+        {
+          "name": "def_regulars",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "def_missing",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "def_missing_toi",
+          "type": "double precision",
+          "nullable": true
+        },
+        {
+          "name": "total_missing",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "total_missing_toi",
+          "type": "double precision",
+          "nullable": true
+        },
+        {
+          "name": "top_missing_player_id",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "top_missing_avg_toi",
+          "type": "double precision",
+          "nullable": true
+        }
+      ]
+    },
+    "live_game_snapshots": {
+      "columns": [
+        {
+          "name": "game_id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "snapshot_ts",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "game_state",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "clock_time_remaining",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "period",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "home_score",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "away_score",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "home_sog",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "away_sog",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "source_endpoint",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "raw_json",
+          "type": "text",
+          "nullable": true
+        }
+      ]
+    },
+    "model_runs": {
+      "columns": [
+        {
+          "name": "run_id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "model_name",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "model_version",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "trained_at",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "train_start_date",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "train_end_date",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "row_count",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "metrics_json",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "artifact_path",
+          "type": "text",
+          "nullable": true
+        }
+      ]
+    },
+    "period_scores": {
+      "columns": [
+        {
+          "name": "game_id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "team_id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "period_number",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "period_descriptor",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "goals",
+          "type": "integer",
+          "nullable": true
+        }
+      ]
+    },
+    "player_odds": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "market",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "event_id",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "event_date",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "home_team",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "away_team",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "bp_player_id",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "player_name",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "player_team",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "player_position",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "book_id",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "book_name",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "line",
+          "type": "real",
+          "nullable": true
+        },
+        {
+          "name": "over_odds",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "under_odds",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "opening_line",
+          "type": "real",
+          "nullable": true
+        },
+        {
+          "name": "opening_over_odds",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "opening_created",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "is_best",
+          "type": "boolean",
+          "nullable": true
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "scraped_at",
+          "type": "text",
+          "nullable": true
+        }
+      ]
+    },
+    "player_pp_stats": {
+      "columns": [
+        {
+          "name": "player_id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "game_id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "game_date",
+          "type": "date",
+          "nullable": true
+        },
+        {
+          "name": "season_id",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "team_abbrev",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "opponent_abbrev",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "home_road",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "position_code",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "player_name",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "pp_toi_seconds",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "pp_shots",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "pp_shots_per60",
+          "type": "real",
+          "nullable": true
+        },
+        {
+          "name": "pp_goals",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "pp_assists",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "pp_points",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "pp_shooting_pct",
+          "type": "real",
+          "nullable": true
+        },
+        {
+          "name": "pp_individual_cf",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "pp_individual_cf_per60",
+          "type": "real",
+          "nullable": true
+        },
+        {
+          "name": "pp_goals_for_per60",
+          "type": "real",
+          "nullable": true
+        },
+        {
+          "name": "pp_toi_pct_per_game",
+          "type": "real",
+          "nullable": true
+        }
+      ]
+    },
+    "player_stats": {
+      "columns": [
+        {
+          "name": "game_id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "player_id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "team_id",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "is_home",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "position_code",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "toi_minutes",
+          "type": "double precision",
+          "nullable": true
+        },
+        {
+          "name": "goals",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "assists",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "points",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "plus_minus",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "pim",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "hits",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "blocked_shots",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "faceoff_win_pct",
+          "type": "double precision",
+          "nullable": true
+        },
+        {
+          "name": "shots",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "power_play_goals",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "power_play_points",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "shorthanded_points",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "takeaways",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "giveaways",
+          "type": "integer",
+          "nullable": true
+        }
+      ]
+    },
+    "players": {
+      "columns": [
+        {
+          "name": "player_id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "first_name",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "last_name",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "position_code",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "shoots_catches",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "height_in",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "weight_lb",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "birth_date",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "active",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "current_team_id",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "last_updated",
+          "type": "text",
+          "nullable": true
+        }
+      ]
+    },
+    "predictions": {
+      "columns": [
+        {
+          "name": "prediction_id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "model_name",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "model_version",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "prediction_ts",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "game_id",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "team_id",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "goalie_id",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "predicted_save_pct",
+          "type": "double precision",
+          "nullable": true
+        },
+        {
+          "name": "predicted_goals_against",
+          "type": "double precision",
+          "nullable": true
+        },
+        {
+          "name": "predicted_win_probability",
+          "type": "double precision",
+          "nullable": true
+        },
+        {
+          "name": "feature_snapshot_json",
+          "type": "text",
+          "nullable": true
+        }
+      ]
+    },
+    "saves_odds": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "event_id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "event_date",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "home_team",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "away_team",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "bp_player_id",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "player_name",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "player_team",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "book_id",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "book_name",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "line",
+          "type": "double precision",
+          "nullable": true
+        },
+        {
+          "name": "over_odds",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "under_odds",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "opening_line",
+          "type": "double precision",
+          "nullable": true
+        },
+        {
+          "name": "opening_over_odds",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "opening_created",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "is_best",
+          "type": "boolean",
+          "nullable": true
+        },
+        {
+          "name": "fair_probability",
+          "type": "double precision",
+          "nullable": true
+        },
+        {
+          "name": "market_ev",
+          "type": "double precision",
+          "nullable": true
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "scraped_at",
+          "type": "timestamp without time zone",
+          "nullable": true
+        }
+      ]
+    },
+    "schedules": {
+      "columns": [
+        {
+          "name": "game_id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "season",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "game_type",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "game_date",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "start_time_utc",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "away_team_id",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "home_team_id",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "venue",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "neutral_site",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "game_state",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "schedule_source",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "ingest_ts",
+          "type": "text",
+          "nullable": true
+        }
+      ]
+    },
+    "sog_backtest_results": {
+      "columns": [
+        {
+          "name": "player_id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "game_id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "game_date",
+          "type": "date",
+          "nullable": true
+        },
+        {
+          "name": "player_name",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "team_name",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "position",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "model_type",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "predicted",
+          "type": "real",
+          "nullable": true
+        },
+        {
+          "name": "consensus_line",
+          "type": "real",
+          "nullable": true
+        },
+        {
+          "name": "actual_shots",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "edge",
+          "type": "real",
+          "nullable": true
+        },
+        {
+          "name": "direction",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "bet_odds",
+          "type": "real",
+          "nullable": true
+        },
+        {
+          "name": "won",
+          "type": "boolean",
+          "nullable": true
+        },
+        {
+          "name": "push",
+          "type": "boolean",
+          "nullable": true
+        },
+        {
+          "name": "pnl_flat",
+          "type": "real",
+          "nullable": true
+        },
+        {
+          "name": "kelly_units",
+          "type": "real",
+          "nullable": true
+        },
+        {
+          "name": "pnl_kelly",
+          "type": "real",
+          "nullable": true
+        },
+        {
+          "name": "line_bucket",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "edge_bucket",
+          "type": "text",
+          "nullable": true
+        }
+      ]
+    },
+    "sog_odds": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "event_id",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "event_date",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "home_team",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "away_team",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "bp_player_id",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "player_name",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "player_team",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "player_position",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "book_id",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "book_name",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "line",
+          "type": "real",
+          "nullable": true
+        },
+        {
+          "name": "over_odds",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "under_odds",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "opening_line",
+          "type": "real",
+          "nullable": true
+        },
+        {
+          "name": "opening_over_odds",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "opening_created",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "is_best",
+          "type": "boolean",
+          "nullable": true
+        },
+        {
+          "name": "fair_probability",
+          "type": "real",
+          "nullable": true
+        },
+        {
+          "name": "market_ev",
+          "type": "real",
+          "nullable": true
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "scraped_at",
+          "type": "text",
+          "nullable": true
+        }
+      ]
+    },
+    "standings": {
+      "columns": [
+        {
+          "name": "standing_date",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "season",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "team_id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "games_played",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "points",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wins",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "losses",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "ot_losses",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "goals_for",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "goals_against",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "goal_diff",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "streak_code",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "conference_rank",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "division_rank",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "league_rank",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "wildcard_rank",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "points_pct",
+          "type": "double precision",
+          "nullable": true
+        }
+      ]
+    },
+    "team_odds": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "market",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "event_id",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "event_date",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "home_team",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "away_team",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "team_name",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "book_id",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "book_name",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "line",
+          "type": "real",
+          "nullable": true
+        },
+        {
+          "name": "over_odds",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "under_odds",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "opening_line",
+          "type": "real",
+          "nullable": true
+        },
+        {
+          "name": "opening_over_odds",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "opening_created",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "is_best",
+          "type": "boolean",
+          "nullable": true
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "scraped_at",
+          "type": "text",
+          "nullable": true
+        }
+      ]
+    },
+    "teams": {
+      "columns": [
+        {
+          "name": "team_id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "tri_code",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "team_name",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "team_name_fr",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "conference_name",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "division_name",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "active",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "last_updated",
+          "type": "text",
+          "nullable": true
+        }
+      ]
+    }
+  },
+  "polymarket": {
+    "agent_log": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "agent_name",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "action",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "input",
+          "type": "jsonb",
+          "nullable": true
+        },
+        {
+          "name": "output",
+          "type": "jsonb",
+          "nullable": true
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp without time zone",
+          "nullable": true
+        }
+      ]
+    },
+    "crypto_bars_5min": {
+      "columns": [
+        {
+          "name": "symbol",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "ts",
+          "type": "timestamp with time zone",
+          "nullable": false
+        },
+        {
+          "name": "open",
+          "type": "double precision",
+          "nullable": true
+        },
+        {
+          "name": "high",
+          "type": "double precision",
+          "nullable": true
+        },
+        {
+          "name": "low",
+          "type": "double precision",
+          "nullable": true
+        },
+        {
+          "name": "close",
+          "type": "double precision",
+          "nullable": true
+        },
+        {
+          "name": "volume",
+          "type": "double precision",
+          "nullable": true
+        },
+        {
+          "name": "vwap",
+          "type": "double precision",
+          "nullable": true
+        },
+        {
+          "name": "trade_count",
+          "type": "integer",
+          "nullable": true
+        }
+      ]
+    },
+    "human_notes": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "market_id",
+          "type": "uuid",
+          "nullable": true
+        },
+        {
+          "name": "author",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "note",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp without time zone",
+          "nullable": true
+        }
+      ]
+    },
+    "market_snapshots": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "market_id",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "yes_price",
+          "type": "double precision",
+          "nullable": true
+        },
+        {
+          "name": "no_price",
+          "type": "double precision",
+          "nullable": true
+        },
+        {
+          "name": "volume_24h",
+          "type": "double precision",
+          "nullable": true
+        },
+        {
+          "name": "liquidity",
+          "type": "double precision",
+          "nullable": true
+        },
+        {
+          "name": "snapshot_time",
+          "type": "timestamp without time zone",
+          "nullable": true
+        }
+      ]
+    },
+    "markets": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "polymarket_id",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "question",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "category",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "end_date",
+          "type": "timestamp without time zone",
+          "nullable": true
+        },
+        {
+          "name": "active",
+          "type": "boolean",
+          "nullable": true
+        },
+        {
+          "name": "yes_price",
+          "type": "double precision",
+          "nullable": true
+        },
+        {
+          "name": "no_price",
+          "type": "double precision",
+          "nullable": true
+        },
+        {
+          "name": "volume_24h",
+          "type": "double precision",
+          "nullable": true
+        },
+        {
+          "name": "liquidity",
+          "type": "double precision",
+          "nullable": true
+        },
+        {
+          "name": "last_updated",
+          "type": "timestamp without time zone",
+          "nullable": true
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp without time zone",
+          "nullable": true
+        }
+      ]
+    },
+    "positions": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "market_id",
+          "type": "uuid",
+          "nullable": true
+        },
+        {
+          "name": "side",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "entry_price",
+          "type": "double precision",
+          "nullable": true
+        },
+        {
+          "name": "size",
+          "type": "double precision",
+          "nullable": true
+        },
+        {
+          "name": "notional_usdc",
+          "type": "double precision",
+          "nullable": true
+        },
+        {
+          "name": "tx_hash",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "opened_at",
+          "type": "timestamp without time zone",
+          "nullable": true
+        },
+        {
+          "name": "closed_at",
+          "type": "timestamp without time zone",
+          "nullable": true
+        }
+      ]
+    },
+    "theses": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "market_id",
+          "type": "uuid",
+          "nullable": true
+        },
+        {
+          "name": "bull_case",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "bear_case",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "base_rate_analysis",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "edge_hypothesis",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "catalysts",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "invalidation_conditions",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "confidence_score",
+          "type": "double precision",
+          "nullable": true
+        },
+        {
+          "name": "created_by",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp without time zone",
+          "nullable": true
+        }
+      ]
+    }
+  },
+  "cook_county": {
+    "commercial_valuations": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "keypin",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "keypin_normalized",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "pins",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "year",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "township",
+          "type": "character varying",
+          "nullable": true
+        },
+        {
+          "name": "modelgroup",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "class_es",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "studiounits",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "_1brunits",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "_2brunits",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "_3brunits",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "_4brunits",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "tot_units",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "address",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "adj_rent_sf",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "aprx_comm_sf",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "apt",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "avgdailyrate",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "bldgsf",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "gross_building_area",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "caprate",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "carwash",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "category",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "ceilingheight",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "cost_day_bed",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "costapproach_sf",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "covidadjvacancy",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "ebitda_pct",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "egi",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "excesslandarea",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "excesslandval",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "exp",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "f_r",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "finalmarketvalue",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "finalmarketvalue_bed",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "finalmarketvalue_key",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "finalmarketvalue_sf",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "finalmarketvalue_unit",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "idphlicense",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "incomemarketvalue",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "incomemarketvalue_sf",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "investmentrating",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "land_bldg",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "landsf",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "model",
+          "type": "character varying",
+          "nullable": true
+        },
+        {
+          "name": "nbhd",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "netrentablesf",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "noi",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "oiltankvalue_atypicaloby",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "owner",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "parking",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "parkingsf",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "pctownerinterest",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "permit_partial_demovalue",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "permit_partial_demovalue_reason",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "pgi",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "property_name_description",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "property_type_use",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "reportedoccupancy",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "revenuebed_day",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "revpar",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "roomrev_pct",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "salecompmarketvalue_sf",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "sap",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "sapdeduction",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "saptier",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "stories",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "subclass2",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "taxdist",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "taxpayer",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "totalrevreported",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "totalexp",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "totallandval",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "totalrev",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "townregion",
+          "type": "character varying",
+          "nullable": true
+        },
+        {
+          "name": "vacancy",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "yearbuilt",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "nullable": true
+        }
+      ]
+    },
+    "ct_foreclosures": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "posting_id",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "town",
+          "type": "character varying",
+          "nullable": true
+        },
+        {
+          "name": "docket_number",
+          "type": "character varying",
+          "nullable": true
+        },
+        {
+          "name": "sale_date",
+          "type": "character varying",
+          "nullable": true
+        },
+        {
+          "name": "sale_type",
+          "type": "character varying",
+          "nullable": true
+        },
+        {
+          "name": "property_type",
+          "type": "character varying",
+          "nullable": true
+        },
+        {
+          "name": "address",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "check_amount",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "full_notice",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "heading",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "scraped_at",
+          "type": "timestamp with time zone",
+          "nullable": true
+        },
+        {
+          "name": "lat",
+          "type": "double precision",
+          "nullable": true
+        },
+        {
+          "name": "lng",
+          "type": "double precision",
+          "nullable": true
+        },
+        {
+          "name": "photo_url",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "nullable": true
+        }
+      ]
+    },
+    "data_refresh_log": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "dataset_name",
+          "type": "character varying",
+          "nullable": true
+        },
+        {
+          "name": "refresh_type",
+          "type": "character varying",
+          "nullable": true
+        },
+        {
+          "name": "rows_fetched",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "rows_inserted",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "rows_updated",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "duration_sec",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "status",
+          "type": "character varying",
+          "nullable": true
+        },
+        {
+          "name": "error_message",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "refreshed_at",
+          "type": "timestamp with time zone",
+          "nullable": true
+        }
+      ]
+    },
+    "parcel_sales": {
+      "columns": [
+        {
+          "name": "row_id",
+          "type": "character varying",
+          "nullable": false
+        },
+        {
+          "name": "pin",
+          "type": "character varying",
+          "nullable": true
+        },
+        {
+          "name": "year",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "township_code",
+          "type": "character varying",
+          "nullable": true
+        },
+        {
+          "name": "nbhd",
+          "type": "character varying",
+          "nullable": true
+        },
+        {
+          "name": "class",
+          "type": "character varying",
+          "nullable": true
+        },
+        {
+          "name": "sale_date",
+          "type": "timestamp with time zone",
+          "nullable": true
+        },
+        {
+          "name": "is_mydec_date",
+          "type": "boolean",
+          "nullable": true
+        },
+        {
+          "name": "sale_price",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "doc_no",
+          "type": "character varying",
+          "nullable": true
+        },
+        {
+          "name": "deed_type",
+          "type": "character varying",
+          "nullable": true
+        },
+        {
+          "name": "mydec_deed_type",
+          "type": "character varying",
+          "nullable": true
+        },
+        {
+          "name": "seller_name",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "buyer_name",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "is_multisale",
+          "type": "boolean",
+          "nullable": true
+        },
+        {
+          "name": "num_parcels_sale",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "sale_type",
+          "type": "character varying",
+          "nullable": true
+        },
+        {
+          "name": "sale_filter_same_sale_within_365",
+          "type": "boolean",
+          "nullable": true
+        },
+        {
+          "name": "sale_filter_less_than_10k",
+          "type": "boolean",
+          "nullable": true
+        },
+        {
+          "name": "sale_filter_deed_type",
+          "type": "boolean",
+          "nullable": true
+        },
+        {
+          "name": "raw_json",
+          "type": "jsonb",
+          "nullable": true
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "nullable": true
+        },
+        {
+          "name": "township_name",
+          "type": "character varying",
+          "nullable": true
+        }
+      ]
+    },
+    "parcel_universe": {
+      "columns": [
+        {
+          "name": "pin",
+          "type": "character varying",
+          "nullable": false
+        },
+        {
+          "name": "pin10",
+          "type": "character varying",
+          "nullable": true
+        },
+        {
+          "name": "year",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "class",
+          "type": "character varying",
+          "nullable": true
+        },
+        {
+          "name": "triad_name",
+          "type": "character varying",
+          "nullable": true
+        },
+        {
+          "name": "triad_code",
+          "type": "character varying",
+          "nullable": true
+        },
+        {
+          "name": "township_name",
+          "type": "character varying",
+          "nullable": true
+        },
+        {
+          "name": "township_code",
+          "type": "character varying",
+          "nullable": true
+        },
+        {
+          "name": "nbhd_code",
+          "type": "character varying",
+          "nullable": true
+        },
+        {
+          "name": "tax_code",
+          "type": "character varying",
+          "nullable": true
+        },
+        {
+          "name": "zip_code",
+          "type": "character varying",
+          "nullable": true
+        },
+        {
+          "name": "lon",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "lat",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "cook_municipality_name",
+          "type": "character varying",
+          "nullable": true
+        },
+        {
+          "name": "row_id",
+          "type": "character varying",
+          "nullable": true
+        },
+        {
+          "name": "raw_json",
+          "type": "jsonb",
+          "nullable": true
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "nullable": true
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "nullable": true
+        }
+      ]
+    },
+    "whitney_glen_properties": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "pid",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "address",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "owner",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "style",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "beds",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "baths",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "half_baths",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "sqft",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "year_built",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "assessed_value",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "appraised_value",
+          "type": "numeric",
+          "nullable": true
+        }
+      ]
+    },
+    "whitney_glen_sales": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "property_id",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "address",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "buyer",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "sale_price",
+          "type": "numeric",
+          "nullable": true
+        },
+        {
+          "name": "sale_date",
+          "type": "date",
+          "nullable": true
+        },
+        {
+          "name": "book_page",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "sqft",
+          "type": "integer",
+          "nullable": true
+        }
+      ]
+    }
+  }
+}

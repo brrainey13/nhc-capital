@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# dashboard-guard — Prevents direct uvicorn manipulation outside deploy-dashboard
+#
+# This script is meant to be sourced or called as a pre-check.
+# It verifies that dashboard processes are only managed through
+# the official deploy-dashboard script.
+#
+# Usage: scripts/dashboard-guard check
+#        scripts/dashboard-guard lock    (called by deploy-dashboard)
+#        scripts/dashboard-guard unlock  (called by deploy-dashboard)
+
+set -euo pipefail
+
+LOCK_FILE="/tmp/.nhc-deploy-lock"
+DEPLOY_SCRIPT="scripts/deploy-dashboard"
+
+case "${1:-check}" in
+  lock)
+    echo "$$" > "$LOCK_FILE"
+    ;;
+  unlock)
+    rm -f "$LOCK_FILE"
+    ;;
+  check)
+    echo "╔═══════════════════════════════════════════════════╗"
+    echo "║  ⛔ DASHBOARD PROCESS GUARD                      ║"
+    echo "╠═══════════════════════════════════════════════════╣"
+    echo "║  Do NOT directly run:                            ║"
+    echo "║    - uvicorn (start/stop/restart)                ║"
+    echo "║    - pkill uvicorn                               ║"
+    echo "║    - npm run build (in admin-dashboard)          ║"
+    echo "║                                                  ║"
+    echo "║  ALL dashboard operations must go through:       ║"
+    echo "║    scripts/deploy-dashboard --all                ║"
+    echo "║                                                  ║"
+    echo "║  Which enforces:                                 ║"
+    echo "║    1. Must be on main branch                     ║"
+    echo "║    2. Clean working tree (no uncommitted code)   ║"
+    echo "║    3. Synced with origin/main                    ║"
+    echo "║    4. GitHub CI pipeline passed                  ║"
+    echo "║    5. HEAD from merged PR (not direct push)      ║"
+    echo "║    6. Lint + test pass locally                   ║"
+    echo "║    7. Blue-green health checks                   ║"
+    echo "╚═══════════════════════════════════════════════════╝"
+    ;;
+  *)
+    echo "Usage: dashboard-guard [check|lock|unlock]"
+    exit 1
+    ;;
+esac

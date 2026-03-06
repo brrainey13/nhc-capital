@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# setup-dashboard-user — Create nhc-dashboard macOS user for process isolation
+#
+# Run ONCE by a human with admin privileges.
+# After setup, dashboard runs under nhc-dashboard and agents can't kill it.
+#
+# Usage: sudo scripts/setup-dashboard-user
+
+set -euo pipefail
+
+USERNAME="nhc-dashboard"
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
+if [ "$(id -u)" -ne 0 ]; then
+  echo "❌ Must run as root: sudo scripts/setup-dashboard-user"
+  exit 1
+fi
+
+if id "$USERNAME" &>/dev/null; then
+  echo "✅ User '$USERNAME' already exists"
+else
+  echo "Creating service user '$USERNAME'..."
+  NEXT_UID=$(dscl . -list /Users UniqueID | awk '{print $2}' | sort -n | tail -1)
+  NEXT_UID=$((NEXT_UID + 1))
+
+  dscl . -create /Users/$USERNAME
+  dscl . -create /Users/$USERNAME UserShell /usr/bin/false
+  dscl . -create /Users/$USERNAME RealName "NHC Dashboard Service"
+  dscl . -create /Users/$USERNAME UniqueID "$NEXT_UID"
+  dscl . -create /Users/$USERNAME PrimaryGroupID 20
+  dscl . -create /Users/$USERNAME NFSHomeDirectory /var/empty
+  dscl . -create /Users/$USERNAME IsHidden 1
+  echo "✅ User '$USERNAME' created (UID: $NEXT_UID)"
+fi
+
+chmod -R o+rX "$REPO_ROOT/admin-dashboard/"
+mkdir -p /var/log/nhc-dashboard
+chown $USERNAME:staff /var/log/nhc-dashboard
+
+echo ""
+echo "✅ Setup complete. Next steps:"
+echo "   sudo cp $REPO_ROOT/scripts/com.nhc.dashboard.plist /Library/LaunchDaemons/"
+echo "   sudo launchctl load /Library/LaunchDaemons/com.nhc.dashboard.plist"

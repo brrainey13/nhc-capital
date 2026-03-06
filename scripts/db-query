@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# db-query — Read-only database access for agents
+#
+# This is the ONLY way agents should query the database.
+# Uses nhc_agent role (SELECT only).
+#
+# Usage: scripts/db-query <database> "SELECT ..."
+# Usage: scripts/db-query <database> -f query.sql
+#
+# Databases: nhl_betting, real_estate, polymarket
+
+set -euo pipefail
+
+PSQL="/opt/homebrew/Cellar/postgresql@17/17.8/bin/psql"
+DB_USER="nhc_agent"
+
+if [ $# -lt 2 ]; then
+  echo "Usage: scripts/db-query <database> <sql-or-flags>"
+  echo "  scripts/db-query real_estate \"SELECT count(*) FROM ct_vision_parcels;\""
+  echo "  scripts/db-query nhl_betting -f query.sql"
+  exit 1
+fi
+
+DB="$1"
+shift
+
+case "$DB" in
+  nhl_betting|real_estate|cook_county|polymarket) ;;
+  *) echo "❌ Unknown database: $DB (allowed: nhl_betting, real_estate, polymarket)"; exit 1 ;;
+esac
+
+exec "$PSQL" -U "$DB_USER" -d "$DB" "$@"
