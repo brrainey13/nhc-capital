@@ -22,6 +22,7 @@ def _get_api_key():
     return os.environ.get("DASHBOARD_API_KEY")
 
 PUBLIC_PATHS = {"/api/health"}
+LOCALHOSTS = {"localhost", "127.0.0.1", "::1"}
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
@@ -37,8 +38,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request, call_next):
         path = request.url.path
+        hostname = (request.url.hostname or "").lower()
 
         if path in PUBLIC_PATHS:
+            return await call_next(request)
+
+        if hostname in LOCALHOSTS:
             return await call_next(request)
 
         # 1. Cloudflare Access email header (set by Cloudflare tunnel)
@@ -65,5 +70,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         configured_key = _get_api_key()
         if configured_key and api_key == configured_key:
             return await call_next(request)
+        if api_key:
+            return JSONResponse(status_code=403, content={"detail": "Invalid API key"})
 
-        return JSONResponse(status_code=401, content={"detail": "Authentication required"})
+        return JSONResponse(status_code=403, content={"detail": "Authentication required"})

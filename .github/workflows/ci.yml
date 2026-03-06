@@ -132,6 +132,27 @@ jobs:
           python-version: "3.11"
       - run: python3 scripts/docs-guard
 
+  test-backend:
+    name: "Test: Backend"
+    runs-on: ubuntu-latest
+    needs: [lint]
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Create project venv
+        run: python -m venv nhl-betting/.venv
+      - name: Install project dependencies
+        run: |
+          nhl-betting/.venv/bin/pip install -r nhl-betting/requirements.txt
+          nhl-betting/.venv/bin/pip install -r admin-dashboard/backend/requirements.txt
+          nhl-betting/.venv/bin/pip install -r polymarket/requirements.txt
+          nhl-betting/.venv/bin/pip install -r real-estate/requirements.txt
+      - name: Run backend regression tests
+        run: nhl-betting/.venv/bin/python -m pytest tests/ -v
+
   schema-guard:
     name: "Guard: Schema"
     runs-on: ubuntu-latest

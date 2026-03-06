@@ -41,9 +41,15 @@ Read `docs/admin-dashboard.md` for full architecture, endpoints, and deploy proc
 | `/api/nl-query` | POST | Natural language → SQL (`db` param selects database) |
 | `/api/usage` | GET | OpenClaw session token usage + model aggregates + Claude rate-limit telemetry |
 | `/api/nhl/bankroll` | GET | Current bankroll balance + recent transactions |
+| `/api/nhl/bankroll/history` | GET | End-of-day balance history |
 | `/api/nhl/bankroll/deposit` | POST | Add bankroll funds |
 | `/api/nhl/bankroll/withdrawal` | POST | Remove bankroll funds |
 | `/api/nhl/bankroll/summary` | GET | Daily P/L, balance chart, win rate, ROI |
+| `/api/nhl/model/info` | GET | NHL LightGBM model metadata + feature importances from repo artifacts |
+| `/api/nhl/picks/today` | GET | Today's NHL picks with edge, probability, sizing, and strategy labels |
+| `/api/nhl/picks/history` | GET | Historical NHL picks for a trailing window with optional strategy filter |
+| `/api/nhl/odds/snapshot` | GET | Latest NHL odds snapshot grouped by game with source fallback |
+| `/api/nhl/model/strategies` | GET | Trailing-window NHL strategy performance for dashboard cards/charts |
 
 ## Multi-Database
 
@@ -56,6 +62,7 @@ Tables are **auto-discovered** from all configured databases on startup. No hard
 
 - Virtualized scrolling (@tanstack/react-virtual) — infinite scroll, loads 200 rows at a time
 - NHL bankroll tracker page — balance, manual ledger entry, transaction history, and chart
+- NHL model outputs page — model metadata, today's picks, history, strategy cards, and odds snapshot
 - Operator-based filters: "+ Add Filter" → column → operator → value. Stacked AND logic
 - Group-by with click-to-filter
 - NL Query page: "Ask in English" + "Raw SQL" toggle

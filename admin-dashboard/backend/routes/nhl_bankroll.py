@@ -202,3 +202,24 @@ async def get_bankroll_summary():
         "total_pl": total_pl,
         "total_staked": total_staked,
     }
+
+
+@router.get("/history")
+async def get_bankroll_history():
+    pool = get_pool("bankroll")
+    rows = await pool.fetch(
+        """
+        SELECT DISTINCT ON (event_date)
+               event_date,
+               balance
+        FROM bankroll
+        ORDER BY event_date, id DESC
+        """
+    )
+    return [
+        {
+            "date": str(row["event_date"]),
+            "balance": _money(row["balance"]),
+        }
+        for row in rows
+    ]
