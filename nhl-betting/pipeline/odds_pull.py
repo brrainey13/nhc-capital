@@ -1,12 +1,20 @@
 """
 Pull live odds from The Odds API.
 Sources: DraftKings, FanDuel, BetMGM, Hard Rock Bet.
+
+Optimized: pulls ALL markets in a single call per event (not separate calls).
+Stores every pull in odds_history table for historical tracking.
 """
 import os
 import time
+import uuid
 from collections import defaultdict
+from datetime import datetime, timedelta
 
+import psycopg2
+import pytz
 import requests
+from model.db_config import get_dsn
 
 API_KEYS = [
     k for k in [
@@ -16,17 +24,28 @@ API_KEYS = [
 ]
 if not API_KEYS:
     raise RuntimeError("ODDS_API_KEY not set — add it to admin-dashboard/.env")
-API_KEY = API_KEYS[0]  # Active key, rotated on quota exhaustion
+API_KEY = API_KEYS[0]
+_KEY_INDEX = 0
 BOOKS = "draftkings,fanduel,betmgm,hardrockbet"
 REGIONS = "us,us2"
+
+# All markets we care about — pulled in ONE call per event
+ALL_MARKETS = [
+    "player_points",
+    "player_assists",
+    "player_shots_on_goal",
+    "player_total_saves",
+    "player_goals",          # anytime goalscorer
+    "totals",                # game total O/U
+]
 
 
 def _rotate_key():
     """Switch to next API key if current is exhausted."""
-    global API_KEY
-    idx = API_KEYS.index(API_KEY) if API_KEY in API_KEYS else 0
-    next_idx = (idx + 1) % len(API_KEYS)
-    if next_idx != idx:
+    global API_KEY, _KEY_INDEX
+    next_idx = (_KEY_INDEX + 1) % len(API_KEYS)
+    if next_idx != _KEY_INDEX:
+        _KEY_INDEX = next_idx
         API_KEY = API_KEYS[next_idx]
         print(f"  ⚠️ Rotated to API key #{next_idx + 1}")
         return True
@@ -34,11 +53,7 @@ def _rotate_key():
 
 
 def _api_get(url_path, extra_params=None):
-    """Make an API request with automatic key rotation on quota exhaustion.
-
-    url_path: URL without apiKey param (e.g. "https://api.the-odds-api.com/v4/sports/")
-    extra_params: dict of additional query params
-    """
+    """Make an API request with automatic key rotation on quota exhaustion."""
     global API_KEY
     params = {"apiKey": API_KEY}
     if extra_params:
@@ -52,29 +67,13 @@ def _api_get(url_path, extra_params=None):
 
 
 def get_todays_events(date_str=None):
-    """Get tonight's NHL events from the Odds API.
-
-    Filters to games starting today (EST) by default.
-    Games at 7 PM EST = next day in UTC, so we check both.
-    """
-    from datetime import datetime, timedelta
-
-    import pytz
-
-    r = _api_get(
-        "https://api.the-odds-api.com/v4/sports/icehockey_nhl/events"
-    )
+    """Get tonight's NHL events from the Odds API."""
+    r = _api_get("https://api.the-odds-api.com/v4/sports/icehockey_nhl/events")
     events = r.json()
 
     if date_str:
-        events = [
-            e for e in events if date_str in e["commence_time"]
-        ]
+        events = [e for e in events if date_str in e["commence_time"]]
     else:
-        # Filter to tonight's games only
-        # Window: today at noon → tomorrow at 4 AM EST
-        # This catches all evening NHL games (typically 7-10 PM starts)
-        # without bleeding into next day's matinees
         est = pytz.timezone("America/New_York")
         now = datetime.now(est)
         window_start = now.replace(hour=12, minute=0, second=0, microsecond=0)
@@ -91,25 +90,41 @@ def get_todays_events(date_str=None):
     return events
 
 
-def pull_player_props(events, markets=None):
-    """Pull player prop lines for given events.
-
-    Args:
-        events: list of event dicts from get_todays_events
-        markets: list of market strings, default player_points + assists + SOG
+def pull_all_odds(events, markets=None):
+    """Pull ALL odds for given events in a single call per event.
 
     Returns:
-        list of prop dicts with game, book, market, player, side, line, odds
+        tuple: (all_props, game_totals_by_event)
+        - all_props: list of prop dicts (player markets)
+        - game_totals_by_event: dict of event_id -> best over total
     """
     if markets is None:
-        markets = ["player_points", "player_assists", "player_shots_on_goal"]
+        markets = ALL_MARKETS
 
     markets_str = ",".join(markets)
     all_props = []
+    game_totals = {}
+    pull_id = str(uuid.uuid4())
+    est = pytz.timezone("America/New_York")
+
+    # Collect rows for historical storage
+    history_rows = []
 
     for ev in events:
         eid = ev["id"]
         game = f"{ev['away_team']} @ {ev['home_team']}"
+        commence_time = ev.get("commence_time")
+
+        # Parse event date (EST)
+        if commence_time:
+            ct_dt = datetime.fromisoformat(
+                commence_time.replace("Z", "+00:00")
+            ).astimezone(est)
+            event_date = ct_dt.date()
+        else:
+            event_date = datetime.now(est).date()
+
+        # ONE call per event with ALL markets
         r = _api_get(
             f"https://api.the-odds-api.com/v4/sports/icehockey_nhl/"
             f"events/{eid}/odds",
@@ -122,10 +137,11 @@ def pull_player_props(events, markets=None):
         )
         d = r.json()
 
+        best_over = None
         for bk in d.get("bookmakers", []):
             for mkt in bk.get("markets", []):
                 for o in mkt.get("outcomes", []):
-                    all_props.append({
+                    row = {
                         "game": game,
                         "event_id": eid,
                         "book": bk["key"],
@@ -135,64 +151,106 @@ def pull_player_props(events, markets=None):
                         "side": o["name"],
                         "line": o.get("point", 0),
                         "odds": o["price"],
-                    })
+                    }
+
+                    # Historical storage row
+                    history_rows.append((
+                        pull_id,
+                        eid,
+                        str(event_date),
+                        ev["home_team"],
+                        ev["away_team"],
+                        commence_time,
+                        bk["key"],
+                        mkt["key"],
+                        o.get("description") or None,
+                        o["name"],
+                        o.get("point"),
+                        o["price"],
+                        _KEY_INDEX + 1,
+                    ))
+
+                    if mkt["key"] == "totals":
+                        if o["name"] == "Over":
+                            entry = {
+                                "game": game,
+                                "event_id": eid,
+                                "book": bk["key"],
+                                "book_title": bk["title"],
+                                "total": o.get("point", 0),
+                                "odds": o["price"],
+                            }
+                            if best_over is None or o["price"] > best_over["odds"]:
+                                best_over = entry
+                    else:
+                        all_props.append(row)
+
+        if best_over:
+            game_totals[eid] = best_over
+
         time.sleep(0.3)
 
-    return all_props
+    # Store historical odds
+    _store_odds_history(history_rows)
+
+    print(f"  📊 Stored {len(history_rows)} odds lines (pull {pull_id[:8]})")
+    return all_props, game_totals, pull_id
+
+
+def _store_odds_history(rows):
+    """Insert odds snapshot rows into odds_history table."""
+    if not rows:
+        return
+    try:
+        conn = psycopg2.connect(get_dsn().replace("nhc_agent", "nhc_etl"))
+        cur = conn.cursor()
+        from psycopg2.extras import execute_values
+        execute_values(
+            cur,
+            """INSERT INTO odds_history
+               (pull_id, event_id, event_date, home_team, away_team,
+                commence_time, book, market, player, side, line, odds, api_key_used)
+               VALUES %s""",
+            rows,
+        )
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"  ⚠️ Could not store odds history: {e}")
+
+
+# --- Backward-compatible wrappers ---
+# These call pull_all_odds internally so old code still works
+
+def pull_player_props(events, markets=None):
+    """Pull player prop lines for given events (backward compatible).
+
+    Now uses the optimized pull_all_odds internally.
+    """
+    if markets is None:
+        markets = ["player_points", "player_assists", "player_shots_on_goal"]
+
+    all_markets = list(set(markets + ["totals"]))
+    props, _, _ = pull_all_odds(events, markets=all_markets)
+
+    # Filter to requested markets only
+    if markets:
+        props = [p for p in props if p["market"] in markets]
+    return props
 
 
 def pull_game_totals(events):
-    """Pull game total O/U lines for given events.
+    """Pull game total O/U lines (backward compatible).
 
-    Returns dict keyed by event_id with best over line info.
+    Now uses the optimized pull_all_odds internally.
     """
-    totals = {}
-
-    for ev in events:
-        eid = ev["id"]
-        game = f"{ev['away_team']} @ {ev['home_team']}"
-        r = _api_get(
-            f"https://api.the-odds-api.com/v4/sports/icehockey_nhl/"
-            f"events/{eid}/odds",
-            extra_params={
-                "regions": REGIONS,
-                "markets": "totals",
-                "oddsFormat": "american",
-                "bookmakers": BOOKS,
-            },
-        )
-        d = r.json()
-
-        best_over = None
-        for bk in d.get("bookmakers", []):
-            for mkt in bk.get("markets", []):
-                for o in mkt.get("outcomes", []):
-                    if o["name"] == "Over":
-                        entry = {
-                            "game": game,
-                            "event_id": eid,
-                            "book": bk["key"],
-                            "book_title": bk["title"],
-                            "total": o.get("point", 0),
-                            "odds": o["price"],
-                        }
-                        if (
-                            best_over is None
-                            or o["price"] > best_over["odds"]
-                        ):
-                            best_over = entry
-        if best_over:
-            totals[eid] = best_over
-        time.sleep(0.3)
-
+    _, totals, _ = pull_all_odds(events, markets=["totals"])
     return totals
 
 
 def get_best_odds(props):
-    """Get best odds per player/market/side/line combo.
-
-    Returns dict keyed by (player, market, side, line).
-    """
+    """Get best odds per player/market/side/line combo."""
     best = defaultdict(lambda: None)
     for p in props:
         key = (p["player"], p["market"], p["side"], p["line"])
@@ -221,6 +279,6 @@ def check_quota():
 if __name__ == "__main__":
     events = get_todays_events()
     print(f"Events: {len(events)}")
-    props = pull_player_props(events[:1])  # test with 1 game
-    print(f"Props: {len(props)}")
+    props, totals, pid = pull_all_odds(events[:1])  # test with 1 game
+    print(f"Props: {len(props)} | Totals: {len(totals)}")
     print(f"Quota remaining: {check_quota()}")

@@ -34,8 +34,7 @@ from pipeline.odds_pull import (
     check_quota,
     get_best_odds,
     get_todays_events,
-    pull_game_totals,
-    pull_player_props,
+    pull_all_odds,
 )
 from pipeline.roster_refresh import refresh_rosters
 
@@ -277,11 +276,16 @@ def run_pipeline(date_str=None, max_risk=MAX_RISK, no_db=False):
     for ev in events:
         print(f"  {ev['away_team']} @ {ev['home_team']}")
 
-    props = pull_player_props(
+    # Single optimized pull: all player props + totals + saves in one call per game
+    all_props, all_game_totals, pull_id = pull_all_odds(
         events,
         markets=["player_points", "player_assists", "player_goals",
-                 "player_shots_on_goal"],
+                 "player_shots_on_goal", "player_total_saves", "totals"],
     )
+    # Filter to the markets we need for scoring
+    props = [p for p in all_props if p["market"] in
+             ("player_points", "player_assists", "player_goals",
+              "player_shots_on_goal")]
     print(f"Player prop lines: {len(props)}")
 
     best_odds = get_best_odds(props)
@@ -343,7 +347,7 @@ def run_pipeline(date_str=None, max_risk=MAX_RISK, no_db=False):
     )
     if flagged_games:
         print(f"\nFlagged {len(flagged_games)} games for total OVER check")
-        game_totals = pull_game_totals(events)
+        game_totals = all_game_totals  # already fetched in the single pull
         total_picks = run_game_total_over(
             flagged_games,
             game_totals,
