@@ -49,16 +49,12 @@ When working on `admin-dashboard/frontend/`:
 - Components < 200 LOC, TypeScript interfaces for props + API responses
 - `npm run build` must succeed before committing frontend changes
 
-## Available Reference Skills
+## Skills (skills.sh)
 
-Best-practice guides are installed at `~/.openclaw/workspace/skills/`:
-- `vercel/SKILL.md` — Vercel deployment, domains, env vars
-- `react/SKILL.md` — React patterns, hooks, components
-- `nextjs/SKILL.md` — Next.js App Router, SSR, API routes
-- `pandas/SKILL.md` — Pandas data analysis patterns
-- `python-dataviz/SKILL.md` — Python visualization libraries
-- `data-analysis/SKILL.md` — Statistical analysis, EDA
-- `frontend/SKILL.md` — Frontend design best practices
-- `tailwind-v4-shadcn/SKILL.md` — Tailwind v4 + shadcn/ui
+Use community skills from **[skills.sh](https://skills.sh)** for best practices:
+- **React/Next.js**: `npx skills find react performance` → use `vercel-react-best-practices`
+- **Pandas/Data**: `npx skills find pandas` → use `pandas-pro`
+- **Anything else**: `npx skills find <topic>` before writing custom code
 
-Read these when working on relevant tasks.
+Install: `npx skills add <owner/repo@skill-name>`
+Browse: https://skills.sh
