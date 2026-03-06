@@ -12,6 +12,9 @@ import urllib.request
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from model.bankroll import append_bankroll_event
+from model.db_config import get_dsn
+
 TRACKER_PATH = Path(__file__).parent.parent / "docs" / "PICK_TRACKER.md"
 API = "https://api-web.nhle.com/v1"
 
@@ -264,8 +267,8 @@ def grade_tracker(date_str=None):
     return result
 
 
-READ_DSN = "dbname=nhl_betting user=nhc_agent host=localhost port=5432"
-WRITE_DSN = "dbname=nhl_betting user=nhc_etl host=localhost port=5432"
+READ_DSN = get_dsn()
+WRITE_DSN = get_dsn()
 
 
 def _grade_pick_row(market, bet, line, actual_value):
@@ -329,7 +332,7 @@ def grade_from_db(date_str=None):
             cur.execute(
                 """
                 SELECT pick_id, player, player_team, market, bet, odds,
-                       line, units, dollars
+                       line, units, dollars, book
                 FROM nhl_picks
                 WHERE result IS NULL
                   AND pick_date = %s
@@ -356,7 +359,7 @@ def grade_from_db(date_str=None):
     total_profit = 0.0
     updates = []
 
-    for (pick_id, player, player_team, market, bet, odds, line, units, dollars) in rows:
+    for (pick_id, player, player_team, market, bet, odds, line, units, dollars, book) in rows:
         # Resolve actual value by market
         actual_value = None
 
@@ -388,7 +391,7 @@ def grade_from_db(date_str=None):
 
         if result is None:
             skipped += 1
-            updates.append((None, actual_value, None, pick_id))
+            updates.append((None, actual_value, None, pick_id, book))
             continue
 
         if hit:
@@ -399,14 +402,14 @@ def grade_from_db(date_str=None):
             losses += 1
 
         total_profit += pnl
-        updates.append((result, actual_value, round(pnl, 2), pick_id))
+        updates.append((result, actual_value, round(pnl, 2), pick_id, book))
 
     # Write updates via nhc_etl
     wconn = psycopg2.connect(WRITE_DSN)
     try:
         with wconn:
             with wconn.cursor() as cur:
-                for result, actual_value, pnl, pick_id in updates:
+                for result, actual_value, pnl, pick_id, book in updates:
                     if result is None and actual_value is None:
                         # No data — leave result NULL, just mark graded_at
                         cur.execute(
@@ -429,6 +432,26 @@ def grade_from_db(date_str=None):
                             """,
                             (result, actual_value, pnl, pick_id),
                         )
+                        cur.execute(
+                            """
+                            SELECT 1
+                            FROM bankroll
+                            WHERE event_type = 'bet_graded'
+                              AND pick_id = %s
+                            LIMIT 1
+                            """,
+                            (pick_id,),
+                        )
+                        if cur.fetchone() is None:
+                            append_bankroll_event(
+                                cur,
+                                event_date=date_str,
+                                event_type="bet_graded",
+                                amount=pnl or 0,
+                                pick_id=pick_id,
+                                sportsbook=book,
+                                notes=f"graded {result}",
+                            )
     finally:
         wconn.close()
 

@@ -13,7 +13,7 @@ read_when:
 
 Connection: `postgresql://connorrainey@localhost:5432/nhl_betting`
 
-### Table Inventory (28 tables, ~400K+ rows)
+### Table Inventory (29 tables, ~400K+ rows)
 
 | Table | Rows | Description |
 |---|---|---|
@@ -37,6 +37,7 @@ Connection: `postgresql://connorrainey@localhost:5432/nhl_betting`
 | `live_game_snapshots` | 0 | Live game state (empty) |
 | `predictions` | 0 | Model predictions (empty — not yet built) |
 | `model_runs` | 0 | Model run metadata (empty — not yet built) |
+| `bankroll` | growing | Bankroll ledger for deposits, withdrawals, stakes, and graded P/L |
 
 ### Non-NHL Tables (in same DB — should be migrated)
 
@@ -80,6 +81,14 @@ Located in `nhl-betting/model/`. **Model artifacts (`.pkl`, `.joblib`, etc.) are
 
 - `build_features.py` — Feature engineering, builds feature matrix from DB
 - `train_models.py` — Model training pipeline
+- `bankroll.py` — Shared bankroll sizing helpers and bankroll ledger utilities
+
+## Bankroll Tracking
+
+- `bankroll` is the source of truth for current balance and bankroll history.
+- Daily NHL pick sizing now reads the latest bankroll balance and uses `1u = 1%` of bankroll.
+- `pipeline/daily_picks.py` inserts a `bet_placed` row for every saved pick.
+- `pipeline/grade_picks.py` inserts a `bet_graded` row with realized P/L when results are written.
 
 ## Current Status (2026-02-16)
 

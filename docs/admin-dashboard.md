@@ -37,6 +37,10 @@ Browser → Cloudflare Tunnel + Access → localhost:8000 → FastAPI
 | `/api/query` | POST | Run arbitrary read-only SQL |
 | `/api/nl-query` | POST | Natural language → SQL via OpenRouter |
 | `/api/usage` | GET | OpenClaw session token usage + dashboard metrics (totals, windows, burn rate, trend, top consumers, freshness) |
+| `/api/nhl/bankroll` | GET | Current NHL bankroll balance + recent bankroll transactions |
+| `/api/nhl/bankroll/deposit` | POST | Add a manual bankroll deposit |
+| `/api/nhl/bankroll/withdrawal` | POST | Add a manual bankroll withdrawal |
+| `/api/nhl/bankroll/summary` | GET | Daily P/L, balance chart, win rate, ROI |
 
 ### Filtering (`/api/tables/{name}/data`)
 
@@ -69,6 +73,7 @@ Returns:
 ## Frontend Features
 
 - **Home usage dashboard** — KPI cards for totals, 24h activity, and burn rate
+- **Bankroll tracker** — current balance, manual deposits/withdrawals, transaction history, balance chart, win rate, ROI
 - **Top consumers ranking** — per-session token share + burn estimate + last update
 - **24h trend bars** — simple time-bucket activity signal from real session updates
 - **Data freshness strip** — generated timestamp + "latest session updated" staleness indicator

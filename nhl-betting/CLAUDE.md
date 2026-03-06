@@ -46,10 +46,12 @@ Read `docs/nhl-betting.md` for full schema, scraper docs, and project status.
 | `lineup_absences` | 11,289 | Lineup absence tracking |
 | `game_team_stats` | 11,064 | Per-game team-level stats |
 | `api_snapshots` | 26,030 | Raw API response snapshots |
+| `bankroll` | growing | Bankroll ledger for deposits, withdrawals, stakes, and graded P/L |
 
 ## Rules
 
 - **Never commit model artifacts** — `.pkl`, `.joblib`, `.h5`, `.pt` are gitignored
 - **All SQL must be parameterized** — no f-string injection
 - **Update `docs/nhl-betting.md`** when you add tables, scrapers, or change schema
+- Bankroll sizing is ledger-driven: use `model/bankroll.py` instead of hardcoded bankroll or unit constants
 - **`make ci` before commit** — always

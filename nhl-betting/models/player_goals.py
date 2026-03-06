@@ -36,7 +36,7 @@ def confidence_score(edge, odds):
     return "⚪ LOW"
 
 
-def run_anytime_goalscorer(best_odds, player_stats):
+def run_anytime_goalscorer(best_odds, player_stats, bankroll=None):
     """Generate OVER 0.5 goals (anytime goalscorer) picks.
 
     Args:
@@ -75,7 +75,7 @@ def run_anytime_goalscorer(best_odds, player_stats):
             # Estimate from goals per game if avg_sog not available
             avg_sog = stats.get("gpg", 0) * 8  # rough: ~8 SOG per goal
         if edge >= 0.05 and goal_rate >= 0.35 and avg_sog >= 2.5 and odds > 0:
-            units, dollars = kelly_size(edge, odds)
+            units, dollars = kelly_size(edge=edge, odds=odds, bankroll=bankroll)
             raw_picks.append({
                 **prop,
                 "goal_rate": goal_rate,

@@ -14,6 +14,7 @@ from collections import defaultdict
 from io import StringIO
 
 import pandas as pd
+from model.bankroll import kelly_size
 
 PSQL = "/opt/homebrew/Cellar/postgresql@17/17.8/bin/psql"
 DB = "nhl_betting"
@@ -101,33 +102,6 @@ def calc_edge(hit_rate, odds):
     return hit_rate - breakeven, breakeven
 
 
-def kelly_size(edge, odds, fraction=0.25, bankroll=2500):
-    """Quarter-Kelly bet sizing.
-
-    Args:
-        edge: estimated edge (hit_rate - breakeven)
-        odds: American odds
-        fraction: Kelly fraction (default 0.25 = quarter Kelly)
-        bankroll: current bankroll in dollars
-
-    Returns:
-        (units, dollars) tuple. Returns (0, 0) if negative edge.
-    """
-    if edge <= 0:
-        return 0.0, 0.0
-    if odds > 0:
-        b = odds / 100
-    else:
-        b = 100 / abs(odds)
-    p = edge + (1 / (b + 1))  # implied prob + edge
-    q = 1 - p
-    f_star = (b * p - q) / b
-    f_kelly = max(0, f_star * fraction)
-    dollars = round(f_kelly * bankroll, 2)
-    units = round(dollars / 25, 1)  # 1u = $25
-    return units, dollars
-
-
 def confidence_score_15(mp_rate, edge):
     """Confidence label for OVER 1.5 picks."""
     if (mp_rate >= 0.40 and edge >= 0.10) or (
@@ -150,7 +124,7 @@ def confidence_score_05(edge, odds):
     return "🟡 MEDIUM"
 
 
-def run_over_15(best_odds, player_stats):
+def run_over_15(best_odds, player_stats, bankroll=None):
     """Generate OVER 1.5 point picks.
 
     Args:
@@ -191,7 +165,7 @@ def run_over_15(best_odds, player_stats):
         edge, breakeven = calc_edge(est_prob, odds)
 
         if mp_rate >= 0.30 and edge > 0:
-            units, dollars = kelly_size(edge, odds)
+            units, dollars = kelly_size(edge=edge, odds=odds, bankroll=bankroll)
             raw_picks.append({
                 **prop,
                 "mp_rate": mp_rate,
@@ -222,7 +196,7 @@ def run_over_15(best_odds, player_stats):
     return filtered
 
 
-def run_over_05(best_odds, player_stats):
+def run_over_05(best_odds, player_stats, bankroll=None):
     """Generate OVER 0.5 point picks.
 
     Args:
@@ -251,7 +225,7 @@ def run_over_05(best_odds, player_stats):
         edge, breakeven = calc_edge(point_rate, odds)
 
         if edge >= 0.03 and point_rate >= 0.55:
-            units, dollars = kelly_size(edge, odds)
+            units, dollars = kelly_size(edge=edge, odds=odds, bankroll=bankroll)
             raw_picks.append({
                 **prop,
                 "point_rate": point_rate,

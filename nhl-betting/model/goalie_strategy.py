@@ -10,6 +10,7 @@ import lightgbm as lgb
 import numpy as np
 import pandas as pd
 import psycopg2
+from model.bankroll import kelly_size
 
 try:
     from .db_config import get_dsn
@@ -50,10 +51,6 @@ STRATEGY_MODEL_PARAMS = {
     "bagging_freq": 5,
     "verbose": -1,
 }
-
-BANKROLL = 2500
-UNIT = 25
-
 
 def load_feature_matrix() -> pd.DataFrame:
     """Load the historical feature matrix used by the research stack."""
@@ -116,21 +113,6 @@ def _odds_to_implied(odds: int | float) -> float:
     if odds < 0:
         return abs(odds) / (abs(odds) + 100)
     return 100 / (odds + 100)
-
-
-def _kelly_quarter(win_prob: float, odds: int | float) -> tuple[float, float]:
-    if odds < 0:
-        payout = 100 / abs(odds)
-    else:
-        payout = odds / 100
-
-    lose_prob = 1 - win_prob
-    fraction = (payout * win_prob - lose_prob) / payout
-    if fraction <= 0:
-        return 0, 0
-
-    dollars = BANKROLL * (fraction / 4)
-    return round(dollars / UNIT, 1), round(dollars, 2)
 
 
 def _fetch_team_context(cur, team_id: int, game_date) -> dict[str, float] | None:
@@ -384,7 +366,11 @@ def _build_live_goalie_features(events: list[dict], target_date: str) -> list[di
     return rows
 
 
-def run_live_goalie_saves(events: list[dict], target_date: str | None = None) -> list[dict]:
+def run_live_goalie_saves(
+    events: list[dict],
+    target_date: str | None = None,
+    bankroll=None,
+) -> list[dict]:
     """Run the live goalie saves strategy using the shared model stack."""
     if not events:
         return []
@@ -419,7 +405,11 @@ def run_live_goalie_saves(events: list[dict], target_date: str | None = None) ->
                 win_prob = 0.723
                 implied = _odds_to_implied(under_offer["odds"])
                 edge = win_prob - implied
-                units, dollars = _kelly_quarter(win_prob, under_offer["odds"])
+                units, dollars = kelly_size(
+                    win_prob=win_prob,
+                    odds=under_offer["odds"],
+                    bankroll=bankroll,
+                )
                 if edge > 0.02 and units > 0:
                     picks.append(
                         {
@@ -446,7 +436,11 @@ def run_live_goalie_saves(events: list[dict], target_date: str | None = None) ->
                 win_prob = 0.652
                 implied = _odds_to_implied(under_offer["odds"])
                 edge = win_prob - implied
-                units, dollars = _kelly_quarter(win_prob, under_offer["odds"])
+                units, dollars = kelly_size(
+                    win_prob=win_prob,
+                    odds=under_offer["odds"],
+                    bankroll=bankroll,
+                )
                 if edge > 0.02 and units > 0:
                     picks.append(
                         {
@@ -475,7 +469,11 @@ def run_live_goalie_saves(events: list[dict], target_date: str | None = None) ->
             win_prob = 0.64
             implied = _odds_to_implied(under_offer["odds"])
             edge = win_prob - implied
-            units, dollars = _kelly_quarter(win_prob, under_offer["odds"])
+            units, dollars = kelly_size(
+                win_prob=win_prob,
+                odds=under_offer["odds"],
+                bankroll=bankroll,
+            )
             if edge > 0.02 and units > 0 and not any(
                 p["player"] == row["player"] and p["sub_strategy"] == "MF2" for p in picks
             ):
@@ -515,7 +513,11 @@ def run_live_goalie_saves(events: list[dict], target_date: str | None = None) ->
             win_prob = 0.592
             implied = _odds_to_implied(over_offer["odds"])
             edge = win_prob - implied
-            units, dollars = _kelly_quarter(win_prob, over_offer["odds"])
+            units, dollars = kelly_size(
+                win_prob=win_prob,
+                odds=over_offer["odds"],
+                bankroll=bankroll,
+            )
             if edge > 0.02 and units > 0:
                 picks.append(
                     {

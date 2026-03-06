@@ -7,7 +7,7 @@ Auto-excludes players averaging >= 0.5 A/GP.
 from models.player_points import calc_edge, kelly_size
 
 
-def run_assists_under(best_odds, player_stats):
+def run_assists_under(best_odds, player_stats, bankroll=None):
     """Generate UNDER 0.5 assist picks.
 
     Args:
@@ -42,7 +42,7 @@ def run_assists_under(best_odds, player_stats):
         edge, breakeven = calc_edge(under_rate, odds)
 
         if edge >= 0.03:
-            units, dollars = kelly_size(edge, odds)
+            units, dollars = kelly_size(edge=edge, odds=odds, bankroll=bankroll)
             confidence = "🟢 HIGH" if edge >= 0.10 else "🟡 MEDIUM"
             picks.append({
                 **prop,

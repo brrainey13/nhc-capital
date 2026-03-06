@@ -4,6 +4,8 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+os.environ.setdefault("ALLOWED_EMAILS", "test@example.com")
+
 # Add backend to path so we can import modules
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -230,6 +232,28 @@ async def test_usage(client):
     assert "windows" in data
     assert "trend" in data
     assert "freshness" in data
+
+
+@pytest.mark.asyncio
+async def test_nhl_bankroll(client):
+    r = await client.get("/api/nhl/bankroll")
+    assert r.status_code == 200
+    data = r.json()
+    assert "current_balance" in data
+    assert "transactions" in data
+    assert isinstance(data["transactions"], list)
+
+
+@pytest.mark.asyncio
+async def test_nhl_bankroll_summary(client):
+    r = await client.get("/api/nhl/bankroll/summary")
+    assert r.status_code == 200
+    data = r.json()
+    assert "current_balance" in data
+    assert "balance_chart" in data
+    assert "daily_pl" in data
+    assert "win_rate" in data
+    assert "roi" in data
 
 
 @pytest.mark.asyncio

@@ -8,7 +8,7 @@ of stacking correlated player props.
 from models.player_points import calc_edge, kelly_size
 
 
-def run_game_total_over(flagged_event_ids, game_totals_data):
+def run_game_total_over(flagged_event_ids, game_totals_data, bankroll=None):
     """Generate game total OVER picks for flagged high-scoring games.
 
     Args:
@@ -48,7 +48,7 @@ def run_game_total_over(flagged_event_ids, game_totals_data):
         edge, breakeven = calc_edge(adj_hit_rate, odds)
 
         if edge > 0:
-            units, dollars = kelly_size(edge, odds)
+            units, dollars = kelly_size(edge=edge, odds=odds, bankroll=bankroll)
             confidence = "🟢 HIGH" if edge >= 0.05 else "🟡 MEDIUM"
             picks.append({
                 "strategy": "D: Game Total OVER",

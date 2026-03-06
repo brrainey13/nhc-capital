@@ -16,8 +16,10 @@ import sys
 import time
 import uuid
 from datetime import date
+from decimal import Decimal
 
 import requests
+from model.bankroll import append_bankroll_event, get_unit_size
 from model.db_config import get_dsn
 from models.game_totals import run_game_total_over
 from models.goalie_saves import run_goalie_saves
@@ -49,9 +51,21 @@ _MARKET_MAP = {
     "total_picks": "game_total",
 }
 
-BANKROLL = 2500  # Update as needed
-UNIT = 25
 MAX_RISK = None  # Set to cap total deployment (e.g., 500)
+
+
+def get_current_bankroll() -> Decimal:
+    """Read the latest bankroll balance from Postgres."""
+    import psycopg2
+
+    conn = psycopg2.connect(WRITE_DSN)
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT balance FROM bankroll ORDER BY id DESC LIMIT 1")
+            row = cur.fetchone()
+            return Decimal(str(row[0])) if row and row[0] is not None else Decimal("0.00")
+    finally:
+        conn.close()
 
 
 def fetch_player_season_stats(player_names):
@@ -170,7 +184,7 @@ def persist_picks(picks_by_market, pick_date_str, pipeline_run_id):
     """
     import psycopg2
 
-    INSERT = """
+    INSERT_PICK = """
         INSERT INTO nhl_picks (
             pick_date, pipeline_run_id, player, player_team, market,
             bet, book, odds, line, edge, model_prediction,
@@ -180,6 +194,7 @@ def persist_picks(picks_by_market, pick_date_str, pipeline_run_id):
             %s, %s, %s, %s, %s, %s,
             %s, %s, %s, %s
         )
+        RETURNING pick_id
     """
 
     conn = psycopg2.connect(WRITE_DSN)
@@ -189,7 +204,7 @@ def persist_picks(picks_by_market, pick_date_str, pipeline_run_id):
             with conn.cursor() as cur:
                 for market, picks in picks_by_market.items():
                     for p in picks:
-                        cur.execute(INSERT, (
+                        cur.execute(INSERT_PICK, (
                             pick_date_str,
                             pipeline_run_id,
                             p.get("player") or p.get("game"),
@@ -206,6 +221,18 @@ def persist_picks(picks_by_market, pick_date_str, pipeline_run_id):
                             p.get("confidence"),
                             p.get("sub_strategy"),
                         ))
+                        pick_id = cur.fetchone()[0]
+                        sportsbook = p.get("book_title") or p.get("book")
+                        dollars = Decimal(str(p.get("dollars") or 0))
+                        append_bankroll_event(
+                            cur,
+                            event_date=pick_date_str,
+                            event_type="bet_placed",
+                            amount=-dollars,
+                            pick_id=pick_id,
+                            sportsbook=sportsbook,
+                            notes=f"{market}: {p.get('bet')}",
+                        )
                         inserted += 1
     finally:
         conn.close()
@@ -216,11 +243,14 @@ def run_pipeline(date_str=None, max_risk=MAX_RISK, no_db=False):
     """Run the daily picks pipeline and return the picks."""
     pipeline_run_id = str(uuid.uuid4())
     pick_date_str = date_str if date_str else date.today().isoformat()
+    bankroll = get_current_bankroll()
+    unit = get_unit_size(bankroll)
 
     # === PRE-FLIGHT ===
     print("=" * 70)
     print("PRE-FLIGHT: ROSTER REFRESH")
     print("=" * 70)
+    print(f"Current bankroll: ${bankroll:.2f} | Unit (1%): ${unit:.2f}")
     roster_result = refresh_rosters(verbose=False)
     print(
         f"Rosters: {roster_result['updates']} updates, "
@@ -271,31 +301,31 @@ def run_pipeline(date_str=None, max_risk=MAX_RISK, no_db=False):
     print("=" * 70)
 
     # Strategy C: OVER 1.5 pts
-    over_15 = run_over_15(best_odds, player_stats)
+    over_15 = run_over_15(best_odds, player_stats, bankroll=bankroll)
     print(f"\nStrategy C — OVER 1.5 pts: {len(over_15)} picks")
     for p in over_15:
         print_pick(p, "C")
 
     # Strategy B2: OVER 0.5 pts
-    over_05 = run_over_05(best_odds, player_stats)
+    over_05 = run_over_05(best_odds, player_stats, bankroll=bankroll)
     print(f"\nStrategy B2 — OVER 0.5 pts: {len(over_05)} picks")
     for p in over_05[:15]:
         print_pick(p, "B2")
 
     # Strategy B1: Assists UNDER
-    assists_under = run_assists_under(best_odds, player_stats)
+    assists_under = run_assists_under(best_odds, player_stats, bankroll=bankroll)
     print(f"\nStrategy B1 — Assists UNDER 0.5: {len(assists_under)} picks")
     for p in assists_under[:5]:
         print_pick(p, "B1")
 
     # Strategy E: Anytime Goalscorer
-    goalscorer = run_anytime_goalscorer(best_odds, player_stats)
+    goalscorer = run_anytime_goalscorer(best_odds, player_stats, bankroll=bankroll)
     print(f"\nStrategy E — Anytime Goalscorer: {len(goalscorer)} picks")
     for p in goalscorer[:10]:
         print_pick(p, "E")
 
     # Strategy A: Goalie Saves (MF3, MF2, PF1)
-    goalie_picks = run_goalie_saves(best_odds, events)
+    goalie_picks = run_goalie_saves(best_odds, events, bankroll=bankroll)
     print(f"\nStrategy A — Goalie Saves: {len(goalie_picks)} picks")
     for p in goalie_picks:
         odds = p["odds"]
@@ -314,7 +344,11 @@ def run_pipeline(date_str=None, max_risk=MAX_RISK, no_db=False):
     if flagged_games:
         print(f"\nFlagged {len(flagged_games)} games for total OVER check")
         game_totals = pull_game_totals(events)
-        total_picks = run_game_total_over(flagged_games, game_totals)
+        total_picks = run_game_total_over(
+            flagged_games,
+            game_totals,
+            bankroll=bankroll,
+        )
         print(f"Strategy D — Game Total OVER: {len(total_picks)} picks")
         for p in total_picks:
             odds_str = (
