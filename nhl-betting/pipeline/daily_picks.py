@@ -18,6 +18,7 @@ import uuid
 from datetime import date
 
 import requests
+from model.db_config import get_dsn
 from models.game_totals import run_game_total_over
 from models.goalie_saves import run_goalie_saves
 from models.player_assists import run_assists_under
@@ -36,7 +37,7 @@ from pipeline.odds_pull import (
 )
 from pipeline.roster_refresh import refresh_rosters
 
-WRITE_DSN = "dbname=nhl_betting user=nhc_etl host=localhost port=5432"
+WRITE_DSN = get_dsn()
 
 # market tag by strategy source list name
 _MARKET_MAP = {
@@ -211,25 +212,8 @@ def persist_picks(picks_by_market, pick_date_str, pipeline_run_id):
     return inserted
 
 
-def main():
-    date_str = None
-    max_risk = MAX_RISK
-    no_db = False
-    args = sys.argv[1:]
-    i = 0
-    while i < len(args):
-        if args[i] == "--date" and i + 1 < len(args):
-            date_str = args[i + 1]
-            i += 2
-        elif args[i] == "--max-risk" and i + 1 < len(args):
-            max_risk = float(args[i + 1])
-            i += 2
-        elif args[i] == "--no-db":
-            no_db = True
-            i += 1
-        else:
-            i += 1
-
+def run_pipeline(date_str=None, max_risk=MAX_RISK, no_db=False):
+    """Run the daily picks pipeline and return the picks."""
     pipeline_run_id = str(uuid.uuid4())
     pick_date_str = date_str if date_str else date.today().isoformat()
 
@@ -433,6 +417,29 @@ def main():
     if not no_db:
         print(f"PIPELINE RUN ID: {pipeline_run_id}")
     print("=" * 70)
+    return all_picks
+
+
+def main():
+    date_str = None
+    max_risk = MAX_RISK
+    no_db = False
+    args = sys.argv[1:]
+    i = 0
+    while i < len(args):
+        if args[i] == "--date" and i + 1 < len(args):
+            date_str = args[i + 1]
+            i += 2
+        elif args[i] == "--max-risk" and i + 1 < len(args):
+            max_risk = float(args[i + 1])
+            i += 2
+        elif args[i] == "--no-db":
+            no_db = True
+            i += 1
+        else:
+            i += 1
+
+    run_pipeline(date_str=date_str, max_risk=max_risk, no_db=no_db)
 
 
 if __name__ == "__main__":

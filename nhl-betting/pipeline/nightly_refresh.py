@@ -12,8 +12,9 @@ import urllib.request
 from datetime import datetime, timedelta
 
 import psycopg2
+from model.db_config import get_dsn
 
-DB = "dbname=nhl_betting user=connorrainey"
+DB = get_dsn()
 API = "https://api-web.nhle.com/v1"
 
 

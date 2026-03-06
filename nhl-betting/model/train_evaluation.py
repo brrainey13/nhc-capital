@@ -15,6 +15,35 @@ from train_data_prep import (
 from train_utils import calc_payout, walk_forward_split
 
 
+def _predict_adjusted_saves(frame, shot_features, svpct_features, pull_features, model_a, model_b, model_c):
+    """Run the three-model stack on an arbitrary frame."""
+    pred_shots = model_a.predict(frame[shot_features].fillna(-999))
+    pred_svpct = model_b.predict(frame[svpct_features].fillna(-999))
+
+    pred_pull = np.zeros(len(frame))
+    if model_c is not None and pull_features:
+        pull_mask = frame[pull_features].notna().any(axis=1)
+        if pull_mask.any():
+            pred_pull[pull_mask.to_numpy()] = model_c.predict_proba(
+                frame.loc[pull_mask, pull_features].fillna(-999)
+            )[:, 1]
+
+    pred_saves = pred_shots * pred_svpct
+    pred_saves_adj = pred_saves * (1 - 0.4 * pred_pull)
+    return pred_shots, pred_svpct, pred_pull, pred_saves, pred_saves_adj
+
+
+def _empirical_over_probabilities(train_actual, train_pred, val_lines, val_pred):
+    """Calibrate over probabilities from the training residual distribution only."""
+    residuals = np.sort(np.asarray(train_actual) - np.asarray(train_pred))
+    if len(residuals) == 0:
+        return np.full(len(val_pred), 0.5)
+
+    thresholds = np.asarray(val_lines) - np.asarray(val_pred)
+    over_counts = len(residuals) - np.searchsorted(residuals, thresholds, side='right')
+    return np.clip(over_counts / len(residuals), 0.01, 0.99)
+
+
 def combined_prediction_and_ev(matrix):
     """Combine shot volume * save% models, find +EV bets."""
     print(f"\n{'='*60}")
@@ -27,6 +56,7 @@ def combined_prediction_and_ev(matrix):
 
     splits = walk_forward_split(matrix)
     all_ev_results = []
+    fold_metrics = []
 
     for split in splits:
         train_df = split['train'].dropna(subset=['shots_against', 'save_pct'])
@@ -44,40 +74,47 @@ def combined_prediction_and_ev(matrix):
         shot_params.pop('n_estimators', None)
         model_a = lgb.LGBMRegressor(**shot_params, n_estimators=500)
         model_a.fit(train_df[shot_features].fillna(-999), train_df['shots_against'])
-        pred_shots = model_a.predict(val_df[shot_features].fillna(-999))
-
         svpct_params = get_svpct_params(5)
         svpct_params.pop('n_estimators', None)
         model_b = lgb.LGBMRegressor(**svpct_params, n_estimators=500)
         model_b.fit(train_df[svpct_features].fillna(-999), train_df['save_pct'])
-        pred_svpct = model_b.predict(val_df[svpct_features].fillna(-999))
 
         pull_train = train_df.dropna(subset=['was_pulled'])
-        pull_val = val_df.dropna(subset=['was_pulled'])
         pull_available = [c for c in pull_features if c in pull_train.columns]
 
-        pred_pull = np.zeros(len(val_df))
+        model_c = None
         if len(pull_available) > 0 and len(pull_train) > 50:
             pull_p = get_pull_params(5)
             pull_p.pop('n_estimators', None)
             model_c = lgb.LGBMClassifier(**pull_p, n_estimators=500)
             model_c.fit(pull_train[pull_available].fillna(-999), pull_train['was_pulled'])
-            if len(pull_val) > 0:
-                pred_pull_subset = model_c.predict_proba(pull_val[pull_available].fillna(-999))[:, 1]
-                pred_pull = np.zeros(len(val_df))
-                pred_pull[val_df.index.isin(pull_val.index)] = pred_pull_subset
 
-        pred_saves = pred_shots * pred_svpct
-        pred_saves_adj = pred_saves * (1 - 0.4 * pred_pull)
+        pred_shots, pred_svpct, pred_pull, pred_saves, pred_saves_adj = _predict_adjusted_saves(
+            val_df, shot_features, svpct_features, pull_available, model_a, model_b, model_c
+        )
+        _, _, _, _, train_saves_adj = _predict_adjusted_saves(
+            train_df, shot_features, svpct_features, pull_available, model_a, model_b, model_c
+        )
 
-        val_result = val_df[['event_date', 'player_name', 'line', 'over_odds', 'under_odds',
-                             'saves', 'shots_against', 'went_over', 'went_under', 'was_pulled',
-                             'opening_line', 'fair_probability', 'market_ev']].copy()
+        base_cols = [
+            'event_date', 'player_name', 'line', 'over_odds', 'under_odds',
+            'saves', 'shots_against', 'went_over', 'went_under', 'was_pulled',
+            'opening_line', 'line_movement', 'fair_probability', 'market_ev',
+        ]
+        val_result = val_df[[col for col in base_cols if col in val_df.columns]].copy()
         val_result['pred_saves'] = pred_saves
         val_result['pred_saves_adj'] = pred_saves_adj
         val_result['pred_shots'] = pred_shots
         val_result['pred_svpct'] = pred_svpct
         val_result['pred_pull_prob'] = pred_pull
+        if 'opening_line' not in val_result.columns:
+            val_result['opening_line'] = val_result['line']
+        if 'line_movement' not in val_result.columns:
+            val_result['line_movement'] = val_result['line'] - val_result['opening_line']
+        if 'fair_probability' not in val_result.columns:
+            val_result['fair_probability'] = np.nan
+        if 'market_ev' not in val_result.columns:
+            val_result['market_ev'] = np.nan
 
         def american_to_prob(odds):
             odds = np.array(odds, dtype=float)
@@ -86,8 +123,12 @@ def combined_prediction_and_ev(matrix):
         val_result['implied_over'] = american_to_prob(val_result['over_odds'])
         val_result['implied_under'] = american_to_prob(val_result['under_odds'])
 
-        val_result['pred_over_prob'] = 0.5 + (val_result['pred_saves_adj'] - val_result['line']) * 0.05
-        val_result['pred_over_prob'] = val_result['pred_over_prob'].clip(0.1, 0.9)
+        val_result['pred_over_prob'] = _empirical_over_probabilities(
+            train_df['saves'],
+            train_saves_adj,
+            val_result['line'],
+            val_result['pred_saves_adj'],
+        )
         val_result['pred_under_prob'] = 1 - val_result['pred_over_prob']
 
         over_payout = calc_payout(val_result['over_odds'])
@@ -101,6 +142,12 @@ def combined_prediction_and_ev(matrix):
 
         val_result['split'] = split['name']
         all_ev_results.append(val_result)
+        fold_metrics.append({
+            'split': split['name'],
+            'model_mae_vs_line': mean_absolute_error(val_result['saves'], val_result['pred_saves_adj']),
+            'book_line_mae': mean_absolute_error(val_result['saves'], val_result['line']),
+            'pred_shots_mae': mean_absolute_error(val_result['shots_against'], val_result['pred_shots']),
+        })
 
     if not all_ev_results:
         print("  No valid results")
@@ -112,6 +159,13 @@ def combined_prediction_and_ev(matrix):
     print(f"  Total predictions: {len(results)}")
     print(f"  Pred saves MAE: {mean_absolute_error(results['saves'], results['pred_saves_adj']):.2f}")
     print(f"  Pred shots MAE: {mean_absolute_error(results['shots_against'], results['pred_shots']):.2f}")
+    print("\n  --- Fold MAE vs Book ---")
+    for metric in fold_metrics:
+        delta = metric['model_mae_vs_line'] - metric['book_line_mae']
+        print(
+            f"  {metric['split']}: model MAE {metric['model_mae_vs_line']:.3f} | "
+            f"book MAE {metric['book_line_mae']:.3f} | delta {delta:+.3f}"
+        )
 
     for ev_threshold in [0.0, 0.03, 0.05, 0.08, 0.10]:
         bets = results[results['best_ev'] > ev_threshold]
@@ -152,6 +206,7 @@ def combined_prediction_and_ev(matrix):
         print(f"    Avg saves normal: {not_pulled['saves'].mean():.1f} (line: {not_pulled['line'].mean():.1f})")
         print(f"    Under hit rate normal: {not_pulled['went_under'].mean():.1%}")
 
+    results.attrs['fold_metrics'] = fold_metrics
     return results
 
 

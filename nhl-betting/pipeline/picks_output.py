@@ -3,12 +3,12 @@
 
 import json
 import logging
-import os
 from datetime import datetime
 
 import psycopg2
+from model.db_config import get_database_url
 
-DB_CONN = os.environ.get("DATABASE_URL", "postgresql://nhc_agent@localhost:5432/nhl_betting")
+DB_CONN = get_database_url()
 log = logging.getLogger(__name__)
 
 
