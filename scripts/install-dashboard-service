@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+# Install the NHC Dashboard as a macOS LaunchAgent (auto-start + auto-restart).
+#
+# Usage: scripts/install-dashboard-service
+#
+# What it does:
+#   1. Generates plist from template (replaces __REPO_ROOT__ / __HOME__)
+#   2. Creates log directory
+#   3. Copies to ~/Library/LaunchAgents/
+#   4. Loads the service (starts uvicorn immediately)
+#
+# To uninstall:
+#   launchctl unload ~/Library/LaunchAgents/com.nhc.dashboard.plist
+#   rm ~/Library/LaunchAgents/com.nhc.dashboard.plist
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+TEMPLATE="$SCRIPT_DIR/com.nhc.dashboard.plist"
+TARGET="$HOME/Library/LaunchAgents/com.nhc.dashboard.plist"
+LOG_DIR="/tmp/nhc-dashboard"
+VENV_PYTHON="$REPO_ROOT/admin-dashboard/.venv/bin/python"
+
+echo "╔══════════════════════════════════════╗"
+echo "║  NHC Dashboard — Service Installer   ║"
+echo "╚══════════════════════════════════════╝"
+echo ""
+
+# Preflight checks
+if [ ! -f "$TEMPLATE" ]; then
+  echo "❌ Template not found: $TEMPLATE"
+  exit 1
+fi
+
+if [ ! -f "$VENV_PYTHON" ]; then
+  echo "❌ Venv not found: $VENV_PYTHON"
+  echo "   Run: scripts/setup-venvs admin-dashboard"
+  exit 1
+fi
+
+if [ ! -f "$REPO_ROOT/admin-dashboard/backend/main.py" ]; then
+  echo "❌ Backend not found: $REPO_ROOT/admin-dashboard/backend/main.py"
+  exit 1
+fi
+
+# Unload existing if running
+if launchctl list | grep -q com.nhc.dashboard 2>/dev/null; then
+  echo "⏸  Unloading existing service..."
+  launchctl unload "$TARGET" 2>/dev/null || true
+fi
+
+# Create log directory
+mkdir -p "$LOG_DIR"
+echo "✅ Log directory: $LOG_DIR"
+
+# Generate plist from template
+echo "📝 Generating plist..."
+sed -e "s|__REPO_ROOT__|$REPO_ROOT|g" \
+    -e "s|__HOME__|$HOME|g" \
+    "$TEMPLATE" > "$TARGET"
+echo "✅ Installed: $TARGET"
+
+# Load the service
+echo "🚀 Loading service..."
+launchctl load "$TARGET"
+sleep 2
+
+# Verify
+code=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:8000/api/health" 2>/dev/null || echo "000")
+if [ "$code" = "200" ]; then
+  echo "✅ Dashboard is running (health: HTTP 200)"
+else
+  echo "⚠️  Dashboard health check: HTTP $code (may still be starting)"
+  echo "   Check logs: $LOG_DIR/uvicorn.log"
+fi
+
+echo ""
+echo "Done. Dashboard will auto-start on boot and auto-restart if it crashes."
+echo ""
+echo "Commands:"
+echo "  Check status:  curl http://localhost:8000/api/health"
+echo "  View logs:     tail -f $LOG_DIR/uvicorn.log"
+echo "  Stop:          launchctl unload $TARGET"
+echo "  Restart:       launchctl unload $TARGET && launchctl load $TARGET"
