@@ -148,9 +148,9 @@ if [ "$relaxed_mode" = true ]; then
   echo "   ⚠️  RELAXED MODE: skipping dashboard lint + test checks"
 else
   echo "   Linting dashboard..."
-  ruff check admin-dashboard/ || { echo "❌ Dashboard lint failed — aborting"; exit 1; }
+  $VENV_PYTHON -m ruff check admin-dashboard/ || { echo "❌ Dashboard lint failed — aborting"; exit 1; }
   echo "   Testing dashboard..."
-  pytest admin-dashboard/ -v --tb=short || { echo "❌ Dashboard tests failed — aborting"; exit 1; }
+  $VENV_PYTHON -m pytest admin-dashboard/ -v --tb=short || { echo "❌ Dashboard tests failed — aborting"; exit 1; }
   echo "✅ Dashboard CI passed (other projects not checked — decoupled)"
 fi
 echo ""

@@ -79,7 +79,7 @@ async def test_health_no_auth(anon_client):
 @pytest.mark.asyncio
 async def test_api_requires_auth(anon_client):
     r = await anon_client.get("/api/tables")
-    assert r.status_code == 401
+    assert r.status_code == 403
 
 
 @pytest.mark.asyncio
