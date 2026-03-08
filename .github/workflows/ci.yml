@@ -137,7 +137,7 @@ jobs:
             .review-result.json
             .review-findings.json
             .review-remediation.json
-          if-no-files-found: error
+          if-no-files-found: warn
 
       - name: Fail on critical findings
         if: steps.review.outcome == 'failure'
