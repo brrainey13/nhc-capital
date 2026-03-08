@@ -64,32 +64,41 @@ pr_json=$(curl -sf \
   "https://api.github.com/repos/brrainey13/nhc-capital/commits/${remote_sha}/pulls" 2>/dev/null || echo "[]")
 
 # Check: at least one merged PR is associated with this commit
-merged_pr=$(echo "$pr_json" | python3 -c "
+# Output TSV: <pr_number>\t<pr_title>\t<head_sha>
+pr_meta=$(echo "$pr_json" | python3 -c "
 import json, sys
 try:
     prs = json.load(sys.stdin)
     merged = [p for p in prs if p.get('merged_at') and p.get('base',{}).get('ref') == 'main']
     if merged:
-        print(f'PR #{merged[0][\"number\"]}: {merged[0][\"title\"]}')
+        pr = merged[0]
+        num = pr.get('number', '')
+        title = (pr.get('title', '') or '').replace('\t', ' ').replace('\n', ' ')
+        head = pr.get('head', {}).get('sha', '')
+        print(f'{num}\t{title}\t{head}')
     else:
         print('')
-except:
+except Exception:
     print('')
 " 2>/dev/null)
 
-if [ -z "$merged_pr" ]; then
+if [ -z "$pr_meta" ]; then
   log "🚫 DEPLOY BLOCKED — commit ${remote_sha:0:8} is NOT from an approved merged PR"
   log "   Only merged PRs trigger auto-deploy. Direct pushes are rejected."
   notify_discord "🚫 **Auto-deploy BLOCKED** — \`${remote_sha:0:8}\` not from a merged PR. Skipping."
   exit 0
 fi
 
-log "   ✅ Verified: $merged_pr"
+IFS=$'\t' read -r pr_number pr_title pr_head_sha <<< "$pr_meta"
+check_sha="${pr_head_sha:-$remote_sha}"
 
-# Check: CI check runs passed on this commit (GitHub Actions uses check runs, not statuses)
+log "   ✅ Verified: PR #${pr_number}: ${pr_title}"
+log "   🔎 CI source SHA: ${check_sha:0:8} (PR head)"
+
+# Check: CI check runs passed on PR head SHA (not merge commit SHA)
 ci_result=$(curl -sf \
   -H "Accept: application/vnd.github+json" \
-  "https://api.github.com/repos/brrainey13/nhc-capital/commits/${remote_sha}/check-runs" 2>/dev/null || echo "{}")
+  "https://api.github.com/repos/brrainey13/nhc-capital/commits/${check_sha}/check-runs" 2>/dev/null || echo "{}")
 
 ci_verdict=$(echo "$ci_result" | python3 -c "
 import json, sys
@@ -121,18 +130,18 @@ except Exception as e:
 " 2>/dev/null)
 
 if [ "$ci_verdict" = "none" ]; then
-  log "⚠️ No CI check runs found for ${remote_sha:0:8} — skipping (will retry next cycle)"
+  log "⚠️ No CI check runs found for ${check_sha:0:8} — skipping (will retry next cycle)"
   exit 0
 fi
 
 if [ "$ci_verdict" = "pending" ]; then
-  log "⏳ CI still running for ${remote_sha:0:8} — will retry next cycle"
+  log "⏳ CI still running for ${check_sha:0:8} — will retry next cycle"
   exit 0
 fi
 
 if [ "$ci_verdict" != "success" ]; then
-  log "🚫 DEPLOY BLOCKED — CI checks: $ci_verdict for ${remote_sha:0:8}"
-  notify_discord "🚫 **Auto-deploy BLOCKED** — CI checks \`$ci_verdict\` for \`${remote_sha:0:8}\`. Need all green."
+  log "🚫 DEPLOY BLOCKED — CI checks: $ci_verdict for ${check_sha:0:8}"
+  notify_discord "🚫 **Auto-deploy BLOCKED** — CI checks \`$ci_verdict\` for PR head \`${check_sha:0:8}\`. Need all green."
   exit 0
 fi
 

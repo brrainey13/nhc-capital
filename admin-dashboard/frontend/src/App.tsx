@@ -6,6 +6,7 @@ import {
   type ColumnDef,
 } from '@tanstack/react-table'
 import { useVirtualizer } from '@tanstack/react-virtual'
+import Dashboard from './Dashboard'
 
 const API = '/api'
 
@@ -17,39 +18,6 @@ interface ExampleQuery { label: string; sql: string }
 interface PreviewData {
   table: string; database: string; row_count: number; column_count: number
   schema: SchemaColumn[]; columns: string[]; sample_rows: Record<string, unknown>[]
-}
-interface SessionInfo {
-  key: string; label: string; total_tokens: number; input_tokens: number
-  output_tokens: number; context_window: number; model: string; updated_at: string | null
-  age_hours?: number | null; share_pct?: number; burn_rate_24h_est?: number
-}
-interface UsageData {
-  sessions: SessionInfo[]
-  totals: { total_tokens: number; input_tokens: number; output_tokens: number; session_count: number }
-  models: Array<{
-    model: string; total_tokens: number; input_tokens: number; output_tokens: number
-    session_count: number
-    top_sessions: Array<{ key: string; label: string; total_tokens: number; updated_at: string | null; share_within_model_pct: number }>
-  }>
-  claude_rate_limit: { status: 'active' | 'limited' | 'unknown'; reset_at: string | null; seconds_until_reset: number | null; reason: string | null; source: string }
-  windows: Record<string, { hours: number; session_count: number; total_tokens: number; input_tokens: number; output_tokens: number; burn_rate_tokens_per_hour: number }>
-  top_consumers: Array<{ key: string; label: string; total_tokens: number; share_pct: number; updated_at: string | null; burn_rate_24h_est: number }>
-  trend: { window_hours: number; bucket_minutes: number; buckets: Array<{ start: string | null; end: string | null; session_count: number; total_tokens: number }> }
-  freshness: { generated_at: string; latest_session_update_at: string | null; staleness_seconds: number | null }
-}
-interface OAuthUsage {
-  five_hour?: { utilization: number; resets_at: string }
-  seven_day?: { utilization: number; resets_at: string }
-  extra_usage?: { is_enabled: boolean; monthly_limit: number; used_credits: number }
-}
-interface ClaudeCosts {
-  daily_costs: Array<{ date: string; cost: number; tokens: number }>
-  total_cost_7d: number
-  total_tokens_7d: number
-  models_7d: Record<string, { tokens: number; cost: number }>
-  fetched_at: string
-  error?: string
-  oauth?: OAuthUsage
 }
 interface ActiveFilter { id: string; column: string; operator: string; value: string; value2?: string }
 
@@ -176,25 +144,6 @@ function fmtCompact(n: number): string {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M'
   if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K'
   return String(n)
-}
-function fmtAge(seconds: number | null | undefined): string {
-  if (seconds == null) return '—'
-  if (seconds < 60) return `${seconds}s ago`
-  const mins = Math.floor(seconds / 60)
-  if (mins < 60) return `${mins}m ago`
-  const hrs = Math.floor(mins / 60)
-  if (hrs < 48) return `${hrs}h ago`
-  const days = Math.floor(hrs / 24)
-  return `${days}d ago`
-}
-function fmtCountdown(seconds: number): string {
-  const safe = Math.max(seconds, 0)
-  const days = Math.floor(safe / 86400)
-  const hours = Math.floor((safe % 86400) / 3600)
-  const mins = Math.floor((safe % 3600) / 60)
-  const secs = safe % 60
-  if (days > 0) return `${days}d ${hours}h ${mins}m`
-  return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
 }
 
 let filterId = 0
@@ -856,10 +805,6 @@ export default function App() {
   const mobile = useIsMobile()
   const [page, setPage] = useState<Page>('home')
   const [tables, setTables] = useState<TableInfo[]>([])
-  const [usage, setUsage] = useState<UsageData | null>(null)
-  const [usageLoadFailed, setUsageLoadFailed] = useState(false)
-  const [claudeCosts, setClaudeCosts] = useState<ClaudeCosts | null>(null)
-  const [nowMs, setNowMs] = useState(Date.now())
 
   // Explorer state: tree → detail → data
   const [explorerView, setExplorerView] = useState<ExplorerView>('tree')
@@ -895,28 +840,6 @@ export default function App() {
 
   useEffect(() => {
     fetch(`${API}/tables`).then(r => r.ok ? r.json() : []).then(data => setTables(Array.isArray(data) ? data : [])).catch(() => setTables([]))
-  }, [])
-
-  useEffect(() => {
-    const t = window.setInterval(() => setNowMs(Date.now()), 1000)
-    return () => window.clearInterval(t)
-  }, [])
-
-  useEffect(() => {
-    fetch(`${API}/usage`)
-      .then(r => r.ok ? r.json() : null)
-      .then(data => {
-        if (data && data.freshness && data.totals) { setUsage(data as UsageData); setUsageLoadFailed(false) }
-        else { setUsage(null); setUsageLoadFailed(true) }
-      })
-      .catch(() => { setUsage(null); setUsageLoadFailed(true) })
-  }, [])
-
-  useEffect(() => {
-    fetch(`${API}/usage/claude-limits`)
-      .then(r => r.ok ? r.json() : null)
-      .then(data => { if (data) setClaudeCosts(data as ClaudeCosts) })
-      .catch(() => {})
   }, [])
 
   const totalRows = tables.reduce((s, t) => s + t.row_count, 0)
@@ -955,154 +878,7 @@ export default function App() {
 
         {/* HOME */}
         {page === 'home' && (
-          <div style={{ overflow: 'auto', height: '100%' }}>
-            <h2 style={{ fontSize: mobile ? 18 : 20, fontWeight: 700, margin: '0 0 8px', color: C.white }}>Dashboard</h2>
-            {usage ? (
-              <>
-                <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 14 }}>
-                  Updated {fmtDate(usage.freshness.generated_at)} · latest session {fmtAge(usage.freshness.staleness_seconds)}
-                </div>
-                {/* Rate limit card */}
-                <div style={{ ...cardDark, marginBottom: 16 }}>
-                  <div style={{ fontSize: 12, color: C.textSecondary, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Claude Rate Limit</div>
-                  <div style={{ display: 'flex', alignItems: mobile ? 'flex-start' : 'center', justifyContent: 'space-between', gap: 10, flexDirection: mobile ? 'column' : 'row' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{ fontSize: 12, color: C.textMuted }}>Status</span>
-                      <span style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: usage.claude_rate_limit.status === 'limited' ? C.danger : usage.claude_rate_limit.status === 'active' ? C.success : C.textMuted }}>{usage.claude_rate_limit.status}</span>
-                    </div>
-                    <div style={{ fontSize: 12, color: C.textSecondary }}>{usage.claude_rate_limit.reset_at ? `Resets ${fmtDate(usage.claude_rate_limit.reset_at)}` : 'reset time unavailable'}</div>
-                  </div>
-                  {usage.claude_rate_limit.reset_at ? (
-                    <div style={{ marginTop: 8, fontSize: 20, fontWeight: 700, color: C.white, fontVariantNumeric: 'tabular-nums' }}>{fmtCountdown(Math.max(Math.floor((new Date(usage.claude_rate_limit.reset_at).getTime() - nowMs) / 1000), 0))}</div>
-                  ) : (
-                    <div style={{ marginTop: 8, fontSize: 12, color: C.textMuted }}>{usage.claude_rate_limit.reason || 'Reset time unavailable.'}</div>
-                  )}
-                </div>
-                {/* Usage Progress Bars (OAuth) */}
-                {claudeCosts?.oauth && (
-                  <div style={{ display: 'grid', gap: 10, marginBottom: 16, gridTemplateColumns: mobile ? '1fr' : '1fr 1fr' }}>
-                    {claudeCosts.oauth.five_hour && (
-                      <div style={{ ...cardDark, padding: 14 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                          <span style={{ fontSize: 11, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>5-Hour Session</span>
-                          <span style={{ fontSize: 13, fontWeight: 700, color: claudeCosts.oauth.five_hour.utilization > 0.8 ? C.danger : claudeCosts.oauth.five_hour.utilization > 0.5 ? '#f59e0b' : C.success }}>{Math.round(claudeCosts.oauth.five_hour.utilization * 100)}%</span>
-                        </div>
-                        <div style={{ height: 8, background: C.surfaceActive, borderRadius: 4, overflow: 'hidden' }}>
-                          <div style={{ height: '100%', width: `${Math.min(claudeCosts.oauth.five_hour.utilization * 100, 100)}%`, background: claudeCosts.oauth.five_hour.utilization > 0.8 ? C.danger : claudeCosts.oauth.five_hour.utilization > 0.5 ? '#f59e0b' : C.success, borderRadius: 4, transition: 'width 0.3s' }} />
-                        </div>
-                        <div style={{ fontSize: 11, color: C.textMuted, marginTop: 4 }}>Resets {fmtDate(claudeCosts.oauth.five_hour.resets_at)}</div>
-                      </div>
-                    )}
-                    {claudeCosts.oauth.seven_day && (
-                      <div style={{ ...cardDark, padding: 14 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                          <span style={{ fontSize: 11, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>7-Day Rolling</span>
-                          <span style={{ fontSize: 13, fontWeight: 700, color: claudeCosts.oauth.seven_day.utilization > 0.8 ? C.danger : claudeCosts.oauth.seven_day.utilization > 0.5 ? '#f59e0b' : C.success }}>{Math.round(claudeCosts.oauth.seven_day.utilization * 100)}%</span>
-                        </div>
-                        <div style={{ height: 8, background: C.surfaceActive, borderRadius: 4, overflow: 'hidden' }}>
-                          <div style={{ height: '100%', width: `${Math.min(claudeCosts.oauth.seven_day.utilization * 100, 100)}%`, background: claudeCosts.oauth.seven_day.utilization > 0.8 ? C.danger : claudeCosts.oauth.seven_day.utilization > 0.5 ? '#f59e0b' : C.success, borderRadius: 4, transition: 'width 0.3s' }} />
-                        </div>
-                        <div style={{ fontSize: 11, color: C.textMuted, marginTop: 4 }}>Resets {fmtDate(claudeCosts.oauth.seven_day.resets_at)}</div>
-                      </div>
-                    )}
-                  </div>
-                )}
-                {/* Stat cards */}
-                <div style={{ display: 'grid', gap: 10, marginBottom: 16, gridTemplateColumns: mobile ? 'repeat(2, 1fr)' : 'repeat(auto-fill, minmax(180px, 1fr))' }}>
-                  <StatCard label="Weekly Cost" value={claudeCosts ? `$${claudeCosts.total_cost_7d.toFixed(2)}` : '—'} accent />
-                  <StatCard label="Total Tokens" value={fmtCompact(usage.totals.total_tokens)} sub={mobile ? undefined : fmtNum(usage.totals.total_tokens)} />
-                  <StatCard label="Active (24h)" value={String(usage.windows.last_24h?.session_count ?? 0)} />
-                  <StatCard label="Burn Rate (24h)" value={`${fmtCompact(Math.round(usage.windows.last_24h?.burn_rate_tokens_per_hour ?? 0))}/h`} />
-                </div>
-                {/* 7-Day Cost Chart */}
-                {claudeCosts && claudeCosts.daily_costs.length > 0 && (
-                  <div style={{ ...cardDark, marginBottom: 16 }}>
-                    <div style={{ fontSize: 12, color: C.textSecondary, marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.04em' }}>7-Day Cost</div>
-                    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 100 }}>
-                      {claudeCosts.daily_costs.map((d, i) => {
-                        const max = Math.max(...claudeCosts.daily_costs.map(x => x.cost), 0.01)
-                        const h = Math.max(6, Math.round((d.cost / max) * 88))
-                        const dayLabel = d.date ? new Date(d.date + 'T12:00:00').toLocaleDateString([], { weekday: 'short' }) : ''
-                        return (
-                          <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-                            <span style={{ fontSize: 10, color: C.textMuted, fontVariantNumeric: 'tabular-nums' }}>${d.cost.toFixed(2)}</span>
-                            <div title={`${d.date} · $${d.cost.toFixed(2)} · ${fmtNum(d.tokens)} tokens`} style={{ width: '100%', height: h, background: 'linear-gradient(180deg, rgba(79,140,255,0.3) 0%, rgba(79,140,255,0.08) 100%)', border: `1px solid ${C.accentDim}50`, borderRadius: 4 }} />
-                            <span style={{ fontSize: 10, color: C.textMuted }}>{dayLabel}</span>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )}
-                {/* Cost by Model */}
-                {claudeCosts && Object.keys(claudeCosts.models_7d).length > 0 && (
-                  <div style={{ ...cardDark, marginBottom: 16 }}>
-                    <div style={{ fontSize: 12, color: C.textSecondary, marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Cost by Model (7d)</div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      {Object.entries(claudeCosts.models_7d).sort(([,a], [,b]) => b.cost - a.cost).map(([model, data]) => {
-                        const pct = claudeCosts.total_cost_7d > 0 ? (data.cost / claudeCosts.total_cost_7d) * 100 : 0
-                        return (
-                          <div key={model} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                                <span style={{ fontSize: 12, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{model}</span>
-                                <span style={{ fontSize: 12, fontWeight: 600, color: C.white, flexShrink: 0, marginLeft: 8 }}>${data.cost.toFixed(2)}</span>
-                              </div>
-                              <div style={{ height: 4, background: C.surfaceActive, borderRadius: 2, overflow: 'hidden' }}>
-                                <div style={{ height: '100%', width: `${pct}%`, background: C.accent, borderRadius: 2 }} />
-                              </div>
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )}
-                {/* Top Consumers */}
-                <h3 style={{ fontSize: 13, fontWeight: 600, color: C.textSecondary, margin: '0 0 10px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Top Consumers</h3>
-                <div style={{ ...cardDark, padding: 0, overflow: 'hidden' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: mobile ? '1.4fr 1fr 1fr' : '1.8fr 1fr 1fr 1fr 1fr', padding: '10px 12px', fontSize: 11, color: C.textMuted, borderBottom: `1px solid ${C.border}` }}>
-                    <div>Session</div><div>Total</div><div>Share</div>{!mobile && <><div>Burn/h</div><div>Updated</div></>}
-                  </div>
-                  {(usage.top_consumers.length ? usage.top_consumers : usage.sessions.slice(0, 10)).map(s => (
-                    <div key={s.key} style={{ display: 'grid', gridTemplateColumns: mobile ? '1.4fr 1fr 1fr' : '1.8fr 1fr 1fr 1fr 1fr', padding: '10px 12px', fontSize: 12, borderBottom: `1px solid ${C.border}` }}>
-                      <div style={{ color: C.white, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.label}</div>
-                      <div>{fmtCompact(s.total_tokens)}</div>
-                      <div>{(s.share_pct ?? 0).toFixed(1)}%</div>
-                      {!mobile && <><div>{fmtCompact(Math.round(s.burn_rate_24h_est ?? 0))}</div><div style={{ color: C.textMuted }}>{fmtDate(s.updated_at)}</div></>}
-                    </div>
-                  ))}
-                </div>
-                {/* Model Usage */}
-                <h3 style={{ fontSize: 13, fontWeight: 600, color: C.textSecondary, margin: '16px 0 10px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Model Usage</h3>
-                <div style={{ ...cardDark, padding: 0, overflow: 'hidden', marginBottom: mobile ? 16 : 0 }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: mobile ? '1.6fr 1fr' : '1.8fr 1fr 1fr 1fr', padding: '10px 12px', fontSize: 11, color: C.textMuted, borderBottom: `1px solid ${C.border}` }}>
-                    <div>Model</div><div>Total</div>{!mobile && <><div>Input / Output</div><div>Sessions</div></>}
-                  </div>
-                  {(usage.models ?? []).slice().sort((a, b) => b.total_tokens - a.total_tokens).map(m => (
-                    <div key={m.model} style={{ padding: '10px 12px', borderBottom: `1px solid ${C.border}` }}>
-                      <div style={{ display: 'grid', gridTemplateColumns: mobile ? '1.6fr 1fr' : '1.8fr 1fr 1fr 1fr', fontSize: 12 }}>
-                        <div style={{ color: C.white, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.model}</div>
-                        <div>{fmtCompact(m.total_tokens)}</div>
-                        {!mobile && <><div>{fmtCompact(m.input_tokens)} / {fmtCompact(m.output_tokens)}</div><div>{m.session_count}</div></>}
-                      </div>
-                      {m.top_sessions.length > 0 && (
-                        <div style={{ marginTop: 6, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                          {m.top_sessions.map(ts => <span key={ts.key} style={{ fontSize: 11, color: C.textMuted }}>{ts.label} {Math.round(ts.share_within_model_pct)}%</span>)}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </>
-            ) : (
-              <div style={{ ...cardDark }}>
-                <div style={{ color: C.textMuted, fontSize: 13 }}>
-                  {usageLoadFailed ? 'Unable to load usage data. Refresh and sign in again.' : 'Loading usage data…'}
-                </div>
-              </div>
-            )}
-          </div>
+          <Dashboard mobile={mobile} />
         )}
 
         {/* DATA EXPLORER — Tree → Detail → Full Data */}
@@ -1226,16 +1002,6 @@ export default function App() {
 }
 
 /* ── Small components ── */
-
-function StatCard({ label, value, sub, accent }: { label: string; value: string; sub?: string; accent?: boolean }) {
-  return (
-    <div style={{ ...cardDark, padding: 14 }}>
-      <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>{label}</div>
-      <div style={{ fontSize: 22, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: accent ? C.accent : C.white, letterSpacing: '-0.02em' }}>{value}</div>
-      {sub && <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>{sub}</div>}
-    </div>
-  )
-}
 
 /* ── Styles ── */
 

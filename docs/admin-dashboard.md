@@ -78,12 +78,12 @@ Returns:
 
 ## Frontend Features
 
-- **Home usage dashboard** — KPI cards for totals, 24h activity, and burn rate
+- **Ops command center home** — API/rate-limit status, token budget, 7-day cost tracking, active sessions, 24h burn chart, session activity table, and system-health cards from existing telemetry endpoints
 - **Bankroll tracker** — current balance, manual deposits/withdrawals, transaction history, balance chart, win rate, ROI
 - **NHL model outputs page** — LightGBM metadata, today's picks, 30-day history, strategy performance, and grouped odds snapshot
-- **Top consumers ranking** — per-session token share + burn estimate + last update
-- **24h trend bars** — simple time-bucket activity signal from real session updates
-- **Data freshness strip** — generated timestamp + "latest session updated" staleness indicator
+- **Session activity table** — per-session token share, burn estimate, model, and freshness coloring
+- **24h burn chart** — area chart of time-bucket activity signal from real session updates
+- **Data freshness strip** — generated timestamp + "latest session updated" staleness indicator with 30-second auto-refresh
 - **Virtualized scrolling** — @tanstack/react-virtual, infinite scroll, loads 200 rows at a time
 - **Operator-based filters** — "+ Add Filter" button → column → operator → value. Filter pills with × to remove
 - **Group-by** — in toolbar, click group value to auto-add filter
