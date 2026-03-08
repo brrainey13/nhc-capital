@@ -24,11 +24,13 @@ Branch protection on GitHub enforces:
 ```
 feature branch → git push origin → PR created → GitHub Actions:
   1. risk-policy-gate (classifies risk tier)
-  2. lint (ruff check)
-  3. docs-guard (front-matter validation)
-  4. test-projects (path-filtered: NHL/Poly/RE)
-  5. test-dashboard (path-filtered: admin-dashboard)
-  6. test-full (infra/shared changes)
+  2. code-review (posts SHA-tagged findings + machine output)
+  3. auto-fix-review-findings (helper job on CRITICAL review findings)
+  4. lint (ruff check)
+  5. docs-guard (front-matter validation)
+  6. test-projects (path-filtered: NHL/Poly/RE)
+  7. test-dashboard (path-filtered: admin-dashboard)
+  8. test-full (infra/shared changes)
   → Pipeline passes → Review → Merge
 ```
 
@@ -46,6 +48,8 @@ Files: `.github/workflows/*.yml`
 | Job | Stage | Runs When | What |
 |-----|-------|-----------|------|
 | `risk-policy-gate` | gate | All PRs | Classifies changes by risk tier |
+| `code-review` | review | All PRs | Runs `scripts/mr-review`, posts findings, writes `.review-findings.json` |
+| `auto-fix-review-findings` | helper | PRs with CRITICAL review findings | Runs `scripts/remediate --ci`, pushes fixes, triggers re-review |
 | `lint` | test | Always | `ruff check .` |
 | `docs-guard` | test | Always | Validates docs front-matter |
 | `test-projects` | test | NHL/Poly/RE changes | `pytest` on project tests |
@@ -81,6 +85,13 @@ gh pr create --title "feat: description"
 ```
 
 **NEVER push directly to main.** It will be rejected.
+
+## Auto-Remediation Guardrails
+
+- `scripts/mr-review --ci` always writes `.review-findings.json` and `.review-result.json`
+- Auto-fix only runs when the review output contains `CRITICAL` findings
+- Auto-fix commits include `[skip ci-review]`, so the next pipeline run skips the helper job
+- Attempts are capped at 3 per PR SHA and recorded in PR comments
 
 ## Reviewers
 

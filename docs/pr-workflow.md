@@ -18,9 +18,9 @@ PR opened/synchronized
   → Risk classifier (scripts/risk-classifier)
   → Compute required checks from risk-policy.json
   → Risk policy gate preflight (GitHub Actions: risk-policy-gate)
-  → Code review agent (NHC via scripts/mr-review, SHA-disciplined)
+  → Code review agent (NHC via scripts/mr-review, SHA-disciplined, writes .review-findings.json)
   → Review findings?
-    YES → Remediation agent fixes in-branch → push → loop back
+    YES → Auto-remediation helper (`scripts/remediate --ci`) fixes CRITICAL issues in-branch → push → loop back
     NO  → Resolve bot-only threads → Start CI test fanout
   → All required checks pass?
     YES → Human review + merge
@@ -32,7 +32,7 @@ PR opened/synchronized
 | Stage | Jobs | Purpose |
 |-------|------|---------|
 | `gate` | `risk-policy-gate` | Classify risk tier, compute required checks |
-| `review` | `lint`, `docs-guard`, `schema-guard`, `code-review` | Cheap validation + review state check |
+| `review` | `code-review`, `auto-fix-review-findings`, `lint`, `docs-guard`, `schema-guard` | Cheap validation + review state check + helper remediation |
 | `test` | `test-projects`, `test-dashboard`, `test-full` | Expensive CI (needs review to pass first) |
 | `notify` | `discord-notify` | Post result to Discord (main pushes only) |
 
@@ -67,7 +67,16 @@ Checks for:
 - Files > 500 LOC
 - New Python files without tests
 
-Flags: `--auto-resolve` (resolve bot-only threads), `--remediate` (output for fix agent), `--ci` (HTTP mode)
+Flags: `--auto-resolve` (resolve bot-only threads), `--remediate` (output for fix agent), `--machine` (write `.review-findings.json`), `--ci` (HTTP mode)
+
+## Auto-Remediation Loop
+
+- The review job uploads `.review-findings.json` and `.review-result.json` as workflow artifacts
+- If the current head SHA has CRITICAL findings, CI runs `scripts/remediate <PR> --ci`
+- Each attempt is posted back to the PR as `🔧 Auto-remediation attempt X/3`
+- Auto-fix commits use `fix: auto-remediate review findings [skip ci-review]`
+- The next pipeline run still re-reviews the new SHA, but skips the helper job to avoid loops
+- After 3 failed attempts on the same SHA, CI posts a human-review escalation comment and stops
 
 ## Branch Protection
 

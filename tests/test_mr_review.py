@@ -122,6 +122,34 @@ def test_has_rerun_request():
     assert mod.has_rerun_request([], "abc1234") is False
 
 
+def test_extract_first_changed_line():
+    """Should pull the added-side line number from a unified diff hunk."""
+    mod = load_mr_review()
+    diff = "@@ -10,2 +42,6 @@\n+danger = True\n"
+    assert mod.extract_first_changed_line(diff) == 42
+
+
+def test_normalize_findings_uppercases_severity():
+    """Machine-readable findings should normalize severity casing."""
+    mod = load_mr_review()
+    findings = [{
+        "file": "x.py",
+        "line": 12,
+        "severity": "critical",
+        "message": "Problem",
+        "suggestion": "Fix it",
+    }]
+    normalized = mod.normalize_findings(findings)
+    assert normalized == [{
+        "severity": "CRITICAL",
+        "file": "x.py",
+        "line": 12,
+        "message": "Problem",
+        "suggestion": "Fix it",
+        "category": "",
+    }]
+
+
 def test_review_exit_code_on_critical():
     """Review with critical findings should report non-zero intent."""
     findings = [
