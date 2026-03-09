@@ -8,6 +8,7 @@ import {
 import { useVirtualizer } from '@tanstack/react-virtual'
 import Dashboard from './Dashboard'
 import { ThemeToggle } from '@/components/ui/theme-toggle'
+import { cn } from '@/lib/utils'
 
 const API = '/api'
 
@@ -41,16 +42,6 @@ function useIsMobile(breakpoint = 768) {
     return () => window.removeEventListener('resize', handler)
   }, [breakpoint])
   return mobile
-}
-
-/* ── Colors ── */
-
-const C = {
-  bg: '#0f1117', surface: '#181a20', surfaceHover: '#1e2028', surfaceActive: '#252830',
-  border: '#2a2d37', borderLight: '#333642', text: '#e4e5e9', textSecondary: '#8b8f9a',
-  textMuted: '#5f6370', accent: '#4f8cff', accentDim: '#3a6fd8', accentBg: 'rgba(79,140,255,0.08)',
-  white: '#ffffff', danger: '#ef4444', dangerBg: 'rgba(239,68,68,0.1)', success: '#22c55e',
-  purple: '#a855f7', purpleBg: 'rgba(168,85,247,0.08)',
 }
 
 /* ── Table → Project grouping ── */
@@ -153,16 +144,23 @@ function nextFilterId() { return `f${++filterId}` }
 /* ── Type Badge ── */
 
 function TypeBadge({ type }: { type: string }) {
-  const bg = isNumericType(type) ? 'rgba(79,140,255,0.12)' : isDateType(type) ? 'rgba(168,85,247,0.12)' : 'rgba(255,255,255,0.06)'
-  const color = isNumericType(type) ? '#7ab0ff' : isDateType(type) ? '#c084fc' : C.textSecondary
-  return <span style={{ padding: '2px 8px', borderRadius: 4, fontSize: 10, fontWeight: 500, whiteSpace: 'nowrap', background: bg, color }}>{type}</span>
+  return (
+    <span className={cn(
+      'px-2 py-0.5 rounded text-[10px] font-medium whitespace-nowrap',
+      isNumericType(type) && 'bg-primary/10 text-primary',
+      isDateType(type) && 'bg-[hsl(var(--chart-3))]/10 text-[hsl(var(--chart-3))]',
+      !isNumericType(type) && !isDateType(type) && 'bg-foreground/5 text-muted-foreground',
+    )}>
+      {type}
+    </span>
+  )
 }
 
 /* ── Combo Box ── */
 
-function ComboBox({ value, onChange, tableName, column, placeholder, inputType, style: outerStyle, mobile }: {
+function ComboBox({ value, onChange, tableName, column, placeholder, inputType, className: outerClassName, mobile }: {
   value: string; onChange: (v: string) => void; tableName: string; column: string
-  placeholder?: string; inputType?: string; style?: React.CSSProperties; mobile?: boolean
+  placeholder?: string; inputType?: string; className?: string; mobile?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const [options, setOptions] = useState<string[]>([])
@@ -195,19 +193,23 @@ function ComboBox({ value, onChange, tableName, column, placeholder, inputType, 
   }, [])
 
   return (
-    <div ref={ref} style={{ position: 'relative', ...outerStyle }}>
+    <div ref={ref} className={cn('relative', outerClassName)}>
       <input type={inputType || 'text'} value={value} placeholder={placeholder || 'Value'}
         onFocus={() => setOpen(true)} onChange={e => { onChange(e.target.value); setOpen(true) }}
-        style={{ ...inputDark, width: '100%', boxSizing: 'border-box', height: mobile ? 44 : undefined }} />
+        className={cn('w-full rounded-md border border-border bg-muted px-2.5 py-1.5 text-[13px] text-foreground font-sans outline-none', mobile && 'h-11')} />
       {open && (
-        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 2, zIndex: 30, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 6, boxShadow: '0 6px 20px rgba(0,0,0,0.4)', maxHeight: mobile ? 260 : 200, overflowY: 'auto' }}>
-          {loading && <div style={{ padding: '8px 12px', fontSize: 11, color: C.textMuted }}>Loading…</div>}
-          {!loading && options.length === 0 && <div style={{ padding: '8px 12px', fontSize: 11, color: C.textMuted }}>No values</div>}
+        <div className={cn('absolute top-full left-0 right-0 mt-0.5 z-30 bg-card border border-border rounded-md shadow-xl overflow-y-auto', mobile ? 'max-h-[260px]' : 'max-h-[200px]')}>
+          {loading && <div className="px-3 py-2 text-[11px] text-muted-foreground">Loading…</div>}
+          {!loading && options.length === 0 && <div className="px-3 py-2 text-[11px] text-muted-foreground">No values</div>}
           {options.map((opt, i) => (
             <button key={i} onClick={() => { onChange(opt); setOpen(false) }}
-              style={{ width: '100%', padding: mobile ? '12px 12px' : '7px 12px', minHeight: mobile ? 44 : undefined, background: 'transparent', border: 'none', borderBottom: i < options.length - 1 ? `1px solid ${C.border}` : 'none', cursor: 'pointer', fontSize: mobile ? 14 : 12, fontFamily: 'inherit', color: C.text, textAlign: 'left' }}
-              onMouseEnter={e => (e.currentTarget.style.background = C.surfaceHover)}
-              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>{opt}</button>
+              className={cn(
+                'w-full px-3 py-1.5 bg-transparent border-none text-xs text-foreground text-left cursor-pointer font-sans hover:bg-muted',
+                mobile && 'py-3 min-h-[44px] text-sm',
+                i < options.length - 1 && 'border-b border-border',
+              )}>
+              {opt}
+            </button>
           ))}
         </div>
       )}
@@ -242,34 +244,44 @@ function FilterBar({ columns, typeMap, filters, onChange, mobile, tableName }: {
   function removeFilter(id: string) { onChange(filters.filter(f => f.id !== id)) }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: mobile ? 12 : 8 }}>
+    <div className={cn('flex flex-col', mobile ? 'gap-3' : 'gap-2')}>
       {filters.map(f => {
         const dt = typeMap[f.column] || ''
         const ops = operatorsForType(dt)
         const isBetween = f.operator === 'between'
         const inputType = isNumericType(dt) ? 'number' : isDateType(dt) ? 'date' : 'text'
         return (
-          <div key={f.id} style={{ display: 'flex', alignItems: mobile ? 'stretch' : 'center', gap: mobile ? 8 : 6, flexWrap: 'wrap', flexDirection: mobile ? 'column' : 'row' }}>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <select value={f.column} onChange={e => updateFilter(f.id, { column: e.target.value })} style={{ ...selectDark, flex: 1, height: mobile ? 44 : undefined, fontSize: mobile ? 14 : undefined }}>
+          <div key={f.id} className={cn('flex gap-1.5 flex-wrap', mobile ? 'flex-col items-stretch gap-2' : 'flex-row items-center')}>
+            <div className="flex gap-2">
+              <select value={f.column} onChange={e => updateFilter(f.id, { column: e.target.value })}
+                className={cn('rounded-md border border-border bg-muted px-2.5 py-1.5 text-[13px] text-foreground font-sans outline-none flex-1', mobile && 'h-11 text-sm')}>
                 {columns.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
-              <select value={f.operator} onChange={e => updateFilter(f.id, { operator: e.target.value })} style={{ ...selectDark, width: 110, height: mobile ? 44 : undefined, fontSize: mobile ? 14 : undefined }}>
+              <select value={f.operator} onChange={e => updateFilter(f.id, { operator: e.target.value })}
+                className={cn('rounded-md border border-border bg-muted px-2.5 py-1.5 text-[13px] text-foreground font-sans outline-none w-[110px]', mobile && 'h-11 text-sm')}>
                 {ops.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
-              <button onClick={() => removeFilter(f.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: mobile ? 22 : 18, color: C.textMuted, padding: '4px 6px', lineHeight: 1, minWidth: mobile ? 44 : undefined, minHeight: mobile ? 44 : undefined, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
+              <button onClick={() => removeFilter(f.id)}
+                className={cn('bg-transparent border-none cursor-pointer text-muted-foreground leading-none flex items-center justify-center', mobile ? 'text-[22px] p-1 min-w-[44px] min-h-[44px]' : 'text-lg px-1.5 py-1')}>
+                ×
+              </button>
             </div>
-            <ComboBox value={f.value} onChange={v => updateFilter(f.id, { value: v })} tableName={tableName} column={f.column} placeholder={isBetween ? 'Min' : 'Value'} inputType={inputType} mobile={mobile} style={{ width: mobile ? '100%' : isBetween ? 100 : 160 }} />
+            <ComboBox value={f.value} onChange={v => updateFilter(f.id, { value: v })} tableName={tableName} column={f.column} placeholder={isBetween ? 'Min' : 'Value'} inputType={inputType} mobile={mobile}
+              className={cn(mobile ? 'w-full' : isBetween ? 'w-[100px]' : 'w-[160px]')} />
             {isBetween && (
               <>
-                <span style={{ fontSize: 12, color: C.textMuted, textAlign: 'center' }}>to</span>
-                <ComboBox value={f.value2 ?? ''} onChange={v => updateFilter(f.id, { value2: v })} tableName={tableName} column={f.column} placeholder="Max" inputType={inputType} mobile={mobile} style={{ width: mobile ? '100%' : 100 }} />
+                <span className="text-xs text-muted-foreground text-center">to</span>
+                <ComboBox value={f.value2 ?? ''} onChange={v => updateFilter(f.id, { value2: v })} tableName={tableName} column={f.column} placeholder="Max" inputType={inputType} mobile={mobile}
+                  className={cn(mobile ? 'w-full' : 'w-[100px]')} />
               </>
             )}
           </div>
         )
       })}
-      <button onClick={addFilter} style={{ ...pillBtn, alignSelf: 'flex-start', minHeight: mobile ? 44 : undefined, fontSize: mobile ? 14 : 11, padding: mobile ? '10px 16px' : '5px 12px' }}>+ Add Filter</button>
+      <button onClick={addFilter}
+        className={cn('px-3 py-1 bg-muted border border-border rounded-md text-[11px] text-muted-foreground font-medium cursor-pointer font-sans self-start', mobile && 'min-h-[44px] text-sm px-4 py-2.5')}>
+        + Add Filter
+      </button>
     </div>
   )
 }
@@ -294,35 +306,35 @@ function TableDetailPanel({ tableName, onBrowse, onRunQuery, mobile }: {
     }).finally(() => setLoading(false))
   }, [tableName])
 
-  if (loading) return <div style={{ padding: 40, textAlign: 'center', color: C.textMuted }}>Loading…</div>
-  if (!preview) return <div style={{ padding: 40, textAlign: 'center', color: C.textMuted }}>Failed to load</div>
+  if (loading) return <div className="p-10 text-center text-muted-foreground">Loading…</div>
+  if (!preview) return <div className="p-10 text-center text-muted-foreground">Failed to load</div>
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, overflow: 'auto', height: '100%', paddingBottom: 24 }}>
+    <div className="flex flex-col gap-4 overflow-auto h-full pb-6">
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+      <div className="flex items-center justify-between flex-wrap gap-2.5">
         <div>
-          <h2 style={{ fontSize: mobile ? 18 : 22, fontWeight: 700, margin: 0, color: C.white }}>{tableName}</h2>
-          <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>
+          <h2 className={cn('font-bold text-foreground m-0', mobile ? 'text-lg' : 'text-[22px]')}>{tableName}</h2>
+          <div className="text-xs text-muted-foreground mt-1">
             {preview.database} · {fmtNum(preview.row_count)} rows · {preview.column_count} columns
           </div>
         </div>
-        <button onClick={onBrowse} style={{ ...pillBtn, background: C.accent, color: C.white, borderColor: C.accent, padding: '10px 20px', fontSize: 13, fontWeight: 600 }}>
+        <button onClick={onBrowse} className="bg-primary text-primary-foreground px-5 py-2.5 rounded-md border-none text-[13px] font-semibold cursor-pointer">
           Browse Full Data
         </button>
       </div>
 
       {/* Schema */}
-      <div style={{ ...cardDark }}>
-        <div style={{ fontSize: 11, fontWeight: 600, color: C.textSecondary, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>
+      <div className="rounded-lg border border-border bg-card p-3.5">
+        <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2.5">
           Schema ({preview.schema.length} columns)
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: mobile ? '1fr' : 'repeat(auto-fill, minmax(280px, 1fr))', gap: 4 }}>
+        <div className={cn('grid gap-1', mobile ? 'grid-cols-1' : 'grid-cols-[repeat(auto-fill,minmax(280px,1fr))]')}>
           {preview.schema.map(c => (
-            <div key={c.column_name} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 6, background: C.surfaceHover }}>
-              <span style={{ fontFamily: 'monospace', fontSize: 12, color: C.text, flex: 1 }}>{c.column_name}</span>
+            <div key={c.column_name} className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-muted">
+              <span className="font-mono text-xs text-foreground flex-1">{c.column_name}</span>
               <TypeBadge type={c.data_type} />
-              {c.is_nullable === 'YES' && <span style={{ fontSize: 9, color: C.textMuted }}>NULL</span>}
+              {c.is_nullable === 'YES' && <span className="text-[9px] text-muted-foreground">NULL</span>}
             </div>
           ))}
         </div>
@@ -330,22 +342,22 @@ function TableDetailPanel({ tableName, onBrowse, onRunQuery, mobile }: {
 
       {/* Sample Data */}
       {preview.sample_rows.length > 0 && (
-        <div style={{ ...cardDark, padding: 0, overflow: 'hidden' }}>
-          <div style={{ padding: '10px 14px', fontSize: 11, fontWeight: 600, color: C.textSecondary, textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: `1px solid ${C.border}` }}>
+        <div className="rounded-lg border border-border bg-card p-0 overflow-hidden">
+          <div className="px-3.5 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider border-b border-border">
             Sample Data (first {preview.sample_rows.length} rows)
           </div>
-          <div style={{ overflow: 'auto' }}>
-            <table style={{ minWidth: preview.columns.length * 140, borderCollapse: 'collapse', fontSize: 12 }}>
+          <div className="overflow-auto">
+            <table style={{ minWidth: preview.columns.length * 140 }} className="border-collapse text-xs">
               <thead>
-                <tr>{preview.columns.map(c => <th key={c} style={thDark}>{c}</th>)}</tr>
+                <tr>{preview.columns.map(c => <th key={c} className="px-3 py-2 text-left border-b-2 border-border text-[11px] font-semibold text-muted-foreground bg-card whitespace-nowrap overflow-hidden text-ellipsis uppercase tracking-wider">{c}</th>)}</tr>
               </thead>
               <tbody>
                 {preview.sample_rows.map((row, i) => (
-                  <tr key={i} style={{ borderBottom: `1px solid ${C.border}` }}>
+                  <tr key={i} className="border-b border-border">
                     {preview.columns.map(c => (
-                      <td key={c} style={tdDark}>
+                      <td key={c} className="px-3 py-1.5 max-w-[220px] overflow-hidden text-ellipsis whitespace-nowrap text-xs text-foreground">
                         {row[c] === null || row[c] === undefined
-                          ? <span style={{ color: C.textMuted, fontStyle: 'italic' }}>null</span>
+                          ? <span className="text-muted-foreground italic">null</span>
                           : String(row[c])}
                       </td>
                     ))}
@@ -359,18 +371,18 @@ function TableDetailPanel({ tableName, onBrowse, onRunQuery, mobile }: {
 
       {/* Example Queries */}
       {examples.length > 0 && (
-        <div style={{ ...cardDark }}>
-          <div style={{ fontSize: 11, fontWeight: 600, color: C.textSecondary, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>
+        <div className="rounded-lg border border-border bg-card p-3.5">
+          <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2.5">
             Example Queries
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div className="flex flex-col gap-2">
             {examples.map((ex, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: C.surfaceHover, borderRadius: 8, border: `1px solid ${C.border}` }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 500, color: C.text, marginBottom: 4 }}>{ex.label}</div>
-                  <pre style={{ margin: 0, fontSize: 11, fontFamily: 'monospace', color: C.textSecondary, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{ex.sql}</pre>
+              <div key={i} className="flex items-center gap-2.5 px-3 py-2.5 bg-muted rounded-lg border border-border">
+                <div className="flex-1 min-w-0">
+                  <div className="text-[13px] font-medium text-foreground mb-1">{ex.label}</div>
+                  <pre className="m-0 text-[11px] font-mono text-muted-foreground whitespace-pre-wrap break-all">{ex.sql}</pre>
                 </div>
-                <button onClick={() => onRunQuery(ex.sql)} style={{ ...pillBtn, background: C.accentBg, color: C.accent, borderColor: C.accent + '40', padding: '8px 14px', flexShrink: 0, fontWeight: 600 }}>
+                <button onClick={() => onRunQuery(ex.sql)} className="bg-primary/10 text-primary border border-primary/25 px-3.5 py-2 rounded-md font-semibold cursor-pointer shrink-0">
                   ▶ Run
                 </button>
               </div>
@@ -404,37 +416,45 @@ function MobileCardList({ data, columns, onLoadMore, hasMore, loading }: {
   }, [hasMore, loading, onLoadMore])
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-      <div style={{ position: 'sticky', top: 0, zIndex: 5, background: C.bg, padding: '8px 0', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8, flexShrink: 0 }}>
-        <button onClick={() => setShowColPicker(!showColPicker)} style={{ ...pillBtn, minHeight: 44, fontSize: 13, padding: '8px 14px' }}>Columns ({displayCols.length}/{columns.length})</button>
+    <div className="flex-1 flex flex-col min-h-0">
+      <div className="sticky top-0 z-[5] bg-background py-2 flex items-center justify-end gap-2 shrink-0">
+        <button onClick={() => setShowColPicker(!showColPicker)} className="px-3 py-1 bg-muted border border-border rounded-md text-[11px] text-muted-foreground font-medium cursor-pointer font-sans min-h-[44px] text-[13px] px-3.5 py-2">Columns ({displayCols.length}/{columns.length})</button>
       </div>
       {showColPicker && (
-        <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: 12, marginBottom: 8, maxHeight: 200, overflowY: 'auto' }}>
-          <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-            <button onClick={() => setVisibleCols(columns)} style={{ ...pillBtn, fontSize: 11 }}>All</button>
-            <button onClick={() => setVisibleCols(columns.slice(0, 5))} style={{ ...pillBtn, fontSize: 11 }}>First 5</button>
+        <div className="bg-card border border-border rounded-lg p-3 mb-2 max-h-[200px] overflow-y-auto">
+          <div className="flex gap-1.5 mb-2">
+            <button onClick={() => setVisibleCols(columns)} className="px-3 py-1 bg-muted border border-border rounded-md text-[11px] text-muted-foreground font-medium cursor-pointer font-sans">All</button>
+            <button onClick={() => setVisibleCols(columns.slice(0, 5))} className="px-3 py-1 bg-muted border border-border rounded-md text-[11px] text-muted-foreground font-medium cursor-pointer font-sans">First 5</button>
           </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          <div className="flex flex-wrap gap-1.5">
             {columns.map(col => {
               const active = displayCols.includes(col)
               return (
                 <button key={col} onClick={() => setVisibleCols(prev => { const cur = prev.length > 0 ? prev : columns.slice(0, 5); return active ? cur.filter(c => c !== col) : [...cur, col] })}
-                  style={{ ...pillBtn, fontSize: 12, minHeight: 44, padding: '8px 14px', background: active ? C.accentBg : C.surfaceActive, color: active ? C.accent : C.textSecondary, borderColor: active ? C.accent + '40' : C.borderLight }}>{col}</button>
+                  className={cn(
+                    'px-3 py-1 border rounded-md text-xs cursor-pointer font-sans min-h-[44px] px-3.5 py-2',
+                    active ? 'bg-primary/10 text-primary border-primary/25' : 'bg-muted text-muted-foreground border-border',
+                  )}>
+                  {col}
+                </button>
               )
             })}
           </div>
         </div>
       )}
-      <div ref={containerRef} style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {data.length === 0 && !loading && <div style={{ padding: 40, textAlign: 'center', color: C.textMuted }}>No data</div>}
+      <div ref={containerRef} className="flex-1 overflow-auto flex flex-col gap-2">
+        {data.length === 0 && !loading && <div className="p-10 text-center text-muted-foreground">No data</div>}
         {data.map((row, i) => (
-          <div key={i} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: 14 }}>
+          <div key={i} className="bg-card border border-border rounded-lg p-3.5">
             {displayCols.map(col => {
               const v = row[col]
               return (
-                <div key={col} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: `1px solid ${C.border}`, gap: 12, minHeight: 32 }}>
-                  <span style={{ fontSize: 12, color: C.textMuted, fontWeight: 500, flexShrink: 0 }}>{col}</span>
-                  <span style={{ fontSize: 13, color: v === null || v === undefined ? C.textMuted : C.text, textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: v === null || v === undefined ? 'italic' : 'normal' }}>
+                <div key={col} className="flex justify-between py-1.5 border-b border-border gap-3 min-h-[32px]">
+                  <span className="text-xs text-muted-foreground font-medium shrink-0">{col}</span>
+                  <span className={cn(
+                    'text-[13px] text-right overflow-hidden text-ellipsis whitespace-nowrap',
+                    v === null || v === undefined ? 'text-muted-foreground italic' : 'text-foreground',
+                  )}>
                     {v === null || v === undefined ? 'null' : String(v)}
                   </span>
                 </div>
@@ -442,8 +462,8 @@ function MobileCardList({ data, columns, onLoadMore, hasMore, loading }: {
             })}
           </div>
         ))}
-        {loading && <div style={{ padding: 16, textAlign: 'center', color: C.accent, fontSize: 13 }}>Loading more…</div>}
-        {!hasMore && data.length > 0 && <div style={{ padding: 12, textAlign: 'center', color: C.textMuted, fontSize: 12 }}>All rows loaded</div>}
+        {loading && <div className="p-4 text-center text-primary text-[13px]">Loading more…</div>}
+        {!hasMore && data.length > 0 && <div className="p-3 text-center text-muted-foreground text-xs">All rows loaded</div>}
       </div>
     </div>
   )
@@ -556,8 +576,8 @@ function DataTable({ tableName, mobile, onBack }: { tableName: string; mobile: b
       accessorKey: c, header: c, size: 160,
       cell: (info: { getValue: () => unknown }) => {
         const v = info.getValue()
-        if (v === null || v === undefined) return <span style={{ color: C.textMuted, fontStyle: 'italic' }}>null</span>
-        if (typeof v === 'boolean') return <span style={{ color: v ? C.success : C.danger }}>{String(v)}</span>
+        if (v === null || v === undefined) return <span className="text-muted-foreground italic">null</span>
+        if (typeof v === 'boolean') return <span className={v ? 'text-success' : 'text-destructive'}>{String(v)}</span>
         return String(v)
       },
     }))
@@ -577,26 +597,30 @@ function DataTable({ tableName, mobile, onBack }: { tableName: string; mobile: b
   const activeFilterCount = filters.filter(f => f.value.trim()).length
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: mobile ? 8 : 10 }}>
+    <div className={cn('flex flex-col h-full', mobile ? 'gap-2' : 'gap-2.5')}>
       {/* Back + toolbar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', ...(mobile ? { position: 'sticky', top: 0, zIndex: 10, background: C.bg, paddingBottom: 4 } : {}) }}>
-        <button onClick={onBack} style={{ ...pillBtn, display: 'flex', alignItems: 'center', gap: 4, height: mobile ? 44 : 36 }}>
+      <div className={cn('flex items-center gap-2 flex-wrap', mobile && 'sticky top-0 z-10 bg-background pb-1')}>
+        <button onClick={onBack} className={cn('px-3 py-1 bg-muted border border-border rounded-md text-[11px] text-muted-foreground font-medium cursor-pointer font-sans flex items-center gap-1', mobile ? 'h-11' : 'h-9')}>
           ← Back
         </button>
-        <h3 style={{ margin: 0, fontSize: mobile ? 15 : 16, fontWeight: 700, color: C.white }}>{tableName}</h3>
-        <div style={{ position: 'relative', flex: mobile ? '1 1 100%' : '0 0 220px', marginLeft: mobile ? 0 : 'auto' }}>
-          <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: C.textMuted, fontSize: 14, pointerEvents: 'none' }}></span>
+        <h3 className={cn('m-0 font-bold text-foreground', mobile ? 'text-[15px]' : 'text-base')}>{tableName}</h3>
+        <div className={cn('relative', mobile ? 'flex-[1_1_100%]' : 'flex-[0_0_220px] ml-auto')}>
+          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground text-sm pointer-events-none"></span>
           <input type="text" value={quickSearch} onChange={e => setQuickSearch(e.target.value)} placeholder="Search loaded rows…"
-            style={{ ...inputDark, width: '100%', paddingLeft: 32, height: mobile ? 44 : 36, fontSize: mobile ? 16 : 13, boxSizing: 'border-box' }} />
+            className={cn('w-full rounded-md border border-border bg-muted pl-8 pr-2.5 py-1.5 text-foreground font-sans outline-none', mobile ? 'h-11 text-base' : 'h-9 text-[13px]')} />
         </div>
         <button onClick={() => setShowFilters(!showFilters)}
-          style={{ ...pillBtn, height: mobile ? 44 : 36, display: 'flex', alignItems: 'center', gap: 4, background: showFilters ? C.accentBg : C.surfaceActive, borderColor: showFilters ? C.accent + '40' : C.borderLight, color: showFilters ? C.accent : C.textSecondary }}>
-          Filters{activeFilterCount > 0 && <span style={{ background: C.accent, color: C.white, borderRadius: 10, padding: '1px 6px', fontSize: 10, fontWeight: 700 }}>{activeFilterCount}</span>}
+          className={cn(
+            'px-3 py-1 border rounded-md text-[11px] font-medium cursor-pointer font-sans flex items-center gap-1',
+            mobile ? 'h-11' : 'h-9',
+            showFilters ? 'bg-primary/10 border-primary/25 text-primary' : 'bg-muted border-border text-muted-foreground',
+          )}>
+          Filters{activeFilterCount > 0 && <span className="bg-primary text-primary-foreground rounded-full px-1.5 text-[10px] font-bold">{activeFilterCount}</span>}
         </button>
         {!mobile && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ fontSize: 12, color: C.textMuted }}>Group:</span>
-            <select value={groupBy ?? ''} onChange={e => setGroupBy(e.target.value || null)} style={selectDark}>
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-muted-foreground">Group:</span>
+            <select value={groupBy ?? ''} onChange={e => setGroupBy(e.target.value || null)} className="rounded-md border border-border bg-muted px-2.5 py-1.5 text-[13px] text-foreground font-sans outline-none">
               <option value="">None</option>
               {columns.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
@@ -605,12 +629,12 @@ function DataTable({ tableName, mobile, onBack }: { tableName: string; mobile: b
       </div>
 
       {showFilters && (
-        <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: 12 }}>
+        <div className="bg-card border border-border rounded-lg p-3">
           <FilterBar columns={columns} typeMap={typeMap} filters={filters} onChange={onFiltersChange} mobile={mobile} tableName={tableName} />
           {mobile && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 10 }}>
-              <span style={{ fontSize: 12, color: C.textMuted }}>Group:</span>
-              <select value={groupBy ?? ''} onChange={e => setGroupBy(e.target.value || null)} style={{ ...selectDark, flex: 1, height: 44, fontSize: 14 }}>
+            <div className="flex items-center gap-1.5 mt-2.5">
+              <span className="text-xs text-muted-foreground">Group:</span>
+              <select value={groupBy ?? ''} onChange={e => setGroupBy(e.target.value || null)} className="rounded-md border border-border bg-muted px-2.5 py-1.5 text-[13px] text-foreground font-sans outline-none flex-1 h-11 text-sm">
                 <option value="">None</option>
                 {columns.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
@@ -620,23 +644,27 @@ function DataTable({ tableName, mobile, onBack }: { tableName: string; mobile: b
       )}
 
       {/* Status */}
-      <div style={{ fontSize: 12, color: C.textSecondary, display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-        <span style={{ fontVariantNumeric: 'tabular-nums' }}>
-          {filteredTotal < total ? <><strong style={{ color: C.text }}>{fmtNum(filteredTotal)}</strong> of {fmtNum(total)} rows</> : <><strong style={{ color: C.text }}>{fmtNum(total)}</strong> rows</>}
+      <div className="text-xs text-muted-foreground flex gap-3 items-center flex-wrap">
+        <span className="tabular-nums">
+          {filteredTotal < total ? <><strong className="text-foreground">{fmtNum(filteredTotal)}</strong> of {fmtNum(total)} rows</> : <><strong className="text-foreground">{fmtNum(total)}</strong> rows</>}
         </span>
-        <span style={{ color: C.textMuted }}>·</span>
+        <span className="text-muted-foreground">·</span>
         <span>Showing {fmtNum(displayData.length)}</span>
-        {loading && <span style={{ color: C.accent }}>● Loading…</span>}
+        {loading && <span className="text-primary">● Loading…</span>}
       </div>
 
       {/* Group panels */}
       {groupBy && groupData.length > 0 && (
-        <div style={{ maxHeight: 180, overflowY: 'auto', border: `1px solid ${C.border}`, borderRadius: 8, background: C.surface }}>
+        <div className="max-h-[180px] overflow-y-auto border border-border rounded-lg bg-card">
           {groupData.map((g, i) => (
             <button key={String(g.value ?? 'NULL')} onClick={() => filterByGroup(g.value)}
-              style={{ width: '100%', padding: mobile ? '12px 14px' : '10px 14px', minHeight: mobile ? 44 : undefined, background: 'transparent', border: 'none', borderBottom: i < groupData.length - 1 ? `1px solid ${C.border}` : 'none', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', fontSize: 13, fontFamily: 'inherit', color: C.text }}>
+              className={cn(
+                'w-full px-3.5 py-2.5 bg-transparent border-none cursor-pointer flex justify-between text-[13px] font-sans text-foreground',
+                mobile && 'py-3 min-h-[44px]',
+                i < groupData.length - 1 && 'border-b border-border',
+              )}>
               <span>{String(g.value ?? 'NULL')}</span>
-              <span style={{ color: C.textMuted, fontVariantNumeric: 'tabular-nums' }}>{fmtNum(g.count)}</span>
+              <span className="text-muted-foreground tabular-nums">{fmtNum(g.count)}</span>
             </button>
           ))}
         </div>
@@ -646,14 +674,16 @@ function DataTable({ tableName, mobile, onBack }: { tableName: string; mobile: b
       {mobile ? (
         <MobileCardList data={displayData} columns={columns} onLoadMore={loadMoreMobile} hasMore={hasMore} loading={loading} />
       ) : (
-        <div ref={tableContainerRef} className="scroll-visible" style={{ flex: '1 1 0', overflow: 'auto', border: `1px solid ${C.border}`, borderRadius: 8, background: C.surface, minHeight: 0, marginBottom: 24 }}>
-          <table style={{ minWidth: columns.length * 160, borderCollapse: 'collapse', fontSize: 12 }}>
-            <thead style={{ position: 'sticky', top: 0, zIndex: 1 }}>
+        <div ref={tableContainerRef} className="scroll-visible flex-[1_1_0] overflow-auto border border-border rounded-lg bg-card min-h-0 mb-6">
+          <table style={{ minWidth: columns.length * 160 }} className="border-collapse text-xs">
+            <thead className="sticky top-0 z-[1]">
               <tr>
                 {table.getHeaderGroups()[0]?.headers.map(h => (
-                  <th key={h.id} onClick={() => handleSort(h.column.id)} style={{ ...thDark, cursor: 'pointer', userSelect: 'none', width: h.column.getSize() }}>
+                  <th key={h.id} onClick={() => handleSort(h.column.id)}
+                    className="px-3 py-2 text-left border-b-2 border-border text-[11px] font-semibold text-muted-foreground bg-card whitespace-nowrap overflow-hidden text-ellipsis uppercase tracking-wider cursor-pointer select-none"
+                    style={{ width: h.column.getSize() }}>
                     <span>{flexRender(h.column.columnDef.header, h.getContext())}</span>
-                    <span style={{ fontSize: 10, marginLeft: 4, color: sortBy === h.column.id ? C.accent : C.textMuted, opacity: sortBy === h.column.id ? 1 : 0.3 }}>
+                    <span className={cn('text-[10px] ml-1', sortBy === h.column.id ? 'text-primary opacity-100' : 'text-muted-foreground opacity-30')}>
                       {sortBy === h.column.id ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}
                     </span>
                   </th>
@@ -667,11 +697,11 @@ function DataTable({ tableName, mobile, onBack }: { tableName: string; mobile: b
               {rowVirtualizer.getVirtualItems().map(vr => {
                 const row = tableRows[vr.index]
                 return (
-                  <tr key={row.id} style={{ height: 36, borderBottom: `1px solid ${C.border}` }}
-                    onMouseEnter={e => (e.currentTarget.style.background = C.surfaceHover)}
+                  <tr key={row.id} className="h-9 border-b border-border"
+                    onMouseEnter={e => (e.currentTarget.style.background = 'hsl(var(--muted))')}
                     onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
                     {row.getVisibleCells().map(cell => (
-                      <td key={cell.id} style={tdDark}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>
+                      <td key={cell.id} className="px-3 py-1.5 max-w-[220px] overflow-hidden text-ellipsis whitespace-nowrap text-xs text-foreground">{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>
                     ))}
                   </tr>
                 )
@@ -681,7 +711,7 @@ function DataTable({ tableName, mobile, onBack }: { tableName: string; mobile: b
               )}
             </tbody>
           </table>
-          {displayData.length === 0 && !loading && <div style={{ padding: 40, textAlign: 'center', color: C.textMuted }}>No data</div>}
+          {displayData.length === 0 && !loading && <div className="p-10 text-center text-muted-foreground">No data</div>}
         </div>
       )}
     </div>
@@ -708,39 +738,39 @@ function QueryPage({ mobile, initialSql }: { mobile: boolean; initialSql?: strin
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 12, overflow: 'auto' }}>
-      <div style={{ display: 'flex', gap: 8, flexDirection: mobile ? 'column' : 'row' }}>
+    <div className="flex flex-col h-full gap-3 overflow-auto">
+      <div className={cn('flex gap-2', mobile ? 'flex-col' : 'flex-row')}>
         <textarea value={input} onChange={e => setInput(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) runSQL() }}
           placeholder="SELECT * FROM teams LIMIT 10"
-          style={{ ...inputDark, flex: 1, fontFamily: 'monospace', resize: 'vertical', minHeight: 100, padding: 12 }} />
+          className="flex-1 rounded-md border border-border bg-muted px-3 py-3 text-[13px] text-foreground font-mono resize-y min-h-[100px] outline-none" />
         <button onClick={runSQL} disabled={loading || !input.trim()}
-          style={{ padding: mobile ? '12px 20px' : '10px 24px', minHeight: mobile ? 44 : undefined, background: C.accent, color: C.white, border: 'none', borderRadius: 8, cursor: loading ? 'wait' : 'pointer', fontSize: 14, fontWeight: 600, fontFamily: 'inherit', opacity: loading || !input.trim() ? 0.5 : 1, alignSelf: mobile ? 'stretch' : 'flex-start' }}>
+          className={cn('px-6 py-2.5 bg-primary text-primary-foreground rounded-lg text-sm font-semibold cursor-pointer font-sans disabled:opacity-50', mobile ? 'min-h-[44px] self-stretch' : 'self-start', loading && 'cursor-wait')}>
           {loading ? '…' : 'Run SQL'}
         </button>
       </div>
-      <div style={{ fontSize: 11, color: C.textMuted }}>⌘+Enter to run · Read-only queries only (SELECT, WITH)</div>
+      <div className="text-[11px] text-muted-foreground">⌘+Enter to run · Read-only queries only (SELECT, WITH)</div>
       {result && (result.error ? (
-        <div style={{ padding: 14, background: C.dangerBg, border: `1px solid ${C.danger}30`, borderRadius: 8, color: C.danger, fontSize: 13 }}>{result.error}</div>
+        <div className="p-3.5 bg-destructive/10 border border-destructive/20 rounded-lg text-destructive text-[13px]">{result.error}</div>
       ) : mobile ? (
         <MobileCardList data={result.rows} columns={result.columns} />
       ) : (
-        <div className="scroll-visible" style={{ flex: 1, overflow: 'auto', border: `1px solid ${C.border}`, borderRadius: 8, minHeight: 0, background: C.surface }}>
-          <table style={{ minWidth: result.columns.length * 160, borderCollapse: 'collapse', fontSize: 12 }}>
-            <thead style={{ position: 'sticky', top: 0 }}>
-              <tr>{result.columns.map(c => <th key={c} style={thDark}>{c}</th>)}</tr>
+        <div className="scroll-visible flex-1 overflow-auto border border-border rounded-lg min-h-0 bg-card">
+          <table style={{ minWidth: result.columns.length * 160 }} className="border-collapse text-xs">
+            <thead className="sticky top-0">
+              <tr>{result.columns.map(c => <th key={c} className="px-3 py-2 text-left border-b-2 border-border text-[11px] font-semibold text-muted-foreground bg-card whitespace-nowrap overflow-hidden text-ellipsis uppercase tracking-wider">{c}</th>)}</tr>
             </thead>
             <tbody>
               {result.rows.map((r, i) => (
-                <tr key={i} style={{ borderBottom: `1px solid ${C.border}` }}
-                  onMouseEnter={e => (e.currentTarget.style.background = C.surfaceHover)}
+                <tr key={i} className="border-b border-border"
+                  onMouseEnter={e => (e.currentTarget.style.background = 'hsl(var(--muted))')}
                   onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                  {result!.columns.map(c => <td key={c} style={tdDark}>{String(r[c] ?? '')}</td>)}
+                  {result!.columns.map(c => <td key={c} className="px-3 py-1.5 max-w-[220px] overflow-hidden text-ellipsis whitespace-nowrap text-xs text-foreground">{String(r[c] ?? '')}</td>)}
                 </tr>
               ))}
             </tbody>
           </table>
-          <div style={{ fontSize: 12, color: C.textMuted, padding: '8px 12px', borderTop: `1px solid ${C.border}` }}>{result.rows.length} rows</div>
+          <div className="text-xs text-muted-foreground px-3 py-2 border-t border-border">{result.rows.length} rows</div>
         </div>
       ))}
     </div>
@@ -754,21 +784,35 @@ function RealEstatePage({ mobile }: { mobile: boolean }) {
   const [selectedForeclosureId, setSelectedForeclosureId] = useState<number | null>(null)
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 12 }}>
-      <div style={{ display: 'flex', gap: 0, flexShrink: 0 }}>
-        <button onClick={() => setSubView('listings')} style={{ ...modeBtn, borderRadius: '8px 0 0 8px', flex: mobile ? 1 : undefined, minHeight: mobile ? 44 : undefined, ...(subView === 'listings' ? modeBtnActive : {}) }}>Property Listings</button>
-        <button onClick={() => setSubView('sales')} style={{ ...modeBtn, borderRadius: '0 8px 8px 0', flex: mobile ? 1 : undefined, minHeight: mobile ? 44 : undefined, ...(subView === 'sales' ? modeBtnActive : {}) }}>Sales Comps</button>
+    <div className="flex flex-col h-full gap-3">
+      <div className="flex gap-0 shrink-0">
+        <button onClick={() => setSubView('listings')}
+          className={cn(
+            'px-5 py-2.5 border border-border text-[13px] font-medium cursor-pointer font-sans rounded-l-lg',
+            mobile && 'flex-1 min-h-[44px]',
+            subView === 'listings' ? 'bg-primary text-primary-foreground border-primary' : 'bg-card text-muted-foreground',
+          )}>
+          Property Listings
+        </button>
+        <button onClick={() => setSubView('sales')}
+          className={cn(
+            'px-5 py-2.5 border border-border text-[13px] font-medium cursor-pointer font-sans rounded-r-lg',
+            mobile && 'flex-1 min-h-[44px]',
+            subView === 'sales' ? 'bg-primary text-primary-foreground border-primary' : 'bg-card text-muted-foreground',
+          )}>
+          Sales Comps
+        </button>
       </div>
       {subView === 'listings' && (
-        <div style={{ flex: 1, borderRadius: 10, overflow: 'hidden', minHeight: 0 }}>
-          <React.Suspense fallback={<div style={{ color: '#aaa', padding: 40 }}>Loading map...</div>}>
+        <div className="flex-1 rounded-lg overflow-hidden min-h-0">
+          <React.Suspense fallback={<div className="text-muted-foreground p-10">Loading map...</div>}>
             <ForeclosureMap onOpenComps={(id) => { setSelectedForeclosureId(id); setSubView('sales') }} />
           </React.Suspense>
         </div>
       )}
       {subView === 'sales' && (
-        <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
-          <React.Suspense fallback={<div style={{ color: '#aaa', padding: 40 }}>Loading charts...</div>}>
+        <div className="flex-1 overflow-auto min-h-0">
+          <React.Suspense fallback={<div className="text-muted-foreground p-10">Loading charts...</div>}>
             <SalesChart selectedForeclosureId={selectedForeclosureId} onSelectedForeclosure={(id) => setSelectedForeclosureId(id)} />
           </React.Suspense>
         </div>
@@ -789,11 +833,15 @@ function BottomTabBar({ page, setPage }: { page: Page; setPage: (p: Page) => voi
     { key: 'realestate', icon: '', label: 'Real Estate' },
   ]
   return (
-    <nav style={{ display: 'flex', background: C.surface, borderTop: `1px solid ${C.border}`, paddingBottom: 'max(env(safe-area-inset-bottom), 8px)', flexShrink: 0, position: 'sticky', bottom: 0, zIndex: 20 }}>
+    <nav className="flex bg-card border-t border-border pb-[max(env(safe-area-inset-bottom),8px)] shrink-0 sticky bottom-0 z-20">
       {tabs.map(t => (
         <button key={t.key} onClick={() => setPage(t.key)}
-          style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, padding: '10px 0 4px', minHeight: 52, background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', color: page === t.key ? C.accent : C.textMuted, fontSize: 10, fontWeight: page === t.key ? 600 : 400, WebkitTapHighlightColor: 'transparent' }}>
-          <span style={{ fontSize: 20 }}>{t.icon}</span><span>{t.label}</span>
+          className={cn(
+            'flex-1 flex flex-col items-center justify-center gap-0.5 pt-2.5 pb-1 min-h-[52px] bg-transparent border-none cursor-pointer font-sans text-[10px]',
+            page === t.key ? 'text-primary font-semibold' : 'text-muted-foreground font-normal',
+          )}
+          style={{ WebkitTapHighlightColor: 'transparent' }}>
+          <span className="text-xl">{t.icon}</span><span>{t.label}</span>
         </button>
       ))}
     </nav>
@@ -846,37 +894,37 @@ export default function App() {
   const totalRows = tables.reduce((s, t) => s + t.row_count, 0)
 
   return (
-    <div style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", sans-serif', color: C.text, height: '100vh', display: 'flex', flexDirection: 'column', background: C.bg, WebkitFontSmoothing: 'antialiased' }}>
+    <div className="text-foreground bg-background h-screen flex flex-col antialiased font-sans">
       {/* Top Nav — desktop only */}
       {!mobile && (
-        <nav style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: '0 24px', paddingTop: 'env(safe-area-inset-top)', display: 'flex', alignItems: 'center', minHeight: 52, flexShrink: 0, gap: 4 }}>
-          <span style={{ fontWeight: 700, fontSize: 16, marginRight: 28, color: C.white, letterSpacing: '-0.02em', whiteSpace: 'nowrap' }}>
-            NHC<span style={{ fontWeight: 400, color: C.textMuted }}> Admin</span>
+        <nav className="sticky top-0 z-50 flex items-center gap-1 border-b border-border bg-card px-6 pt-[env(safe-area-inset-top)] min-h-[52px] shrink-0">
+          <span className="text-base font-bold text-foreground tracking-tight whitespace-nowrap mr-7">
+            NHC<span className="font-normal text-muted-foreground"> Admin</span>
           </span>
           {(['home', 'nhlmodel', 'bankroll', 'explorer', 'query', 'realestate'] as Page[]).map(p => {
             const labels: Record<Page, string> = { home: 'Home', nhlmodel: 'Model Outputs', bankroll: 'Bankroll', explorer: 'Data', query: 'Query', realestate: 'Real Estate' }
             return (
               <button key={p} onClick={() => { setPage(p); if (p === 'explorer') setExplorerView('tree') }}
-                style={{ ...navBtnDark, padding: '8px 14px', fontSize: 13, ...(page === p ? { color: C.white, background: C.surfaceActive } : {}) }}>
+                className={cn('rounded-md px-3.5 py-2 text-[13px] font-medium text-muted-foreground bg-transparent border-none cursor-pointer font-sans', page === p && 'text-foreground bg-muted')}>
                 {labels[p]}
               </button>
             )
           })}
-          <div style={{ flex: 1 }} />
-          <span style={{ fontSize: 11, color: C.textMuted }}>{fmtNum(tables.length)} tables · {fmtCompact(totalRows)} rows</span>
+          <div className="flex-1" />
+          <span className="text-[11px] text-muted-foreground">{fmtNum(tables.length)} tables · {fmtCompact(totalRows)} rows</span>
           <ThemeToggle />
         </nav>
       )}
 
       {/* Mobile top bar */}
       {mobile && (
-        <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, paddingTop: 'env(safe-area-inset-top)', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 44, flexShrink: 0 }}>
-          <span style={{ fontWeight: 700, fontSize: 15, color: C.white, letterSpacing: '-0.02em' }}>NHC Admin</span>
+        <div className="flex items-center justify-center border-b border-border bg-card pt-[env(safe-area-inset-top)] min-h-[44px] shrink-0">
+          <span className="font-bold text-[15px] text-foreground tracking-tight">NHC Admin</span>
         </div>
       )}
 
       {/* Content */}
-      <div style={{ flex: 1, overflow: 'hidden', padding: mobile ? '12px 12px 0' : 20, minHeight: 0 }}>
+      <div className={cn('flex-1 overflow-hidden min-h-0', mobile ? 'p-3 pt-3 pb-0' : 'p-5')}>
 
         {/* HOME */}
         {page === 'home' && (
@@ -885,43 +933,45 @@ export default function App() {
 
         {/* DATA EXPLORER — Tree → Detail → Full Data */}
         {page === 'explorer' && (
-          <div style={{ height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+          <div className="h-full flex flex-col min-h-0">
             {explorerView === 'tree' && (
-              <div style={{ overflow: 'auto', height: '100%' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-                  <h2 style={{ fontSize: mobile ? 18 : 20, fontWeight: 700, margin: 0, color: C.white }}>Data Explorer</h2>
-                  <span style={{ fontSize: 12, color: C.textMuted }}>{fmtNum(tables.length)} tables · {fmtCompact(totalRows)} rows</span>
+              <div className="overflow-auto h-full">
+                <div className="flex items-center gap-3 mb-4">
+                  <h2 className={cn('font-bold m-0 text-foreground', mobile ? 'text-lg' : 'text-xl')}>Data Explorer</h2>
+                  <span className="text-xs text-muted-foreground">{fmtNum(tables.length)} tables · {fmtCompact(totalRows)} rows</span>
                 </div>
                 {/* Search */}
-                <div style={{ position: 'relative', marginBottom: 16, maxWidth: 400 }}>
-                  <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: C.textMuted, fontSize: 14, pointerEvents: 'none' }}></span>
+                <div className="relative mb-4 max-w-[400px]">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm pointer-events-none"></span>
                   <input type="text" value={sidebarSearch} onChange={e => setSidebarSearch(e.target.value)} placeholder="Search tables…"
-                    style={{ ...inputDark, width: '100%', paddingLeft: 36, height: mobile ? 48 : 40, fontSize: mobile ? 16 : 14, boxSizing: 'border-box' }} />
+                    className={cn('w-full rounded-md border border-border bg-muted pl-9 pr-2.5 py-1.5 text-foreground font-sans outline-none', mobile ? 'h-12 text-base' : 'h-10 text-sm')} />
                 </div>
                 {/* Groups */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div className="flex flex-col gap-2">
                   {filteredGroups.map(g => {
                     const isExpanded = expandedGroups[g.label] ?? false
                     return (
-                      <div key={g.label} style={{ ...cardDark, padding: 0, overflow: 'hidden' }}>
+                      <div key={g.label} className="rounded-lg border border-border bg-card p-0 overflow-hidden">
                         <button onClick={() => toggleGroup(g.label)}
-                          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', padding: mobile ? '16px 16px' : '14px 16px', background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: mobile ? 16 : 15, fontWeight: 600, color: C.white, textAlign: 'left' }}>
+                          className={cn('flex items-center justify-between w-full bg-transparent border-none cursor-pointer font-sans font-semibold text-foreground text-left', mobile ? 'p-4 text-base' : 'px-4 py-3.5 text-[15px]')}>
                           <span>{isExpanded ? '▾' : '▸'} {g.icon} {g.label}</span>
-                          <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                            <span style={{ fontSize: 12, color: C.textMuted, fontWeight: 400 }}>{g.tables.length} tables</span>
-                            <span style={{ fontSize: 12, color: C.accent, fontWeight: 500 }}>{fmtCompact(g.totalRows)} rows</span>
+                          <span className="flex items-center gap-2.5">
+                            <span className="text-xs text-muted-foreground font-normal">{g.tables.length} tables</span>
+                            <span className="text-xs text-primary font-medium">{fmtCompact(g.totalRows)} rows</span>
                           </span>
                         </button>
                         {isExpanded && (
-                          <div style={{ borderTop: `1px solid ${C.border}` }}>
+                          <div className="border-t border-border">
                             {/* Flat tables (no sub-groups) */}
                             {g.tables.sort((a, b) => b.row_count - a.row_count).map((t, i) => (
                               <button key={t.name} onClick={() => selectTable(t.name)}
-                                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', padding: mobile ? '14px 16px 14px 40px' : '11px 16px 11px 40px', minHeight: mobile ? 48 : undefined, background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: mobile ? 15 : 14, color: C.text, textAlign: 'left', borderBottom: i < g.tables.length - 1 ? `1px solid ${C.border}` : 'none' }}
-                                onMouseEnter={e => (e.currentTarget.style.background = C.surfaceHover)}
-                                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                                <span style={{ fontFamily: 'monospace', fontSize: mobile ? 14 : 13 }}>{t.name}</span>
-                                <span style={{ fontSize: 12, color: C.textMuted, fontVariantNumeric: 'tabular-nums' }}>{fmtCompact(t.row_count)}</span>
+                                className={cn(
+                                  'flex items-center justify-between w-full bg-transparent border-none cursor-pointer font-sans text-foreground text-left hover:bg-muted',
+                                  mobile ? 'py-3.5 px-4 pl-10 min-h-[48px] text-[15px]' : 'py-2.5 px-4 pl-10 text-sm',
+                                  i < g.tables.length - 1 && 'border-b border-border',
+                                )}>
+                                <span className={cn('font-mono', mobile ? 'text-sm' : 'text-[13px]')}>{t.name}</span>
+                                <span className="text-xs text-muted-foreground tabular-nums">{fmtCompact(t.row_count)}</span>
                               </button>
                             ))}
                             {/* Sub-groups */}
@@ -931,20 +981,25 @@ export default function App() {
                               return (
                                 <div key={sg.label}>
                                   <button onClick={() => toggleGroup(sgKey)}
-                                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', padding: mobile ? '14px 16px 14px 36px' : '11px 16px 11px 36px', background: C.surfaceHover, border: 'none', borderBottom: `1px solid ${C.border}`, cursor: 'pointer', fontFamily: 'inherit', fontSize: mobile ? 14 : 13, fontWeight: 600, color: C.textSecondary, textAlign: 'left' }}>
+                                    className={cn(
+                                      'flex items-center justify-between w-full bg-muted border-none border-b border-border cursor-pointer font-sans font-semibold text-muted-foreground text-left',
+                                      mobile ? 'py-3.5 px-4 pl-9 text-sm' : 'py-2.5 px-4 pl-9 text-[13px]',
+                                    )}>
                                     <span>{sgExpanded ? '▾' : '▸'} {sg.label}</span>
-                                    <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                      <span style={{ fontSize: 11, color: C.textMuted, fontWeight: 400 }}>{sg.tables.length} tables</span>
-                                      <span style={{ fontSize: 11, color: C.accent, fontWeight: 500 }}>{fmtCompact(sg.totalRows)} rows</span>
+                                    <span className="flex items-center gap-2.5">
+                                      <span className="text-[11px] text-muted-foreground font-normal">{sg.tables.length} tables</span>
+                                      <span className="text-[11px] text-primary font-medium">{fmtCompact(sg.totalRows)} rows</span>
                                     </span>
                                   </button>
                                   {sgExpanded && sg.tables.sort((a, b) => b.row_count - a.row_count).map((t, i) => (
                                     <button key={t.name} onClick={() => selectTable(t.name)}
-                                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', padding: mobile ? '14px 16px 14px 56px' : '11px 16px 11px 56px', minHeight: mobile ? 48 : undefined, background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: mobile ? 15 : 14, color: C.text, textAlign: 'left', borderBottom: i < sg.tables.length - 1 ? `1px solid ${C.border}` : 'none' }}
-                                      onMouseEnter={e => (e.currentTarget.style.background = C.surfaceHover)}
-                                      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                                      <span style={{ fontFamily: 'monospace', fontSize: mobile ? 14 : 13 }}>{t.name}</span>
-                                      <span style={{ fontSize: 12, color: C.textMuted, fontVariantNumeric: 'tabular-nums' }}>{fmtCompact(t.row_count)}</span>
+                                      className={cn(
+                                        'flex items-center justify-between w-full bg-transparent border-none cursor-pointer font-sans text-foreground text-left hover:bg-muted',
+                                        mobile ? 'py-3.5 px-4 pl-14 min-h-[48px] text-[15px]' : 'py-2.5 px-4 pl-14 text-sm',
+                                        i < sg.tables.length - 1 && 'border-b border-border',
+                                      )}>
+                                      <span className={cn('font-mono', mobile ? 'text-sm' : 'text-[13px]')}>{t.name}</span>
+                                      <span className="text-xs text-muted-foreground tabular-nums">{fmtCompact(t.row_count)}</span>
                                     </button>
                                   ))}
                                 </div>
@@ -960,9 +1015,9 @@ export default function App() {
             )}
 
             {explorerView === 'detail' && selectedTable && (
-              <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-                <button onClick={() => setExplorerView('tree')} style={{ ...pillBtn, alignSelf: 'flex-start', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 4, height: mobile ? 44 : 36 }}>← All Tables</button>
-                <div style={{ flex: 1, minHeight: 0 }}>
+              <div className="h-full flex flex-col">
+                <button onClick={() => setExplorerView('tree')} className={cn('px-3 py-1 bg-muted border border-border rounded-md text-[11px] text-muted-foreground font-medium cursor-pointer font-sans self-start mb-3 flex items-center gap-1', mobile ? 'h-11' : 'h-9')}>← All Tables</button>
+                <div className="flex-1 min-h-0">
                   <TableDetailPanel tableName={selectedTable} mobile={mobile}
                     onBrowse={() => setExplorerView('data')}
                     onRunQuery={handleRunQuery} />
@@ -981,14 +1036,14 @@ export default function App() {
 
         {/* NHL MODEL */}
         {page === 'nhlmodel' && (
-          <React.Suspense fallback={<div style={{ color: '#aaa', padding: 40 }}>Loading model outputs...</div>}>
+          <React.Suspense fallback={<div className="text-muted-foreground p-10">Loading model outputs...</div>}>
             <NHLModel mobile={mobile} />
           </React.Suspense>
         )}
 
         {/* BANKROLL */}
         {page === 'bankroll' && (
-          <React.Suspense fallback={<div style={{ color: '#aaa', padding: 40 }}>Loading bankroll...</div>}>
+          <React.Suspense fallback={<div className="text-muted-foreground p-10">Loading bankroll...</div>}>
             <BankrollTracker mobile={mobile} />
           </React.Suspense>
         )}
@@ -1002,17 +1057,3 @@ export default function App() {
     </div>
   )
 }
-
-/* ── Small components ── */
-
-/* ── Styles ── */
-
-const cardDark: React.CSSProperties = { background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: 14 }
-const navBtnDark: React.CSSProperties = { background: 'none', border: 'none', padding: '8px 14px', cursor: 'pointer', fontSize: 13, color: C.textSecondary, fontFamily: 'inherit', borderRadius: 6, fontWeight: 500 }
-const pillBtn: React.CSSProperties = { padding: '5px 12px', background: C.surfaceActive, border: `1px solid ${C.borderLight}`, borderRadius: 6, cursor: 'pointer', fontSize: 11, fontFamily: 'inherit', color: C.textSecondary, fontWeight: 500 }
-const selectDark: React.CSSProperties = { fontSize: 13, padding: '6px 10px', border: `1px solid ${C.borderLight}`, borderRadius: 6, fontFamily: 'inherit', background: C.surfaceActive, color: C.text, outline: 'none' }
-const inputDark: React.CSSProperties = { fontSize: 13, padding: '6px 10px', border: `1px solid ${C.borderLight}`, borderRadius: 6, fontFamily: 'inherit', boxSizing: 'border-box' as const, background: C.surfaceActive, color: C.text, outline: 'none' }
-const modeBtn: React.CSSProperties = { padding: '10px 20px', border: `1px solid ${C.borderLight}`, background: C.surface, cursor: 'pointer', fontSize: 13, fontFamily: 'inherit', color: C.textSecondary, fontWeight: 500 }
-const modeBtnActive: React.CSSProperties = { background: C.accent, color: C.white, borderColor: C.accent }
-const thDark: React.CSSProperties = { padding: '8px 12px', textAlign: 'left', borderBottom: `2px solid ${C.border}`, fontSize: 11, fontWeight: 600, color: C.textSecondary, background: C.surface, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textTransform: 'uppercase', letterSpacing: '0.04em' }
-const tdDark: React.CSSProperties = { padding: '6px 12px', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12, color: C.text }

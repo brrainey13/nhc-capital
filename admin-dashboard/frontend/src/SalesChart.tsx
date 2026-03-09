@@ -3,6 +3,8 @@ import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer, ScatterChart, Scatter, ZAxis,
 } from 'recharts';
+import { chartTooltipStyle } from '@/components/ui/chart-panel';
+import { cn } from '@/lib/utils';
 
 interface ForeclosureSite {
   id: number;
@@ -74,11 +76,12 @@ function useIsMobile(bp = 768) {
   return m;
 }
 
-const C = {
-  bg: '#0f1117', surface: '#181a20', border: '#2a2d37', text: '#e4e5e9',
-  muted: '#5f6370', secondary: '#8b8f9a', accent: '#6c5ce7', teal: '#00cec9',
-  white: '#fff', red: '#ff4757', yellow: '#ffa502', green: '#2ed573',
-};
+function scoreColorClass(score: number): string {
+  if (score >= 80) return 'text-success';
+  if (score >= 60) return 'text-[hsl(var(--chart-2))]';
+  if (score >= 40) return 'text-warning';
+  return 'text-destructive';
+}
 
 export default function SalesChart({
   selectedForeclosureId,
@@ -181,13 +184,13 @@ export default function SalesChart({
     return filtered;
   }, [visibleComps, selectedYear]);
 
-  if (loading && !comps.length) return <div style={{ color: '#aaa', padding: 40 }}>Loading comp data...</div>;
-  if (error) return <div style={{ color: '#ff6b6b', padding: 40 }}>{error}</div>;
+  if (loading && !comps.length) return <div className="p-10 text-muted-foreground">Loading comp data...</div>;
+  if (error) return <div className="p-10 text-destructive">{error}</div>;
 
   return (
-    <div style={{ padding: mobile ? 12 : 24 }}>
+    <div className={cn(mobile ? 'p-3' : 'p-6')}>
       {/* Foreclosure selector */}
-      <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
+      <div className="mb-4 flex flex-wrap items-center gap-2.5">
         <select
           value={selectedId ?? ''}
           onChange={(e) => {
@@ -196,7 +199,10 @@ export default function SalesChart({
             onSelectedForeclosure?.(id);
             setSelectedYear(null);
           }}
-          style={{ background: '#23262f', color: '#fff', border: '1px solid #333', borderRadius: 8, padding: '8px 10px', minWidth: mobile ? '100%' : 420 }}
+          className={cn(
+            'rounded-lg border border-border bg-muted px-2.5 py-2 text-foreground',
+            mobile ? 'min-w-full' : 'min-w-[420px]'
+          )}
         >
           {sites.map(s => (
             <option key={s.id} value={s.id}>
@@ -208,56 +214,111 @@ export default function SalesChart({
 
       {/* Subject property card */}
       {subject && (
-        <div style={{
-          background: C.surface, borderRadius: 10, border: `1px solid ${C.border}`,
-          padding: mobile ? 12 : 16, marginBottom: 16,
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
+        <div className={cn(
+          'mb-4 rounded-lg border border-border bg-card',
+          mobile ? 'p-3' : 'p-4'
+        )}>
+          <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <h2 style={{ color: C.white, margin: '0 0 4px', fontSize: mobile ? 16 : 18, fontWeight: 700 }}>
+              <h2 className={cn(
+                'mb-1 font-bold text-foreground',
+                mobile ? 'text-base' : 'text-lg'
+              )}>
                 {subject.address}
               </h2>
-              <div style={{ color: C.muted, fontSize: 12, marginBottom: 8 }}>
+              <div className="mb-2 text-xs text-muted-foreground">
                 {subject.town} · {subject.inferred_class?.replace(/_/g, ' ')} · {subject.property_type || 'N/A'}
               </div>
             </div>
             {subject.check_amount && (
-              <div style={{ background: C.red + '22', border: `1px solid ${C.red}44`, borderRadius: 8, padding: '6px 12px' }}>
-                <div style={{ fontSize: 10, color: C.red, fontWeight: 600, textTransform: 'uppercase' }}>Foreclosure Amount</div>
-                <div style={{ fontSize: 18, color: C.red, fontWeight: 700 }}>{fmt(Number(subject.check_amount))}</div>
+              <div className="rounded-lg border border-destructive/25 bg-destructive/10 px-3 py-1.5">
+                <div className="text-[10px] font-semibold uppercase text-destructive">Foreclosure Amount</div>
+                <div className="text-lg font-bold text-destructive">{fmt(Number(subject.check_amount))}</div>
               </div>
             )}
           </div>
-          <div style={{ display: 'flex', gap: mobile ? 16 : 24, flexWrap: 'wrap', marginTop: 8 }}>
-            {subject.sqft && <Stat label="Sqft" value={subject.sqft.toLocaleString()} />}
-            {subject.bedrooms && <Stat label="Beds" value={String(subject.bedrooms)} />}
-            {subject.year_built && <Stat label="Year Built" value={String(subject.year_built)} />}
-            {subject.sale_date && <Stat label="Sale Date" value={subject.sale_date} />}
+          <div className={cn('mt-2 flex flex-wrap', mobile ? 'gap-4' : 'gap-6')}>
+            {subject.sqft && (
+              <div>
+                <div className="text-[10px] font-semibold uppercase text-muted-foreground">Sqft</div>
+                <div className="text-sm font-semibold text-foreground">{subject.sqft.toLocaleString()}</div>
+              </div>
+            )}
+            {subject.bedrooms && (
+              <div>
+                <div className="text-[10px] font-semibold uppercase text-muted-foreground">Beds</div>
+                <div className="text-sm font-semibold text-foreground">{String(subject.bedrooms)}</div>
+              </div>
+            )}
+            {subject.year_built && (
+              <div>
+                <div className="text-[10px] font-semibold uppercase text-muted-foreground">Year Built</div>
+                <div className="text-sm font-semibold text-foreground">{String(subject.year_built)}</div>
+              </div>
+            )}
+            {subject.sale_date && (
+              <div>
+                <div className="text-[10px] font-semibold uppercase text-muted-foreground">Sale Date</div>
+                <div className="text-sm font-semibold text-foreground">{subject.sale_date}</div>
+              </div>
+            )}
           </div>
         </div>
       )}
 
       {/* Summary stats */}
       {summary && (
-        <div style={{
-          display: 'grid', gridTemplateColumns: mobile ? 'repeat(2, 1fr)' : 'repeat(5, 1fr)',
-          gap: 10, marginBottom: 16,
-        }}>
-          <StatCard label="Clean Comps" value={String(summary.clean_comps)} color={C.green} />
-          <StatCard label="Outliers" value={String(summary.outliers)} color={C.yellow} />
-          <StatCard label="Median Price" value={summary.median_price ? fmtK(summary.median_price) : 'N/A'} color={C.accent} />
-          <StatCard label="Median $/sqft" value={summary.median_ppsf ? `$${Math.round(summary.median_ppsf)}` : 'N/A'} color={C.teal} />
-          <StatCard label="Price Range" value={summary.min_price && summary.max_price ? `${fmtK(summary.min_price)} – ${fmtK(summary.max_price)}` : 'N/A'} color={C.secondary} />
+        <div className="mb-4 grid grid-cols-2 gap-2.5 sm:grid-cols-5">
+          <div className="rounded-lg border border-border bg-card px-3 py-2.5 text-center">
+            <div className="mb-1 text-[10px] font-semibold uppercase text-muted-foreground">Clean Comps</div>
+            <div className="text-base font-bold text-success">{String(summary.clean_comps)}</div>
+          </div>
+          <div className="rounded-lg border border-border bg-card px-3 py-2.5 text-center">
+            <div className="mb-1 text-[10px] font-semibold uppercase text-muted-foreground">Outliers</div>
+            <div className="text-base font-bold text-warning">{String(summary.outliers)}</div>
+          </div>
+          <div className="rounded-lg border border-border bg-card px-3 py-2.5 text-center">
+            <div className="mb-1 text-[10px] font-semibold uppercase text-muted-foreground">Median Price</div>
+            <div className="text-base font-bold text-[hsl(var(--chart-3))]">{summary.median_price ? fmtK(summary.median_price) : 'N/A'}</div>
+          </div>
+          <div className="rounded-lg border border-border bg-card px-3 py-2.5 text-center">
+            <div className="mb-1 text-[10px] font-semibold uppercase text-muted-foreground">Median $/sqft</div>
+            <div className="text-base font-bold text-[hsl(var(--chart-2))]">{summary.median_ppsf ? `$${Math.round(summary.median_ppsf)}` : 'N/A'}</div>
+          </div>
+          <div className="rounded-lg border border-border bg-card px-3 py-2.5 text-center">
+            <div className="mb-1 text-[10px] font-semibold uppercase text-muted-foreground">Price Range</div>
+            <div className="text-base font-bold text-muted-foreground">{summary.min_price && summary.max_price ? `${fmtK(summary.min_price)} – ${fmtK(summary.max_price)}` : 'N/A'}</div>
+          </div>
         </div>
       )}
 
       {/* Controls */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-        <div style={{ display: 'flex', gap: 0 }}>
-          <button onClick={() => setViewMode('chart')} style={{ ...tabBtn, borderRadius: '6px 0 0 6px', ...(viewMode === 'chart' ? tabActive : {}) }}>Trend Chart</button>
-          <button onClick={() => setViewMode('scatter')} style={{ ...tabBtn, borderRadius: '0 6px 6px 0', ...(viewMode === 'scatter' ? tabActive : {}) }}>Scatter Plot</button>
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <div className="flex">
+          <button
+            onClick={() => setViewMode('chart')}
+            className={cn(
+              'cursor-pointer rounded-l-md px-3.5 py-1.5 text-xs font-semibold',
+              viewMode === 'chart'
+                ? 'bg-[hsl(var(--chart-3))] text-white'
+                : 'border border-border bg-muted text-muted-foreground'
+            )}
+          >
+            Trend Chart
+          </button>
+          <button
+            onClick={() => setViewMode('scatter')}
+            className={cn(
+              'cursor-pointer rounded-r-md px-3.5 py-1.5 text-xs font-semibold',
+              viewMode === 'scatter'
+                ? 'bg-[hsl(var(--chart-3))] text-white'
+                : 'border border-border bg-muted text-muted-foreground'
+            )}
+          >
+            Scatter Plot
+          </button>
         </div>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, color: C.muted, fontSize: 12, cursor: 'pointer', marginLeft: 'auto' }}>
+        <label className="ml-auto flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground">
           <input type="checkbox" checked={showOutliers} onChange={() => setShowOutliers(!showOutliers)} />
           Show outliers ({summary?.outliers || 0})
         </label>
@@ -265,11 +326,10 @@ export default function SalesChart({
 
       {/* Charts */}
       {viewMode === 'chart' && (
-        <div style={{
-          width: '100%', height: mobile ? 260 : 380,
-          background: C.surface, borderRadius: 10, border: `1px solid ${C.border}`,
-          padding: mobile ? '8px 0' : '12px 0',
-        }}>
+        <div className={cn(
+          'w-full rounded-lg border border-border bg-card p-3',
+          mobile ? 'h-[260px]' : 'h-[380px]'
+        )}>
           <ResponsiveContainer>
             <ComposedChart
               data={chartData}
@@ -279,22 +339,22 @@ export default function SalesChart({
               }}
               style={{ cursor: 'pointer' }}
             >
-              <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-              <XAxis dataKey="year" tick={{ fill: '#aaa', fontSize: mobile ? 10 : 12 }} />
+              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+              <XAxis dataKey="year" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: mobile ? 10 : 12 }} />
               <YAxis
-                yAxisId="price" tick={{ fill: '#aaa', fontSize: mobile ? 10 : 12 }}
+                yAxisId="price" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: mobile ? 10 : 12 }}
                 tickFormatter={(v: number) => fmtK(v)}
                 width={mobile ? 55 : 65}
               />
               {!mobile && (
                 <YAxis
-                  yAxisId="ppsf" orientation="right" tick={{ fill: '#aaa', fontSize: 12 }}
+                  yAxisId="ppsf" orientation="right" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
                   tickFormatter={(v: number) => `$${v}`}
                 />
               )}
               <Tooltip
-                contentStyle={{ background: '#1e1e2e', border: '1px solid #333', borderRadius: 8, fontSize: mobile ? 12 : 14 }}
-                labelStyle={{ color: '#fff' }}
+                contentStyle={{ ...chartTooltipStyle, fontSize: mobile ? 12 : 14 }}
+                labelStyle={{ color: 'hsl(var(--foreground))' }}
                 formatter={(value: number | string | undefined, name: string | undefined) => {
                   const n = Number(value ?? 0);
                   const key = name ?? '';
@@ -305,27 +365,26 @@ export default function SalesChart({
                 }}
               />
               <Legend formatter={(value: string) => value === 'avgPrice' ? 'Avg Price' : 'Avg $/SqFt'} />
-              <Bar yAxisId="price" dataKey="avgPrice" fill={C.accent} radius={[4, 4, 0, 0]} barSize={mobile ? 20 : 32} />
-              <Line yAxisId={mobile ? 'price' : 'ppsf'} dataKey="avgPpsf" stroke={C.teal} strokeWidth={2.5} dot={{ r: mobile ? 3 : 4, fill: C.teal }} />
+              <Bar yAxisId="price" dataKey="avgPrice" fill="hsl(var(--chart-3))" radius={[4, 4, 0, 0]} barSize={mobile ? 20 : 32} />
+              <Line yAxisId={mobile ? 'price' : 'ppsf'} dataKey="avgPpsf" stroke="hsl(var(--chart-2))" strokeWidth={2.5} dot={{ r: mobile ? 3 : 4, fill: 'hsl(var(--chart-2))' }} />
             </ComposedChart>
           </ResponsiveContainer>
         </div>
       )}
 
       {viewMode === 'scatter' && (
-        <div style={{
-          width: '100%', height: mobile ? 300 : 400,
-          background: C.surface, borderRadius: 10, border: `1px solid ${C.border}`,
-          padding: mobile ? '8px 0' : '12px 0',
-        }}>
+        <div className={cn(
+          'w-full rounded-lg border border-border bg-card p-3',
+          mobile ? 'h-[300px]' : 'h-[400px]'
+        )}>
           <ResponsiveContainer>
             <ScatterChart margin={mobile ? { top: 10, right: 10, left: -10, bottom: 10 } : { top: 10, right: 30, left: 20, bottom: 10 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-              <XAxis dataKey="sqft" name="Sqft" tick={{ fill: '#aaa', fontSize: 11 }} tickFormatter={(v: number) => `${(v / 1000).toFixed(1)}K`} label={{ value: 'Sqft', position: 'bottom', fill: '#666', fontSize: 11 }} />
-              <YAxis dataKey="price" name="Price" tick={{ fill: '#aaa', fontSize: 11 }} tickFormatter={(v: number) => fmtK(v)} />
+              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+              <XAxis dataKey="sqft" name="Sqft" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} tickFormatter={(v: number) => `${(v / 1000).toFixed(1)}K`} label={{ value: 'Sqft', position: 'bottom', fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} />
+              <YAxis dataKey="price" name="Price" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} tickFormatter={(v: number) => fmtK(v)} />
               <ZAxis dataKey="score" range={[30, 150]} />
               <Tooltip
-                contentStyle={{ background: '#1e1e2e', border: '1px solid #333', borderRadius: 8, fontSize: 12 }}
+                contentStyle={{ ...chartTooltipStyle, fontSize: 12 }}
                 formatter={(value: number | string | undefined, name: string | undefined) => {
                   const n = Number(value ?? 0);
                   const key = name ?? '';
@@ -339,23 +398,23 @@ export default function SalesChart({
                   const d = payload[0]?.payload;
                   if (!d) return null;
                   return (
-                    <div style={{ background: '#1e1e2e', border: '1px solid #333', borderRadius: 8, padding: 10, fontSize: 12, color: '#fff' }}>
-                      <div style={{ fontWeight: 700, marginBottom: 4 }}>{d.address}</div>
+                    <div className="rounded-lg border border-border bg-card p-2.5 text-xs text-foreground">
+                      <div className="mb-1 font-bold">{d.address}</div>
                       <div>{fmt(d.price)} · {d.sqft.toLocaleString()} sqft · ${d.ppsf}/sf</div>
-                      <div style={{ color: '#888' }}>Score: {d.score} · {d.year}{d.outlier ? ' · ⚠️ Outlier' : ''}</div>
+                      <div className="text-muted-foreground">Score: {d.score} · {d.year}{d.outlier ? ' · Outlier' : ''}</div>
                     </div>
                   );
                 }}
               />
               <Scatter
                 data={scatterData.filter(d => !d.outlier)}
-                fill={C.accent}
+                fill="hsl(var(--chart-3))"
                 fillOpacity={0.7}
               />
               {showOutliers && (
                 <Scatter
                   data={scatterData.filter(d => d.outlier)}
-                  fill={C.red}
+                  fill="hsl(var(--destructive))"
                   fillOpacity={0.5}
                   shape="triangle"
                 />
@@ -365,58 +424,95 @@ export default function SalesChart({
         </div>
       )}
 
-      <div style={{ fontSize: 11, color: C.muted, marginTop: 8, textAlign: 'center' }}>
+      <div className="mt-2 text-center text-[11px] text-muted-foreground">
         {selectedYear ? `Showing ${selectedYear} — click bar again to clear` : 'Click a bar to filter by year'}
         {' · '} Clean comps only in chart (outliers excluded from averages)
       </div>
 
       {/* Detail table */}
-      <div style={{ marginTop: 20 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-          <h3 style={{ color: C.white, margin: 0, fontSize: mobile ? 14 : 15, fontWeight: 600 }}>
+      <div className="mt-5">
+        <div className="mb-2.5 flex items-center justify-between">
+          <h3 className={cn(
+            'font-semibold text-foreground',
+            mobile ? 'text-sm' : 'text-[15px]'
+          )}>
             {selectedYear ? `Sales in ${selectedYear}` : 'All Comps'}
           </h3>
-          <span style={{ color: C.muted, fontSize: 12 }}>{detailComps.length} transactions</span>
+          <span className="text-xs text-muted-foreground">{detailComps.length} transactions</span>
         </div>
 
-        <div style={{ maxHeight: 460, overflow: 'auto', borderRadius: 8, border: `1px solid ${C.border}` }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <div className="max-h-[460px] overflow-auto rounded-lg border border-border">
+          <table className="w-full border-collapse text-sm">
             <thead>
               <tr>
                 {['Score', 'Address', 'Price', '$/SqFt', 'SqFt', 'Beds', 'Year', 'Date', ...(mobile ? [] : ['Dist'])].map((h) => (
-                  <th key={h} style={{
-                    padding: '10px 8px', borderBottom: `2px solid ${C.border}`, fontSize: 10, fontWeight: 600,
-                    color: C.secondary, background: C.surface, textAlign: 'left',
-                    position: 'sticky', top: 0, zIndex: 1, textTransform: 'uppercase', letterSpacing: '0.04em',
-                    whiteSpace: 'nowrap',
-                  }}>{h}</th>
+                  <th key={h} className="sticky top-0 z-[1] whitespace-nowrap border-b-2 border-border bg-card px-2 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    {h}
+                  </th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {detailComps.map((c, i) => {
                 const isOutlier = c.is_outlier;
-                const rowBg = isOutlier ? 'rgba(255,71,87,0.06)' : 'transparent';
-                const textColor = isOutlier ? C.muted : C.text;
-                const scoreColor = c.comp_score >= 80 ? C.green : c.comp_score >= 60 ? C.teal : c.comp_score >= 40 ? C.yellow : C.red;
 
                 return (
-                  <tr key={`${c.pid}-${c.sale_date}-${i}`} style={{ background: rowBg }}
-                    title={c.outlier_reason || undefined}>
-                    <td style={{ ...cellStyle, color: scoreColor, fontWeight: 700, fontSize: 13 }}>
-                      {isOutlier ? '⚠️' : c.comp_score.toFixed(0)}
+                  <tr
+                    key={`${c.pid}-${c.sale_date}-${i}`}
+                    className={cn(isOutlier && 'bg-destructive/5')}
+                    title={c.outlier_reason || undefined}
+                  >
+                    <td className={cn('border-b border-border px-2 py-2 text-xs font-bold text-[13px]', scoreColorClass(c.comp_score))}>
+                      {isOutlier ? '!!' : c.comp_score.toFixed(0)}
                     </td>
-                    <td style={{ ...cellStyle, color: textColor, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <td className={cn(
+                      'max-w-[200px] truncate border-b border-border px-2 py-2 text-xs',
+                      isOutlier ? 'text-muted-foreground' : 'text-foreground'
+                    )}>
                       {c.address}
-                      {isOutlier && <span style={{ fontSize: 10, color: C.red, marginLeft: 4 }}>outlier</span>}
+                      {isOutlier && <span className="ml-1 text-[10px] text-destructive">outlier</span>}
                     </td>
-                    <td style={{ ...cellStyle, color: isOutlier ? C.muted : C.accent, fontWeight: 600 }}>{fmt(c.sale_price)}</td>
-                    <td style={{ ...cellStyle, color: isOutlier ? C.muted : C.teal }}>${c.price_per_sqft ? Math.round(c.price_per_sqft) : '-'}</td>
-                    <td style={{ ...cellStyle, color: textColor }}>{c.sqft?.toLocaleString() || '-'}</td>
-                    <td style={{ ...cellStyle, color: textColor }}>{c.bedrooms ?? '-'}</td>
-                    <td style={{ ...cellStyle, color: textColor }}>{c.year_built ?? '-'}</td>
-                    <td style={{ ...cellStyle, color: textColor }}>{c.sale_date ? new Date(c.sale_date).toLocaleDateString() : '-'}</td>
-                    {!mobile && <td style={{ ...cellStyle, color: C.muted, fontSize: 11 }}>{c.distance_mi ? `${c.distance_mi.toFixed(2)}mi` : '-'}</td>}
+                    <td className={cn(
+                      'border-b border-border px-2 py-2 text-xs font-semibold',
+                      isOutlier ? 'text-muted-foreground' : 'text-[hsl(var(--chart-3))]'
+                    )}>
+                      {fmt(c.sale_price)}
+                    </td>
+                    <td className={cn(
+                      'border-b border-border px-2 py-2 text-xs',
+                      isOutlier ? 'text-muted-foreground' : 'text-[hsl(var(--chart-2))]'
+                    )}>
+                      ${c.price_per_sqft ? Math.round(c.price_per_sqft) : '-'}
+                    </td>
+                    <td className={cn(
+                      'border-b border-border px-2 py-2 text-xs',
+                      isOutlier ? 'text-muted-foreground' : 'text-foreground'
+                    )}>
+                      {c.sqft?.toLocaleString() || '-'}
+                    </td>
+                    <td className={cn(
+                      'border-b border-border px-2 py-2 text-xs',
+                      isOutlier ? 'text-muted-foreground' : 'text-foreground'
+                    )}>
+                      {c.bedrooms ?? '-'}
+                    </td>
+                    <td className={cn(
+                      'border-b border-border px-2 py-2 text-xs',
+                      isOutlier ? 'text-muted-foreground' : 'text-foreground'
+                    )}>
+                      {c.year_built ?? '-'}
+                    </td>
+                    <td className={cn(
+                      'border-b border-border px-2 py-2 text-xs',
+                      isOutlier ? 'text-muted-foreground' : 'text-foreground'
+                    )}>
+                      {c.sale_date ? new Date(c.sale_date).toLocaleDateString() : '-'}
+                    </td>
+                    {!mobile && (
+                      <td className="border-b border-border px-2 py-2 text-[11px] text-muted-foreground">
+                        {c.distance_mi ? `${c.distance_mi.toFixed(2)}mi` : '-'}
+                      </td>
+                    )}
                   </tr>
                 );
               })}
@@ -424,40 +520,6 @@ export default function SalesChart({
           </table>
         </div>
       </div>
-    </div>
-  );
-}
-
-const cellStyle: React.CSSProperties = {
-  padding: '8px', borderBottom: '1px solid #2a2d37', fontSize: 12,
-};
-
-const tabBtn: React.CSSProperties = {
-  background: '#23262f', color: '#8b8f9a', border: '1px solid #333',
-  padding: '6px 14px', cursor: 'pointer', fontSize: 12, fontWeight: 600,
-};
-
-const tabActive: React.CSSProperties = {
-  background: '#6c5ce7', color: '#fff', borderColor: '#6c5ce7',
-};
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <div style={{ fontSize: 10, color: '#5f6370', textTransform: 'uppercase', fontWeight: 600 }}>{label}</div>
-      <div style={{ fontSize: 14, color: '#e4e5e9', fontWeight: 600 }}>{value}</div>
-    </div>
-  );
-}
-
-function StatCard({ label, value, color }: { label: string; value: string; color: string }) {
-  return (
-    <div style={{
-      background: '#181a20', borderRadius: 8, border: '1px solid #2a2d37',
-      padding: '10px 12px', textAlign: 'center',
-    }}>
-      <div style={{ fontSize: 10, color: '#5f6370', textTransform: 'uppercase', fontWeight: 600, marginBottom: 4 }}>{label}</div>
-      <div style={{ fontSize: 16, color, fontWeight: 700 }}>{value}</div>
     </div>
   );
 }

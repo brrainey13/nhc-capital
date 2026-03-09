@@ -9,6 +9,8 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
+import { ChartPanel, chartTooltipStyle } from '@/components/ui/chart-panel'
+import { cn } from '@/lib/utils'
 
 type ModelInfo = {
   model_type: string
@@ -130,26 +132,26 @@ function fmtPct(value: number, digits = 1) {
 }
 
 function fmtOdds(value: number | null) {
-  if (value == null) return '—'
+  if (value == null) return '\u2014'
   return value > 0 ? `+${value}` : `${value}`
 }
 
 function fmtDate(value: string | null) {
-  if (!value) return '—'
+  if (!value) return '\u2014'
   return new Date(value).toLocaleDateString()
 }
 
-function edgeColor(edgePct: number) {
-  if (edgePct > 10) return '#4ade80'
-  if (edgePct >= 5) return '#facc15'
-  return '#e5e7eb'
+function edgeColorClass(edgePct: number) {
+  if (edgePct > 10) return 'text-success'
+  if (edgePct >= 5) return 'text-warning'
+  return 'text-muted-foreground'
 }
 
-function resultColor(result: string | null) {
-  if (result === 'W') return '#4ade80'
-  if (result === 'L') return '#f87171'
-  if (result === 'P') return '#cbd5e1'
-  return '#94a3b8'
+function resultColorClass(result: string | null) {
+  if (result === 'W') return 'text-success'
+  if (result === 'L') return 'text-destructive'
+  if (result === 'P') return 'text-muted-foreground'
+  return 'text-muted-foreground'
 }
 
 function sortPicks(picks: Pick[], key: SortKey, dir: 'asc' | 'desc') {
@@ -164,15 +166,6 @@ function sortPicks(picks: Pick[], key: SortKey, dir: 'asc' | 'desc') {
       : String(bv ?? '').localeCompare(String(av ?? ''))
   })
   return sorted
-}
-
-function HeaderStat({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
-  return (
-    <div>
-      <div style={{ fontSize: 11, color: '#8b8f9a', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>{label}</div>
-      <div style={{ fontSize: 20, fontWeight: 700, color: accent ? '#4f8cff' : '#f8fafc', fontVariantNumeric: 'tabular-nums' }}>{value}</div>
-    </div>
-  )
 }
 
 export default function NHLModel({ mobile }: { mobile: boolean }) {
@@ -223,11 +216,11 @@ export default function NHLModel({ mobile }: { mobile: boolean }) {
   const strategyOptions = useMemo(() => ['All', ...(history?.strategies ?? [])], [history])
 
   if (error) {
-    return <div style={{ color: '#f87171', padding: 24 }}>Failed to load model outputs: {error}</div>
+    return <div className="p-6 text-destructive">Failed to load model outputs: {error}</div>
   }
 
   if (!modelInfo || !today || !history || !strategies || !odds) {
-    return <div style={{ color: '#8b8f9a', padding: 24 }}>Loading model outputs…</div>
+    return <div className="p-6 text-muted-foreground">Loading model outputs&hellip;</div>
   }
 
   function toggleSort(nextKey: SortKey) {
@@ -240,80 +233,104 @@ export default function NHLModel({ mobile }: { mobile: boolean }) {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, height: '100%', overflow: 'auto', paddingBottom: 24 }}>
-      <section style={card}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
+    <div className="flex h-full flex-col gap-4 overflow-auto pb-6">
+      {/* Model Info + Feature Importance */}
+      <section className="rounded-xl border border-border bg-card p-4 shadow-lg">
+        <div className="mb-4 flex flex-wrap items-baseline justify-between gap-3">
           <div>
-            <div style={{ fontSize: 11, color: '#8b8f9a', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>Model Info</div>
-            <div style={{ fontSize: mobile ? 24 : 30, fontWeight: 800, color: '#f8fafc', letterSpacing: '-0.04em' }}>{modelInfo.model_type}</div>
+            <div className="mb-1.5 text-[11px] uppercase tracking-wider text-muted-foreground">Model Info</div>
+            <div className={cn('font-extrabold tracking-tight text-foreground', mobile ? 'text-2xl' : 'text-[30px]')}>{modelInfo.model_type}</div>
           </div>
-          {!modelInfo.model_found && <div style={{ color: '#facc15', fontSize: 12 }}>Model artifact not found. Showing metadata fallbacks only.</div>}
+          {!modelInfo.model_found && <div className="text-xs text-warning">Model artifact not found. Showing metadata fallbacks only.</div>}
         </div>
-        <div style={{ display: 'grid', gap: 12, gridTemplateColumns: mobile ? '1fr 1fr' : 'repeat(4, minmax(0, 1fr))', marginBottom: 18 }}>
-          <HeaderStat label="Features" value={String(modelInfo.n_features)} />
-          <HeaderStat label="Training Rows" value={modelInfo.n_training_samples.toLocaleString()} />
-          <HeaderStat label="Training Date" value={modelInfo.training_date || '—'} />
-          <HeaderStat label="Artifact" value={modelInfo.model_path ? 'Found' : 'Missing'} accent />
+        <div className={cn('mb-4 grid gap-3', mobile ? 'grid-cols-2' : 'grid-cols-4')}>
+          <div>
+            <div className="mb-1 text-[11px] uppercase tracking-[0.05em] text-muted-foreground">Features</div>
+            <div className="text-xl font-bold tabular-nums text-foreground">{String(modelInfo.n_features)}</div>
+          </div>
+          <div>
+            <div className="mb-1 text-[11px] uppercase tracking-[0.05em] text-muted-foreground">Training Rows</div>
+            <div className="text-xl font-bold tabular-nums text-foreground">{modelInfo.n_training_samples.toLocaleString()}</div>
+          </div>
+          <div>
+            <div className="mb-1 text-[11px] uppercase tracking-[0.05em] text-muted-foreground">Training Date</div>
+            <div className="text-xl font-bold tabular-nums text-foreground">{modelInfo.training_date || '\u2014'}</div>
+          </div>
+          <div>
+            <div className="mb-1 text-[11px] uppercase tracking-[0.05em] text-muted-foreground">Artifact</div>
+            <div className="text-xl font-bold tabular-nums text-primary">{modelInfo.model_path ? 'Found' : 'Missing'}</div>
+          </div>
         </div>
-        <div style={{ height: mobile ? 320 : 360 }}>
+        <ChartPanel title="Feature Importance" height={mobile ? 320 : 360}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={topFeatures} layout="vertical" margin={{ top: 8, right: 20, bottom: 8, left: 64 }}>
-              <CartesianGrid stroke="#2a2d37" horizontal={false} />
-              <XAxis type="number" stroke="#8b8f9a" tick={{ fontSize: 11 }} />
-              <YAxis type="category" dataKey="feature" stroke="#8b8f9a" tick={{ fontSize: 11 }} width={150} />
-              <Tooltip formatter={(value) => Number(value).toFixed(0)} />
+              <CartesianGrid stroke="hsl(var(--border))" horizontal={false} />
+              <XAxis type="number" stroke="hsl(var(--muted-foreground))" tick={{ fontSize: 11 }} />
+              <YAxis type="category" dataKey="feature" stroke="hsl(var(--muted-foreground))" tick={{ fontSize: 11 }} width={150} />
+              <Tooltip contentStyle={chartTooltipStyle} formatter={(value) => Number(value).toFixed(0)} />
               <Bar dataKey="importance" radius={[0, 6, 6, 0]}>
-                {topFeatures.map((item) => <Cell key={item.feature} fill="#4f8cff" />)}
+                {topFeatures.map((item) => <Cell key={item.feature} fill="hsl(var(--primary))" />)}
               </Bar>
             </BarChart>
           </ResponsiveContainer>
-        </div>
+        </ChartPanel>
       </section>
 
-      <section style={card}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
-          <div style={{ fontSize: 11, color: '#8b8f9a', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Today&apos;s Picks</div>
-          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-            <span style={subtleText}>{today.count} picks</span>
-            <span style={subtleText}>Stake {today.total_stake.toFixed(1)}u</span>
-            <span style={subtleText}>{fmtMoney(today.total_stake_dollars)}</span>
+      {/* Today's Picks */}
+      <section className="rounded-xl border border-border bg-card p-4 shadow-lg">
+        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-3">
+          <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Today&apos;s Picks</div>
+          <div className="flex flex-wrap gap-4">
+            <span className="text-xs text-muted-foreground">{today.count} picks</span>
+            <span className="text-xs text-muted-foreground">Stake {today.total_stake.toFixed(1)}u</span>
+            <span className="text-xs text-muted-foreground">{fmtMoney(today.total_stake_dollars)}</span>
           </div>
         </div>
         {today.picks.length === 0 ? (
-          <div style={{ color: '#8b8f9a', padding: '14px 0' }}>No picks generated yet today</div>
+          <div className="py-3.5 text-muted-foreground">No picks generated yet today</div>
         ) : (
-          <div style={{ maxHeight: 420, overflow: 'auto', border: '1px solid #2a2d37', borderRadius: 12 }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+          <div className="max-h-[420px] overflow-auto rounded-xl border border-border">
+            <table className="w-full text-xs">
               <thead>
                 <tr>
-                  <th style={thBtn} onClick={() => toggleSort('player')}>Player</th>
-                  <th style={thBtn} onClick={() => toggleSort('market')}>Market</th>
-                  <th style={thBtn} onClick={() => toggleSort('line')}>Line</th>
-                  <th style={thBtn} onClick={() => toggleSort('odds')}>Odds</th>
-                  <th style={thBtn} onClick={() => toggleSort('book')}>Book</th>
-                  <th style={thBtn} onClick={() => toggleSort('edge_pct')}>Edge%</th>
-                  <th style={thBtn} onClick={() => toggleSort('model_prob_pct')}>Model Prob</th>
-                  <th style={thBtn} onClick={() => toggleSort('stake')}>Stake</th>
+                  {([
+                    ['player', 'Player'],
+                    ['market', 'Market'],
+                    ['line', 'Line'],
+                    ['odds', 'Odds'],
+                    ['book', 'Book'],
+                    ['edge_pct', 'Edge%'],
+                    ['model_prob_pct', 'Model Prob'],
+                    ['stake', 'Stake'],
+                  ] as [SortKey, string][]).map(([key, label]) => (
+                    <th
+                      key={key}
+                      onClick={() => toggleSort(key)}
+                      className="sticky top-0 cursor-pointer border-b border-border bg-card px-3 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider text-muted-foreground"
+                    >
+                      {label}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
                 {sortedTodayPicks.map((pick) => (
-                  <tr key={pick.pick_id} style={{ background: 'rgba(255,255,255,0.01)' }}>
-                    <td style={td}>{pick.player}</td>
-                    <td style={td}>{pick.market}</td>
-                    <td style={td}>{pick.line.toFixed(1)}</td>
-                    <td style={td}>{fmtOdds(pick.odds)}</td>
-                    <td style={td}>{pick.book || '—'}</td>
-                    <td style={{ ...td, color: edgeColor(pick.edge_pct), fontWeight: 700 }}>{fmtPct(pick.edge_pct, 2)}</td>
-                    <td style={td}>{pick.model_prob_pct > 0 ? fmtPct(pick.model_prob_pct, 1) : '—'}</td>
-                    <td style={td}>{pick.stake.toFixed(1)}u</td>
+                  <tr key={pick.pick_id} className="border-b border-border/50 hover:bg-muted/50 transition-colors">
+                    <td className="px-3 py-2.5 tabular-nums text-foreground">{pick.player}</td>
+                    <td className="px-3 py-2.5 tabular-nums text-foreground">{pick.market}</td>
+                    <td className="px-3 py-2.5 tabular-nums text-foreground">{pick.line.toFixed(1)}</td>
+                    <td className="px-3 py-2.5 tabular-nums text-foreground">{fmtOdds(pick.odds)}</td>
+                    <td className="px-3 py-2.5 tabular-nums text-foreground">{pick.book || '\u2014'}</td>
+                    <td className={cn('px-3 py-2.5 tabular-nums font-bold', edgeColorClass(pick.edge_pct))}>{fmtPct(pick.edge_pct, 2)}</td>
+                    <td className="px-3 py-2.5 tabular-nums text-foreground">{pick.model_prob_pct > 0 ? fmtPct(pick.model_prob_pct, 1) : '\u2014'}</td>
+                    <td className="px-3 py-2.5 tabular-nums text-foreground">{pick.stake.toFixed(1)}u</td>
                   </tr>
                 ))}
               </tbody>
               <tfoot>
                 <tr>
-                  <td style={tfootCell} colSpan={7}>Total Stake</td>
-                  <td style={tfootCell}>{today.total_stake.toFixed(1)}u</td>
+                  <td className="border-b border-border bg-muted px-3 py-2.5 font-bold tabular-nums text-foreground" colSpan={7}>Total Stake</td>
+                  <td className="border-b border-border bg-muted px-3 py-2.5 font-bold tabular-nums text-foreground">{today.total_stake.toFixed(1)}u</td>
                 </tr>
               </tfoot>
             </table>
@@ -321,42 +338,47 @@ export default function NHLModel({ mobile }: { mobile: boolean }) {
         )}
       </section>
 
-      <section style={card}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: mobile ? 'stretch' : 'baseline', gap: 12, flexDirection: mobile ? 'column' : 'row', marginBottom: 12 }}>
+      {/* Pick History */}
+      <section className="rounded-xl border border-border bg-card p-4 shadow-lg">
+        <div className={cn('mb-3 flex gap-3', mobile ? 'flex-col items-stretch' : 'flex-row items-baseline justify-between')}>
           <div>
-            <div style={{ fontSize: 11, color: '#8b8f9a', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>Pick History</div>
-            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-              <span style={subtleText}>Record {history.summary.record}</span>
-              <span style={subtleText}>ROI {fmtPct(history.summary.roi, 2)}</span>
-              <span style={subtleText}>P/L {fmtMoney(history.summary.total_pl)}</span>
+            <div className="mb-1.5 text-[11px] uppercase tracking-wider text-muted-foreground">Pick History</div>
+            <div className="flex flex-wrap gap-4">
+              <span className="text-xs text-muted-foreground">Record {history.summary.record}</span>
+              <span className="text-xs text-muted-foreground">ROI {fmtPct(history.summary.roi, 2)}</span>
+              <span className="text-xs text-muted-foreground">P/L {fmtMoney(history.summary.total_pl)}</span>
             </div>
           </div>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#cbd5e1', fontSize: 13 }}>
+          <label className="flex items-center gap-2 text-[13px] text-muted-foreground">
             Strategy
-            <select value={strategyFilter} onChange={(e) => setStrategyFilter(e.target.value)} style={select}>
+            <select
+              value={strategyFilter}
+              onChange={(e) => setStrategyFilter(e.target.value)}
+              className="rounded-lg border border-border bg-muted px-2.5 py-2 font-inherit text-foreground"
+            >
               {strategyOptions.map((option) => <option key={option} value={option}>{option}</option>)}
             </select>
           </label>
         </div>
-        <div style={{ maxHeight: 420, overflow: 'auto', border: '1px solid #2a2d37', borderRadius: 12 }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+        <div className="max-h-[420px] overflow-auto rounded-xl border border-border">
+          <table className="w-full text-xs">
             <thead>
               <tr>
-                <th style={th}>Date</th>
-                <th style={th}>Player</th>
-                <th style={th}>Market</th>
-                <th style={th}>Result</th>
-                <th style={th}>P/L</th>
+                {['Date', 'Player', 'Market', 'Result', 'P/L'].map((label) => (
+                  <th key={label} className="sticky top-0 border-b border-border bg-card px-3 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                    {label}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
               {history.picks.map((pick) => (
-                <tr key={pick.pick_id}>
-                  <td style={td}>{fmtDate(pick.pick_date)}</td>
-                  <td style={td}>{pick.player}</td>
-                  <td style={td}>{pick.market}</td>
-                  <td style={{ ...td, color: resultColor(pick.result), fontWeight: 700 }}>{pick.result || 'Pending'}</td>
-                  <td style={{ ...td, color: pick.pnl >= 0 ? '#4ade80' : '#f87171' }}>{pick.result === 'Pending' ? '—' : fmtMoney(pick.pnl)}</td>
+                <tr key={pick.pick_id} className="border-b border-border/50 hover:bg-muted/50 transition-colors">
+                  <td className="px-3 py-2.5 tabular-nums text-foreground">{fmtDate(pick.pick_date)}</td>
+                  <td className="px-3 py-2.5 tabular-nums text-foreground">{pick.player}</td>
+                  <td className="px-3 py-2.5 tabular-nums text-foreground">{pick.market}</td>
+                  <td className={cn('px-3 py-2.5 tabular-nums font-bold', resultColorClass(pick.result))}>{pick.result || 'Pending'}</td>
+                  <td className={cn('px-3 py-2.5 tabular-nums', pick.pnl >= 0 ? 'text-success' : 'text-destructive')}>{pick.result === 'Pending' ? '\u2014' : fmtMoney(pick.pnl)}</td>
                 </tr>
               ))}
             </tbody>
@@ -364,62 +386,81 @@ export default function NHLModel({ mobile }: { mobile: boolean }) {
         </div>
       </section>
 
-      <section style={card}>
-        <div style={{ fontSize: 11, color: '#8b8f9a', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>Strategy Performance</div>
-        <div style={{ display: 'grid', gap: 12, gridTemplateColumns: mobile ? '1fr' : 'repeat(auto-fit, minmax(180px, 1fr))', marginBottom: 16 }}>
+      {/* Strategy Performance */}
+      <section className="rounded-xl border border-border bg-card p-4 shadow-lg">
+        <div className="mb-3 text-[11px] uppercase tracking-wider text-muted-foreground">Strategy Performance</div>
+        <div className={cn('mb-4 grid gap-3', mobile ? 'grid-cols-1' : 'grid-cols-[repeat(auto-fit,minmax(180px,1fr))]')}>
           {strategies.strategies.map((row) => (
-            <div key={row.strategy} style={miniCard}>
-              <div style={{ fontSize: 12, color: '#8b8f9a', marginBottom: 6 }}>{row.strategy}</div>
-              <div style={{ fontSize: 22, fontWeight: 700, color: '#f8fafc', marginBottom: 10 }}>{row.record}</div>
-              <div style={cardStatRow}><span style={subtleText}>ROI</span><span style={{ color: row.roi >= 0 ? '#4ade80' : '#f87171' }}>{fmtPct(row.roi, 2)}</span></div>
-              <div style={cardStatRow}><span style={subtleText}>Avg Edge</span><span style={{ color: '#facc15' }}>{fmtPct(row.avg_edge, 2)}</span></div>
-              <div style={cardStatRow}><span style={subtleText}>Picks</span><span style={{ color: '#e2e8f0' }}>{row.pick_count}</span></div>
+            <div key={row.strategy} className="rounded-xl border border-border bg-muted/50 p-3.5">
+              <div className="mb-1.5 text-xs text-muted-foreground">{row.strategy}</div>
+              <div className="mb-2.5 text-[22px] font-bold text-foreground">{row.record}</div>
+              <div className="mt-1.5 flex items-center justify-between gap-2 text-xs">
+                <span className="text-muted-foreground">ROI</span>
+                <span className={row.roi >= 0 ? 'text-success' : 'text-destructive'}>{fmtPct(row.roi, 2)}</span>
+              </div>
+              <div className="mt-1.5 flex items-center justify-between gap-2 text-xs">
+                <span className="text-muted-foreground">Avg Edge</span>
+                <span className="text-warning">{fmtPct(row.avg_edge, 2)}</span>
+              </div>
+              <div className="mt-1.5 flex items-center justify-between gap-2 text-xs">
+                <span className="text-muted-foreground">Picks</span>
+                <span className="text-foreground">{row.pick_count}</span>
+              </div>
             </div>
           ))}
         </div>
-        <div style={{ height: mobile ? 280 : 320 }}>
+        <ChartPanel title="Strategy ROI" height={mobile ? 280 : 320}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={strategies.strategies}>
-              <CartesianGrid stroke="#2a2d37" vertical={false} />
-              <XAxis dataKey="strategy" stroke="#8b8f9a" tick={{ fontSize: 11 }} />
-              <YAxis stroke="#8b8f9a" tick={{ fontSize: 11 }} tickFormatter={(value) => `${value}%`} />
-              <Tooltip formatter={(value) => fmtPct(Number(value), 2)} />
+              <CartesianGrid stroke="hsl(var(--border))" vertical={false} />
+              <XAxis dataKey="strategy" stroke="hsl(var(--muted-foreground))" tick={{ fontSize: 11 }} />
+              <YAxis stroke="hsl(var(--muted-foreground))" tick={{ fontSize: 11 }} tickFormatter={(value) => `${value}%`} />
+              <Tooltip contentStyle={chartTooltipStyle} formatter={(value) => fmtPct(Number(value), 2)} />
               <Bar dataKey="roi" radius={[6, 6, 0, 0]}>
-                {strategies.strategies.map((row) => <Cell key={row.strategy} fill={row.roi >= 0 ? '#4ade80' : '#f87171'} />)}
+                {strategies.strategies.map((row) => <Cell key={row.strategy} fill={row.roi >= 0 ? 'hsl(var(--success))' : 'hsl(var(--destructive))'} />)}
               </Bar>
             </BarChart>
           </ResponsiveContainer>
-        </div>
+        </ChartPanel>
       </section>
 
-      <section style={card}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 12, marginBottom: 12 }}>
-          <div style={{ fontSize: 11, color: '#8b8f9a', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Odds Snapshot</div>
-          <div style={subtleText}>Source {odds.source} · Snapshot {odds.snapshot_date || '—'}</div>
+      {/* Odds Snapshot */}
+      <section className="rounded-xl border border-border bg-card p-4 shadow-lg">
+        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-3">
+          <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Odds Snapshot</div>
+          <div className="text-xs text-muted-foreground">Source {odds.source} &middot; Snapshot {odds.snapshot_date || '\u2014'}</div>
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {odds.games.length === 0 && <div style={{ color: '#8b8f9a' }}>No odds snapshot available.</div>}
+        <div className="flex flex-col gap-3">
+          {odds.games.length === 0 && <div className="text-muted-foreground">No odds snapshot available.</div>}
           {odds.games.map((game) => (
-            <div key={game.game} style={miniCard}>
-              <div style={{ fontSize: 16, color: '#f8fafc', fontWeight: 700, marginBottom: 10 }}>{game.game}</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div key={game.game} className="rounded-xl border border-border bg-muted/50 p-3.5">
+              <div className="mb-2.5 text-base font-bold text-foreground">{game.game}</div>
+              <div className="flex flex-col gap-2">
                 {game.markets.map((market) => (
-                  <div key={`${market.player}-${market.market}`} style={{ borderTop: '1px solid #2a2d37', paddingTop: 8 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 6 }}>
-                      <span style={{ color: '#e2e8f0', fontWeight: 600 }}>{market.player}</span>
-                      <span style={subtleText}>{market.market}</span>
+                  <div key={`${market.player}-${market.market}`} className="border-t border-border pt-2">
+                    <div className="mb-1.5 flex flex-wrap items-center justify-between gap-3">
+                      <span className="font-semibold text-foreground">{market.player}</span>
+                      <span className="text-xs text-muted-foreground">{market.market}</span>
                     </div>
-                    <div style={{ display: 'grid', gap: 8, gridTemplateColumns: mobile ? '1fr' : 'repeat(auto-fit, minmax(140px, 1fr))' }}>
+                    <div className={cn('grid gap-2', mobile ? 'grid-cols-1' : 'grid-cols-[repeat(auto-fit,minmax(140px,1fr))]')}>
                       {market.offers.map((offer, idx) => {
                         const isBest = (offer.side === 'over' && market.best_over_odds?.book === offer.book && market.best_over_odds?.odds === offer.odds)
                           || (offer.side === 'under' && market.best_under_odds?.book === offer.book && market.best_under_odds?.odds === offer.odds)
                         return (
-                          <div key={`${offer.book}-${offer.side}-${idx}`} style={{ ...offerCard, borderColor: isBest ? '#4ade80' : '#333642', background: isBest ? 'rgba(74,222,128,0.08)' : '#181a20' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                              <span style={{ color: '#f8fafc', fontWeight: 600 }}>{offer.book}</span>
-                              <span style={{ color: '#94a3b8' }}>{offer.side.toUpperCase()}</span>
+                          <div
+                            key={`${offer.book}-${offer.side}-${idx}`}
+                            className={cn(
+                              'rounded-lg border p-2.5',
+                              isBest
+                                ? 'border-success bg-success/[0.08]'
+                                : 'border-border bg-card'
+                            )}
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-semibold text-foreground">{offer.book}</span>
+                              <span className="text-muted-foreground">{offer.side.toUpperCase()}</span>
                             </div>
-                            <div style={{ marginTop: 6, color: '#e2e8f0' }}>Line {offer.line.toFixed(1)} · {fmtOdds(offer.odds)}</div>
+                            <div className="mt-1.5 text-foreground">Line {offer.line.toFixed(1)} &middot; {fmtOdds(offer.odds)}</div>
                           </div>
                         )
                       })}
@@ -445,78 +486,4 @@ export default function NHLModel({ mobile }: { mobile: boolean }) {
       */}
     </div>
   )
-}
-
-const card: React.CSSProperties = {
-  background: '#181a20',
-  border: '1px solid #2a2d37',
-  borderRadius: 14,
-  padding: 16,
-}
-
-const miniCard: React.CSSProperties = {
-  background: '#151821',
-  border: '1px solid #2a2d37',
-  borderRadius: 12,
-  padding: 14,
-}
-
-const offerCard: React.CSSProperties = {
-  border: '1px solid #333642',
-  borderRadius: 10,
-  padding: 10,
-}
-
-const subtleText: React.CSSProperties = {
-  color: '#8b8f9a',
-  fontSize: 12,
-}
-
-const cardStatRow: React.CSSProperties = {
-  display: 'flex',
-  justifyContent: 'space-between',
-  gap: 8,
-  fontSize: 12,
-  marginTop: 6,
-}
-
-const select: React.CSSProperties = {
-  background: '#252830',
-  border: '1px solid #333642',
-  borderRadius: 8,
-  color: '#f8fafc',
-  padding: '8px 10px',
-  fontFamily: 'inherit',
-}
-
-const th: React.CSSProperties = {
-  textAlign: 'left',
-  color: '#8b8f9a',
-  fontSize: 11,
-  fontWeight: 700,
-  letterSpacing: '0.04em',
-  textTransform: 'uppercase',
-  padding: '10px 12px',
-  position: 'sticky',
-  top: 0,
-  background: '#181a20',
-  borderBottom: '1px solid #2a2d37',
-}
-
-const thBtn: React.CSSProperties = {
-  ...th,
-  cursor: 'pointer',
-}
-
-const td: React.CSSProperties = {
-  color: '#e2e8f0',
-  padding: '10px 12px',
-  borderBottom: '1px solid #2a2d37',
-  fontVariantNumeric: 'tabular-nums',
-}
-
-const tfootCell: React.CSSProperties = {
-  ...td,
-  fontWeight: 700,
-  background: '#151821',
 }
