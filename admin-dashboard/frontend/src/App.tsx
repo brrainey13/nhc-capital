@@ -28,8 +28,9 @@ const SalesChart = React.lazy(() => import('./SalesChart'))
 const BankrollTracker = React.lazy(() => import('./BankrollTracker'))
 const NHLModel = React.lazy(() => import('./NHLModel'))
 const DataPlayground = React.lazy(() => import('./DataPlayground'))
+const OwnershipTracker = React.lazy(() => import('./OwnershipTracker'))
 
-type Page = 'home' | 'explorer' | 'query' | 'playground' | 'realestate' | 'bankroll' | 'nhlmodel'
+type Page = 'home' | 'explorer' | 'query' | 'playground' | 'realestate' | 'bankroll' | 'nhlmodel' | 'ownership'
 type SortDir = 'asc' | 'desc' | null
 type ExplorerView = 'tree' | 'detail' | 'data'
 
@@ -846,8 +847,8 @@ function BottomTabBar({ page, setPage }: { page: Page; setPage: (p: Page) => voi
     { key: 'home', icon: '', label: 'Home' },
     { key: 'nhlmodel', icon: '', label: 'Model' },
     { key: 'bankroll', icon: '', label: 'Bankroll' },
-    { key: 'playground', icon: '', label: 'Playground' },
-    { key: 'realestate', icon: '', label: 'Real Estate' },
+    { key: 'ownership', icon: '', label: 'Ownership' },
+    { key: 'playground', icon: '', label: 'Data' },
   ]
   return (
     <nav className="flex bg-card border-t border-border pb-[max(env(safe-area-inset-bottom),8px)] shrink-0 sticky bottom-0 z-20">
@@ -918,8 +919,8 @@ export default function App() {
           <span className="text-base font-bold text-foreground tracking-tight whitespace-nowrap mr-7">
             NHC<span className="font-normal text-muted-foreground"> Admin</span>
           </span>
-          {(['home', 'nhlmodel', 'bankroll', 'playground', 'realestate'] as Page[]).map(p => {
-            const labels: Record<Page, string> = { home: 'Home', nhlmodel: 'Model Outputs', bankroll: 'Bankroll', playground: 'Playground', explorer: 'Data', query: 'Query', realestate: 'Real Estate' }
+          {(['home', 'nhlmodel', 'bankroll', 'ownership', 'playground', 'realestate'] as Page[]).map(p => {
+            const labels: Record<Page, string> = { home: 'Home', nhlmodel: 'Model Outputs', bankroll: 'Bankroll', ownership: 'Ownership', playground: 'Playground', explorer: 'Data', query: 'Query', realestate: 'Real Estate' }
             return (
               <button key={p} onClick={() => { setPage(p) }}
                 className={cn('rounded-md px-3.5 py-2 text-[13px] font-medium text-muted-foreground bg-transparent border-none cursor-pointer font-sans', page === p && 'text-foreground bg-muted')}>
@@ -966,6 +967,13 @@ export default function App() {
         {page === 'bankroll' && (
           <React.Suspense fallback={<MobileLoadingFallback label="Loading bankroll" />}>
             <BankrollTracker mobile={mobile} />
+          </React.Suspense>
+        )}
+
+        {/* OWNERSHIP */}
+        {page === 'ownership' && (
+          <React.Suspense fallback={<MobileLoadingFallback label="Loading ownership" />}>
+            <OwnershipTracker mobile={mobile} />
           </React.Suspense>
         )}
 
