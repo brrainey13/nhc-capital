@@ -5,6 +5,7 @@ Source: https://sso.eservices.jud.ct.gov/foreclosures/Public/PendPostbyTownList.
 
 Outputs to Postgres table: ct_foreclosures
 """
+import json
 import os
 import re
 import subprocess
@@ -203,6 +204,44 @@ def upsert_listing(conn, data):
         ))
     conn.commit()
 
+def _geocode_census(address: str) -> tuple:
+    """Geocode via US Census Bureau geocoder. Free, no key, no rate limit.
+    Returns (lat, lng) or (None, None)."""
+    encoded = quote(address)
+    url = (
+        f"https://geocoding.geo.census.gov/geocoder/locations/onelineaddress"
+        f"?address={encoded}&benchmark=Public_AR_Current&format=json"
+    )
+    try:
+        result = subprocess.run(
+            ["curl", "-sL", "--max-time", "10", url],
+            capture_output=True, text=True
+        )
+        if result.returncode != 0:
+            return None, None
+        data = json.loads(result.stdout)
+        matches = data.get("result", {}).get("addressMatches", [])
+        if matches:
+            coords = matches[0]["coordinates"]
+            lat, lng = float(coords["y"]), float(coords["x"])
+            # Sanity: must be in CT bounding box
+            if 40.9 < lat < 42.1 and -73.8 < lng < -71.7:
+                return lat, lng
+    except Exception as e:
+        print(f"    Census geocoder error: {e}", flush=True)
+    return None, None
+
+
+def _get_existing_geocodes(conn):
+    """Load posting_id -> (lat, lng) for already-geocoded listings."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT posting_id, lat, lng FROM ct_foreclosures "
+            "WHERE lat IS NOT NULL AND lng IS NOT NULL"
+        )
+        return {row[0]: (row[1], row[2]) for row in cur.fetchall()}
+
+
 def main():
     print("=== CT Foreclosure Scraper ===", flush=True)
 
@@ -219,9 +258,20 @@ def main():
     except Exception:
         pass  # table already exists
 
+    # Load existing geocodes to skip re-geocoding
+    existing_geocodes = {}
+    try:
+        with get_connection() as conn:
+            existing_geocodes = _get_existing_geocodes(conn)
+        print(f"Loaded {len(existing_geocodes)} existing geocodes (will skip)", flush=True)
+    except Exception:
+        pass
+
     # Scrape each town
     scraped = 0
     errors = 0
+    geocoded_new = 0
+    geocode_skipped = 0
     for town, count in towns:
         print(f"\n[{town}] ({count} listings)...", flush=True)
         try:
@@ -236,19 +286,32 @@ def main():
                     continue
 
                 try:
-                    time.sleep(0.5)  # be polite
+                    time.sleep(0.3)  # be polite
                     notice = parse_full_notice(posting_id)
-                    # Merge
-                    # Geocode the address
+
+                    # Reuse existing geocode if available; only geocode new listings
                     lat, lng = None, None
-                    addr = notice.get("address")
-                    if addr:
-                        clean = clean_address(addr, town)
-                        lat, lng = geocode_address(clean)
-                        time.sleep(1.1)  # Nominatim rate limit
+                    pid_int = int(posting_id)
+                    if pid_int in existing_geocodes:
+                        lat, lng = existing_geocodes[pid_int]
+                        geocode_skipped += 1
+                    else:
+                        addr = notice.get("address")
+                        if addr:
+                            clean = clean_address(addr, town)
+                            # Use Census geocoder (free, no rate limit)
+                            lat, lng = _geocode_census(clean)
+                            if lat is None:
+                                # Fallback to Nominatim
+                                lat, lng = geocode_address(clean)
+                                time.sleep(1.1)
+                            else:
+                                time.sleep(0.15)  # Census is fast, minimal delay
+                            if lat is not None:
+                                geocoded_new += 1
 
                     record = {
-                        "posting_id": int(posting_id),
+                        "posting_id": pid_int,
                         "town": town,
                         "docket_number": listing.get("docket_number"),
                         "sale_date": notice.get("sale_date"),
@@ -271,12 +334,12 @@ def main():
                     errors += 1
                     print(f"  ✗ PostingId {posting_id}: {e}", flush=True)
 
-            time.sleep(0.3)  # pause between towns
+            time.sleep(0.2)  # pause between towns
         except Exception as e:
             errors += 1
             print(f"  ERROR on town {town}: {e}", flush=True)
 
-    print(f"\n=== DONE === Scraped: {scraped} | Errors: {errors}", flush=True)
+    print(f"\n=== DONE === Scraped: {scraped} | Errors: {errors} | New geocodes: {geocoded_new} | Reused: {geocode_skipped}", flush=True)
 
 if __name__ == "__main__":
     main()
