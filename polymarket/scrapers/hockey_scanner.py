@@ -1,18 +1,10 @@
 #!/usr/bin/env python3
 """Hockey Goalie Scanner v3 - Simpler parsing."""
 
-import os
 import re
 from datetime import datetime
 
 import requests
-
-DB_CONFIG = {
-    "host": "localhost",
-    "database": "clawd",
-    "user": "clawd_user",
-    "password": os.environ.get("CLAWD_DB_PASSWORD", "")
-}
 
 QUANTHOCKEY_URL = "https://www.quanthockey.com/nhl/seasons/nhl-goalies-stats.html"
 
