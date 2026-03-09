@@ -23,7 +23,7 @@ const EXPENSES: Expense[] = [
   { description: "Connor's Mac Mini", amount: 600, owedTo: ['Connor'], repaid: 0 },
   { description: "2x Connor's Hosting Fee", amount: 400, owedTo: ['Connor'], repaid: 0 },
   { description: "1x Blake Hosting Fee", amount: 200, owedTo: ['Blake'], repaid: 0 },
-  { description: 'Ian/Connor/Blake/Preston Initial Capital', amount: 200, owedTo: ['Ian', 'Connor', 'Blake', 'Preston'], repaid: 0 },
+  { description: 'Kalshi Initial Capital (Ian, Connor, Blake, Preston)', amount: 200, owedTo: ['Ian', 'Connor', 'Blake', 'Preston'], repaid: 0 },
   { description: "Blake/Ian's Scaled Capital", amount: 600, owedTo: ['Blake', 'Ian'], repaid: 0 },
 ]
 
