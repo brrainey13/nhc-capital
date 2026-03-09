@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Area,
   AreaChart,
@@ -16,8 +16,6 @@ import {
 import {
   API,
   buildHealthRows,
-  C,
-  emptyChartStyle,
   fmtCompact,
   fmtCountdown,
   fmtCurrency,
@@ -29,21 +27,16 @@ import {
   fmtTimeEst,
   getRateLimitColor,
   getRecencyColor,
-  LoadingState,
-  metricCardSpan,
-  MetricCard,
-  panelStyle,
-  ProgressBar,
-  SectionHeader,
-  StatusPill,
-  tableCellStyle,
-  tableHeadStyle,
-  tooltipStyle,
   type ClaudeCosts,
   type HealthData,
   type TableInfo,
   type UsageData,
 } from './dashboardSupport'
+import { PageHeader } from '@/components/ui/page-header'
+import { StatCard } from '@/components/ui/stat-card'
+import { ChartPanel, chartTooltipStyle } from '@/components/ui/chart-panel'
+import { ProgressBar } from '@/components/ui/progress-bar'
+import { StatusBadge } from '@/components/ui/status-badge'
 
 type DashboardProps = { mobile: boolean }
 
@@ -154,7 +147,14 @@ export default function Dashboard({ mobile }: DashboardProps) {
   }, [claudeCosts])
 
   const costBreakdown = useMemo(() => {
-    const palette = ['#4f8cff', '#22c55e', '#a855f7', '#f59e0b', '#ef4444', '#14b8a6']
+    const palette = [
+      'hsl(var(--chart-1))',
+      'hsl(var(--chart-2))',
+      'hsl(var(--chart-3))',
+      'hsl(var(--chart-4))',
+      'hsl(var(--chart-5))',
+      'hsl(180 70% 50%)',
+    ]
     return Object.entries(claudeCosts?.models_7d ?? {})
       .sort(([, a], [, b]) => b.cost - a.cost)
       .map(([model, data], index) => ({
@@ -171,176 +171,186 @@ export default function Dashboard({ mobile }: DashboardProps) {
   const healthRows = buildHealthRows({ health, tables, hostMode, usage, claudeCosts, nowMs })
 
   if (loading && !usage) {
-    return <LoadingState />
+    return (
+      <section className="rounded-xl border border-border bg-card p-4 shadow-lg">
+        <div className="text-sm text-muted-foreground">Loading dashboard telemetry…</div>
+      </section>
+    )
   }
 
   if (!usage) {
     return (
-      <section style={panelStyle}>
-        <div style={{ color: C.textMuted, fontSize: 13 }}>
+      <section className="rounded-xl border border-border bg-card p-4 shadow-lg">
+        <div className="text-sm text-muted-foreground">
           {loadFailed ? 'Unable to load dashboard telemetry. Refresh and sign in again.' : 'Loading dashboard telemetry…'}
         </div>
       </section>
     )
   }
 
-  return (
-    <div style={{ height: '100%', overflow: 'auto', paddingBottom: mobile ? 96 : 24 }}>
-      <div style={{ display: 'flex', alignItems: mobile ? 'flex-start' : 'center', justifyContent: 'space-between', gap: 12, marginBottom: 16, flexDirection: mobile ? 'column' : 'row' }}>
-        <div>
-          <h2 style={{ margin: 0, fontSize: mobile ? 22 : 26, fontWeight: 800, letterSpacing: '-0.04em', color: C.white }}>Ops Command Center</h2>
-          <div style={{ marginTop: 6, fontSize: 12, color: C.textMuted }}>
-            Generated {fmtDateTime(usage.freshness.generated_at)} · latest session {fmtRelativeFromNow(usage.freshness.latest_session_update_at, nowMs)} · refreshes every 30s
-          </div>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderRadius: 999, border: `1px solid ${C.border}`, background: C.surface }}>
-          <span style={{ width: 8, height: 8, borderRadius: '50%', background: getRateLimitColor(usage.claude_rate_limit.status), boxShadow: `0 0 12px ${getRateLimitColor(usage.claude_rate_limit.status)}66` }} />
-          <span style={{ fontSize: 12, color: C.textSecondary, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-            Claude {usage.claude_rate_limit.status}
-          </span>
-          <span style={{ fontSize: 12, fontWeight: 700, color: C.white, fontVariantNumeric: 'tabular-nums' }}>
-            {fmtCountdown(usage.claude_rate_limit.seconds_until_reset, nowMs, usage.claude_rate_limit.reset_at)}
-          </span>
-        </div>
-      </div>
+  const rateLimitColor = getRateLimitColor(usage.claude_rate_limit.status)
 
-      <section style={{ display: 'grid', gap: 12, gridTemplateColumns: mobile ? '1fr' : 'repeat(4, minmax(0, 1fr))', marginBottom: 16 }}>
-        <MetricCard
-          title="API Status"
-          accent={getRateLimitColor(usage.claude_rate_limit.status)}
-          footer={`Reset ${fmtDateTime(usage.claude_rate_limit.reset_at)}`}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-            <div>
-              <div style={{ fontSize: 26, fontWeight: 800, color: C.white, letterSpacing: '-0.03em' }}>
-                {health?.status === 'ok' ? 'Online' : 'Check API'}
-              </div>
-              <div style={{ marginTop: 4, fontSize: 12, color: C.textSecondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {dominantModel}
-              </div>
-            </div>
-            <StatusPill label={usage.claude_rate_limit.status} color={getRateLimitColor(usage.claude_rate_limit.status)} />
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12, color: C.textMuted }}>
-            <span>Rate limit reset</span>
-            <span style={{ color: C.white, fontVariantNumeric: 'tabular-nums' }}>
+  return (
+    <div className={`h-full overflow-auto ${mobile ? 'pb-24' : 'pb-6'}`}>
+      <PageHeader
+        title="Ops Command Center"
+        subtitle={
+          <>
+            Generated {fmtDateTime(usage.freshness.generated_at)} · latest session {fmtRelativeFromNow(usage.freshness.latest_session_update_at, nowMs)} · refreshes every 30s
+          </>
+        }
+        actions={
+          <div className="flex items-center gap-2 rounded-full border border-border bg-card px-3 py-2">
+            <span className="h-2 w-2 rounded-full" style={{ background: rateLimitColor, boxShadow: `0 0 12px ${rateLimitColor}66` }} />
+            <span className="text-xs uppercase tracking-wider text-muted-foreground">Claude {usage.claude_rate_limit.status}</span>
+            <span className="text-xs font-bold tabular-nums text-foreground">
               {fmtCountdown(usage.claude_rate_limit.seconds_until_reset, nowMs, usage.claude_rate_limit.reset_at)}
             </span>
           </div>
-        </MetricCard>
+        }
+      />
 
-        <MetricCard
-          title="Token Budget"
-          accent={C.accent}
+      {/* Metric Cards */}
+      <section className={`mb-4 grid gap-3 ${mobile ? 'grid-cols-1' : 'grid-cols-4'}`}>
+        <StatCard
+          label="API Status"
+          accentColor={rateLimitColor}
+          footer={`Reset ${fmtDateTime(usage.claude_rate_limit.reset_at)}`}
+          value={
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-[26px] font-extrabold tracking-tight text-foreground">
+                  {health?.status === 'ok' ? 'Online' : 'Check API'}
+                </div>
+                <div className="mt-1 truncate text-xs text-muted-foreground">{dominantModel}</div>
+              </div>
+              <StatusBadge label={usage.claude_rate_limit.status} color={rateLimitColor} />
+            </div>
+          }
+        >
+          <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+            <span>Rate limit reset</span>
+            <span className="font-bold tabular-nums text-foreground">
+              {fmtCountdown(usage.claude_rate_limit.seconds_until_reset, nowMs, usage.claude_rate_limit.reset_at)}
+            </span>
+          </div>
+        </StatCard>
+
+        <StatCard
+          label="Token Budget"
+          value={fmtNum(tokenBudget.used)}
+          subtitle="Last 24h tokens across recent sessions"
+          accentColor="hsl(var(--primary))"
           footer={tokenBudget.capacity > 0 ? `${fmtNum(tokenBudget.remaining)} remaining capacity` : 'Context capacity unavailable'}
         >
-          <div style={{ fontSize: 30, fontWeight: 800, color: C.white, letterSpacing: '-0.04em' }}>{fmtNum(tokenBudget.used)}</div>
-          <div style={{ fontSize: 12, color: C.textSecondary }}>Last 24h tokens across recent sessions</div>
-          <ProgressBar value={tokenBudget.pct} color={C.accent} />
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12, color: C.textMuted }}>
+          <ProgressBar value={tokenBudget.pct} color="hsl(var(--primary))" />
+          <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
             <span>{fmtPct(tokenBudget.pct)} of active context capacity</span>
             <span>{tokenBudget.capacity > 0 ? fmtNum(tokenBudget.capacity) : '—'} total</span>
           </div>
-        </MetricCard>
+        </StatCard>
 
-        <MetricCard
-          title="Cost (7d)"
-          accent={C.success}
+        <StatCard
+          label="Cost (7d)"
+          accentColor="hsl(var(--chart-2))"
           footer={claudeCosts ? `${fmtNum(claudeCosts.total_tokens_7d)} tokens over 7d` : 'CodexBar data unavailable'}
-        >
-          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-            <div>
-              <div style={{ fontSize: 30, fontWeight: 800, color: C.white, letterSpacing: '-0.04em' }}>
-                {claudeCosts ? fmtCurrency(claudeCosts.total_cost_7d) : '—'}
+          value={
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-[30px] font-extrabold tracking-tight text-foreground">
+                  {claudeCosts ? fmtCurrency(claudeCosts.total_cost_7d) : '—'}
+                </div>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  {claudeCosts?.error ? 'CodexBar feed degraded' : 'Daily spend trend'}
+                </div>
               </div>
-              <div style={{ marginTop: 4, fontSize: 12, color: C.textSecondary }}>
-                {claudeCosts?.error ? 'CodexBar feed degraded' : 'Daily spend trend'}
+              <div className={`shrink-0 ${mobile ? 'h-14 w-24' : 'h-14 w-[120px]'}`}>
+                {dailyCostSeries.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={dailyCostSeries}>
+                      <defs>
+                        <linearGradient id="costSpark" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="hsl(var(--chart-2))" stopOpacity={0.8} />
+                          <stop offset="100%" stopColor="hsl(var(--chart-2))" stopOpacity={0.08} />
+                        </linearGradient>
+                      </defs>
+                      <Area type="monotone" dataKey="cost" stroke="hsl(var(--chart-2))" strokeWidth={2.5} fill="url(#costSpark)" />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-full rounded-lg border border-border bg-muted" />
+                )}
               </div>
             </div>
-            <div style={{ width: mobile ? 96 : 120, height: 56, flexShrink: 0 }}>
-              {dailyCostSeries.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={dailyCostSeries}>
-                    <defs>
-                      <linearGradient id="costSpark" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor={C.success} stopOpacity={0.8} />
-                        <stop offset="100%" stopColor={C.success} stopOpacity={0.08} />
-                      </linearGradient>
-                    </defs>
-                    <Area type="monotone" dataKey="cost" stroke={C.success} strokeWidth={2.5} fill="url(#costSpark)" />
-                  </AreaChart>
-                </ResponsiveContainer>
-              ) : (
-                <div style={{ height: '100%', borderRadius: 10, background: C.surfaceActive, border: `1px solid ${C.border}` }} />
-              )}
-            </div>
-          </div>
-        </MetricCard>
+          }
+        />
 
-        <MetricCard
-          title="Active Sessions"
-          accent={C.purple}
+        <StatCard
+          label="Active Sessions"
+          value={String(activeSessionsLastHour.length)}
+          subtitle="Updated within the last hour"
+          accentColor="hsl(var(--chart-3))"
           footer={`${fmtNum(usage.totals.session_count)} sessions total`}
         >
-          <div style={{ fontSize: 30, fontWeight: 800, color: C.white, letterSpacing: '-0.04em' }}>{activeSessionsLastHour.length}</div>
-          <div style={{ fontSize: 12, color: C.textSecondary }}>Updated within the last hour</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div className="flex flex-col gap-1.5">
             {activeSessionsLastHour.slice(0, 3).map((session) => (
-              <div key={session.key} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12 }}>
-                <span style={{ color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{session.label}</span>
-                <span style={{ color: C.textMuted }}>{fmtCompact(session.total_tokens)}</span>
+              <div key={session.key} className="flex items-center justify-between gap-2 text-xs">
+                <span className="truncate text-foreground">{session.label}</span>
+                <span className="text-muted-foreground">{fmtCompact(session.total_tokens)}</span>
               </div>
             ))}
-            {activeSessionsLastHour.length === 0 && <div style={{ fontSize: 12, color: C.textMuted }}>No sessions updated in the last hour.</div>}
+            {activeSessionsLastHour.length === 0 && (
+              <div className="text-xs text-muted-foreground">No sessions updated in the last hour.</div>
+            )}
           </div>
-        </MetricCard>
+        </StatCard>
       </section>
 
-      <section style={{ ...panelStyle, marginBottom: 16 }}>
-        <SectionHeader
-          title="Token Burn"
-          subtitle={`${fmtCompact(Math.round(usage.windows.last_24h?.burn_rate_tokens_per_hour ?? 0))} tokens/hour avg · last 24h in ${usage.trend.bucket_minutes}-minute buckets`}
-        />
-        <div style={{ height: mobile ? 240 : 320 }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={burnTrend} margin={{ top: 10, right: 8, left: 0, bottom: 0 }}>
-              <defs>
-                <linearGradient id="burnFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={C.accent} stopOpacity={0.7} />
-                  <stop offset="100%" stopColor={C.accent} stopOpacity={0.05} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid stroke={C.border} vertical={false} />
-              <XAxis dataKey="label" stroke={C.textMuted} tick={{ fill: C.textMuted, fontSize: 11 }} />
-              <YAxis stroke={C.textMuted} tick={{ fill: C.textMuted, fontSize: 11 }} tickFormatter={(value) => fmtCompact(Number(value))} width={72} />
-              <Tooltip
-                contentStyle={tooltipStyle}
-                cursor={{ stroke: `${C.accent}55`, strokeWidth: 1 }}
-                formatter={(value: number | string | undefined) => [fmtNum(Number(value ?? 0)), 'Tokens']}
-                labelFormatter={(_, payload) => fmtDateTime(payload?.[0]?.payload?.start ?? null)}
-              />
-              <Area type="monotone" dataKey="tokens" stroke={C.accent} strokeWidth={3} fill="url(#burnFill)" />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-      </section>
+      {/* Token Burn Chart */}
+      <ChartPanel
+        title="Token Burn"
+        subtitle={`${fmtCompact(Math.round(usage.windows.last_24h?.burn_rate_tokens_per_hour ?? 0))} tokens/hour avg · last 24h in ${usage.trend.bucket_minutes}-minute buckets`}
+        height={mobile ? 240 : 320}
+        className="mb-4"
+      >
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={burnTrend} margin={{ top: 10, right: 8, left: 0, bottom: 0 }}>
+            <defs>
+              <linearGradient id="burnFill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.7} />
+                <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0.05} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid stroke="hsl(var(--border))" vertical={false} />
+            <XAxis dataKey="label" stroke="hsl(var(--muted-foreground))" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} />
+            <YAxis stroke="hsl(var(--muted-foreground))" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} tickFormatter={(value) => fmtCompact(Number(value))} width={72} />
+            <Tooltip
+              contentStyle={chartTooltipStyle}
+              cursor={{ stroke: 'hsl(var(--primary) / 0.3)', strokeWidth: 1 }}
+              formatter={(value: number | string | undefined) => [fmtNum(Number(value ?? 0)), 'Tokens']}
+              labelFormatter={(_, payload) => fmtDateTime(payload?.[0]?.payload?.start ?? null)}
+            />
+            <Area type="monotone" dataKey="tokens" stroke="hsl(var(--primary))" strokeWidth={3} fill="url(#burnFill)" />
+          </AreaChart>
+        </ResponsiveContainer>
+      </ChartPanel>
 
-      <section style={{ display: 'grid', gap: 16, gridTemplateColumns: mobile ? '1fr' : 'minmax(0, 1.6fr) minmax(320px, 1fr)', marginBottom: 16 }}>
-        <div style={panelStyle}>
-          <SectionHeader
-            title="Session Activity"
-            subtitle="Sorted by estimated burn rate with freshness coloring"
-          />
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: mobile ? 760 : 0 }}>
+      {/* Session Activity + Cost Breakdown */}
+      <section className={`mb-4 grid gap-4 ${mobile ? 'grid-cols-1' : 'grid-cols-[1.6fr_minmax(320px,1fr)]'}`}>
+        <div className="rounded-xl border border-border bg-card p-4 shadow-lg">
+          <div className="mb-3.5 flex flex-wrap items-baseline justify-between gap-3">
+            <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Session Activity</div>
+            <div className="text-xs text-muted-foreground">Sorted by estimated burn rate with freshness coloring</div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className={`w-full border-collapse ${mobile ? 'min-w-[760px]' : ''}`}>
               <thead>
                 <tr>
-                  <th style={{ ...tableHeadStyle, width: '28%' }}>Session</th>
-                  <th style={tableHeadStyle}>Model</th>
-                  <th style={tableHeadStyle}>Tokens Used</th>
-                  <th style={tableHeadStyle}>Share</th>
-                  <th style={tableHeadStyle}>Burn Rate</th>
-                  <th style={tableHeadStyle}>Last Active</th>
+                  {['Session', 'Model', 'Tokens Used', 'Share', 'Burn Rate', 'Last Active'].map((col, i) => (
+                    <th key={col} className={`border-b border-border px-3 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider text-muted-foreground ${i === 0 ? 'w-[28%]' : ''}`}>
+                      {col}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
@@ -349,22 +359,22 @@ export default function Dashboard({ mobile }: DashboardProps) {
                   const color = getRecencyColor(hoursSince)
                   return (
                     <tr key={session.key}>
-                      <td style={tableCellStyle}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                          <span style={{ width: 8, height: 8, borderRadius: '50%', background: color, boxShadow: `0 0 12px ${color}55`, flexShrink: 0 }} />
-                          <div style={{ minWidth: 0 }}>
-                            <div style={{ color: C.white, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{session.label}</div>
-                            <div style={{ color: C.textMuted, fontSize: 11, marginTop: 3 }}>{session.key.slice(0, 12)}…</div>
+                      <td className="border-b border-border px-3 py-3.5 align-top text-sm tabular-nums text-foreground">
+                        <div className="flex items-center gap-2.5">
+                          <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: color, boxShadow: `0 0 12px ${color}55` }} />
+                          <div className="min-w-0">
+                            <div className="truncate font-semibold text-foreground">{session.label}</div>
+                            <div className="mt-0.5 text-[11px] text-muted-foreground">{session.key.slice(0, 12)}…</div>
                           </div>
                         </div>
                       </td>
-                      <td style={{ ...tableCellStyle, color: C.textSecondary, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{session.model || '—'}</td>
-                      <td style={tableCellStyle}>{fmtNum(session.total_tokens)}</td>
-                      <td style={tableCellStyle}>{fmtPct(session.share_pct ?? 0)}</td>
-                      <td style={tableCellStyle}>{fmtCompact(Math.round(session.burn_rate_24h_est ?? 0))}/h</td>
-                      <td style={tableCellStyle}>
-                        <div style={{ color, fontWeight: 600 }}>{fmtRelativeFromNow(session.updated_at, nowMs)}</div>
-                        <div style={{ marginTop: 3, color: C.textMuted, fontSize: 11 }}>{fmtDateTime(session.updated_at)}</div>
+                      <td className="max-w-[220px] truncate border-b border-border px-3 py-3.5 align-top text-sm tabular-nums text-muted-foreground">{session.model || '—'}</td>
+                      <td className="border-b border-border px-3 py-3.5 align-top text-sm tabular-nums text-foreground">{fmtNum(session.total_tokens)}</td>
+                      <td className="border-b border-border px-3 py-3.5 align-top text-sm tabular-nums text-foreground">{fmtPct(session.share_pct ?? 0)}</td>
+                      <td className="border-b border-border px-3 py-3.5 align-top text-sm tabular-nums text-foreground">{fmtCompact(Math.round(session.burn_rate_24h_est ?? 0))}/h</td>
+                      <td className="border-b border-border px-3 py-3.5 align-top text-sm tabular-nums text-foreground">
+                        <div className="font-semibold" style={{ color }}>{fmtRelativeFromNow(session.updated_at, nowMs)}</div>
+                        <div className="mt-0.5 text-[11px] text-muted-foreground">{fmtDateTime(session.updated_at)}</div>
                       </td>
                     </tr>
                   )
@@ -374,58 +384,51 @@ export default function Dashboard({ mobile }: DashboardProps) {
           </div>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div style={panelStyle}>
-            <SectionHeader
-              title="Cost Breakdown"
-              subtitle={claudeCosts ? `${fmtCurrency(claudeCosts.total_cost_7d)} total over the last 7 days` : 'No cost data available'}
-            />
-            <div style={{ display: 'flex', flexDirection: mobile ? 'column' : 'row', gap: 12 }}>
-              <div style={metricCardSpan(mobile, '1 1 52%')}>
-                <div style={{ height: 220 }}>
+        <div className="flex flex-col gap-4">
+          <div className="rounded-xl border border-border bg-card p-4 shadow-lg">
+            <div className="mb-3.5 flex flex-wrap items-baseline justify-between gap-3">
+              <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Cost Breakdown</div>
+              <div className="text-xs text-muted-foreground">
+                {claudeCosts ? `${fmtCurrency(claudeCosts.total_cost_7d)} total over the last 7 days` : 'No cost data available'}
+              </div>
+            </div>
+            <div className={`flex gap-3 ${mobile ? 'flex-col' : 'flex-row'}`}>
+              <div className={mobile ? '' : 'flex-[1_1_52%]'}>
+                <div className="h-[220px]">
                   {costBreakdown.length > 0 ? (
                     <ResponsiveContainer width="100%" height="100%">
                       <PieChart>
-                        <Pie
-                          data={costBreakdown}
-                          dataKey="cost"
-                          nameKey="model"
-                          innerRadius={58}
-                          outerRadius={82}
-                          paddingAngle={2}
-                          stroke="none"
-                        >
+                        <Pie data={costBreakdown} dataKey="cost" nameKey="model" innerRadius={58} outerRadius={82} paddingAngle={2} stroke="none">
                           {costBreakdown.map((entry) => (
                             <Cell key={entry.model} fill={entry.color} />
                           ))}
                         </Pie>
-                        <Tooltip
-                          contentStyle={tooltipStyle}
-                          formatter={(value: number | string | undefined) => [fmtCurrency(Number(value ?? 0)), 'Cost']}
-                        />
+                        <Tooltip contentStyle={chartTooltipStyle} formatter={(value: number | string | undefined) => [fmtCurrency(Number(value ?? 0)), 'Cost']} />
                       </PieChart>
                     </ResponsiveContainer>
                   ) : (
-                    <div style={emptyChartStyle}>No model cost breakdown available.</div>
+                    <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-border bg-muted text-xs text-muted-foreground">
+                      No model cost breakdown available.
+                    </div>
                   )}
                 </div>
               </div>
-              <div style={metricCardSpan(mobile, '1 1 48%')}>
-                <div style={{ fontSize: 28, fontWeight: 800, color: C.white, letterSpacing: '-0.04em' }}>
+              <div className={`flex flex-col gap-3 ${mobile ? '' : 'flex-[1_1_48%]'}`}>
+                <div className="text-[28px] font-extrabold tracking-tight text-foreground">
                   {claudeCosts ? fmtCurrency(claudeCosts.total_cost_7d) : '—'}
                 </div>
-                <div style={{ fontSize: 12, color: C.textSecondary }}>Model share of last 7 days</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div className="text-xs text-muted-foreground">Model share of last 7 days</div>
+                <div className="flex flex-col gap-2">
                   {costBreakdown.slice(0, 5).map((entry) => {
                     const pct = claudeCosts && claudeCosts.total_cost_7d > 0 ? (entry.cost / claudeCosts.total_cost_7d) * 100 : 0
                     return (
                       <div key={entry.model}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12, marginBottom: 4 }}>
-                          <span style={{ color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{entry.model}</span>
-                          <span style={{ color: C.white }}>{fmtCurrency(entry.cost)}</span>
+                        <div className="mb-1 flex items-center justify-between gap-2 text-xs">
+                          <span className="truncate text-foreground">{entry.model}</span>
+                          <span className="font-medium text-foreground">{fmtCurrency(entry.cost)}</span>
                         </div>
-                        <div style={{ height: 6, borderRadius: 999, overflow: 'hidden', background: C.surfaceActive }}>
-                          <div style={{ width: `${pct}%`, height: '100%', borderRadius: 999, background: entry.color }} />
+                        <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                          <div className="h-full rounded-full" style={{ width: `${pct}%`, background: entry.color }} />
                         </div>
                       </div>
                     )
@@ -433,25 +436,24 @@ export default function Dashboard({ mobile }: DashboardProps) {
                 </div>
               </div>
             </div>
-            <div style={{ marginTop: 16 }}>
-              <div style={{ fontSize: 11, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>Daily Cost</div>
-              <div style={{ height: 180 }}>
+
+            <div className="mt-4">
+              <div className="mb-2.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Daily Cost</div>
+              <div className="h-[180px]">
                 {dailyCostSeries.length > 0 ? (
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={dailyCostSeries}>
-                      <CartesianGrid stroke={C.border} vertical={false} />
-                      <XAxis dataKey="label" stroke={C.textMuted} tick={{ fill: C.textMuted, fontSize: 11 }} />
-                      <YAxis stroke={C.textMuted} tick={{ fill: C.textMuted, fontSize: 11 }} tickFormatter={(value) => `$${Number(value).toFixed(0)}`} width={52} />
-                      <Tooltip
-                        contentStyle={tooltipStyle}
-                        formatter={(value: number | string | undefined) => [fmtCurrency(Number(value ?? 0)), 'Cost']}
-                        labelFormatter={(_, payload) => payload?.[0]?.payload?.date ?? ''}
-                      />
-                      <Bar dataKey="cost" radius={[8, 8, 0, 0]} fill={C.accent} />
+                      <CartesianGrid stroke="hsl(var(--border))" vertical={false} />
+                      <XAxis dataKey="label" stroke="hsl(var(--muted-foreground))" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} />
+                      <YAxis stroke="hsl(var(--muted-foreground))" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} tickFormatter={(value) => `$${Number(value).toFixed(0)}`} width={52} />
+                      <Tooltip contentStyle={chartTooltipStyle} formatter={(value: number | string | undefined) => [fmtCurrency(Number(value ?? 0)), 'Cost']} labelFormatter={(_, payload) => payload?.[0]?.payload?.date ?? ''} />
+                      <Bar dataKey="cost" radius={[8, 8, 0, 0]} fill="hsl(var(--primary))" />
                     </BarChart>
                   </ResponsiveContainer>
                 ) : (
-                  <div style={emptyChartStyle}>No daily cost history available.</div>
+                  <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-border bg-muted text-xs text-muted-foreground">
+                    No daily cost history available.
+                  </div>
                 )}
               </div>
             </div>
@@ -459,19 +461,20 @@ export default function Dashboard({ mobile }: DashboardProps) {
         </div>
       </section>
 
-      <section style={panelStyle}>
-        <SectionHeader
-          title="System Health"
-          subtitle="Best-effort status from existing endpoints only"
-        />
-        <div style={{ display: 'grid', gap: 12, gridTemplateColumns: mobile ? '1fr' : 'repeat(3, minmax(0, 1fr))' }}>
+      {/* System Health */}
+      <section className="rounded-xl border border-border bg-card p-4 shadow-lg">
+        <div className="mb-3.5 flex flex-wrap items-baseline justify-between gap-3">
+          <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground">System Health</div>
+          <div className="text-xs text-muted-foreground">Best-effort status from existing endpoints only</div>
+        </div>
+        <div className={`grid gap-3 ${mobile ? 'grid-cols-1' : 'grid-cols-3'}`}>
           {healthRows.map((row) => (
-            <div key={row.label} style={{ borderRadius: 14, border: `1px solid ${C.border}`, background: C.surfaceActive, padding: 14 }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 10 }}>
-                <div style={{ fontSize: 11, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700 }}>{row.label}</div>
-                <StatusPill label={row.status} color={row.color} subtle />
+            <div key={row.label} className="rounded-xl border border-border bg-muted p-3.5">
+              <div className="mb-2.5 flex items-center justify-between gap-2.5">
+                <div className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">{row.label}</div>
+                <StatusBadge label={row.status} color={row.color} subtle />
               </div>
-              <div style={{ fontSize: 12, color: C.textSecondary, lineHeight: 1.5 }}>{row.detail}</div>
+              <div className="text-xs leading-relaxed text-muted-foreground">{row.detail}</div>
             </div>
           ))}
         </div>

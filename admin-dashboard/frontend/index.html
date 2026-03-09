@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
@@ -10,21 +10,17 @@
     <link rel="manifest" href="/manifest.json" />
     <link rel="apple-touch-icon" href="/icon-192.png" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,200..800;1,200..800&display=swap" rel="stylesheet" />
     <title>NHC Admin Dashboard</title>
     <style>
-      html, body, #root { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #0f1117; }
+      html, body, #root { margin: 0; padding: 0; height: 100%; overflow: hidden; }
       * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
       input, select, textarea, button { font-size: 16px; }
       @media (min-width: 768px) {
         input, select, textarea, button { font-size: inherit; }
       }
-      /* Visible scrollbars — force always-on for all browsers */
-      .scroll-visible { overflow: auto !important; scrollbar-width: thin; scrollbar-color: #3a3d48 #181a20; }
-      .scroll-visible::-webkit-scrollbar { width: 10px; height: 10px; display: block; }
-      .scroll-visible::-webkit-scrollbar-track { background: #181a20; }
-      .scroll-visible::-webkit-scrollbar-thumb { background: #3a3d48; border-radius: 5px; min-height: 30px; min-width: 30px; }
-      .scroll-visible::-webkit-scrollbar-thumb:hover { background: #5f6370; }
-      .scroll-visible::-webkit-scrollbar-corner { background: #181a20; }
     </style>
   </head>
   <body>
