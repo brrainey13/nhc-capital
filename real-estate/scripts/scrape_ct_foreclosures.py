@@ -206,8 +206,10 @@ def upsert_listing(conn, data):
 
 def _geocode_census(address: str) -> tuple:
     """Geocode via US Census Bureau geocoder. Free, no key, no rate limit.
-    Returns (lat, lng) or (None, None)."""
-    encoded = quote(address)
+    Returns (lat, lng) or (None, None).
+    Note: `quote` is imported at the top of this file (from urllib.parse import quote).
+    """
+    encoded = quote(address)  # urllib.parse.quote — imported on line 14
     url = (
         f"https://geocoding.geo.census.gov/geocoder/locations/onelineaddress"
         f"?address={encoded}&benchmark=Public_AR_Current&format=json"
