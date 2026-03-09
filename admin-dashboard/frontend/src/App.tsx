@@ -27,8 +27,9 @@ const ForeclosureMap = React.lazy(() => import('./ForeclosureMap'))
 const SalesChart = React.lazy(() => import('./SalesChart'))
 const BankrollTracker = React.lazy(() => import('./BankrollTracker'))
 const NHLModel = React.lazy(() => import('./NHLModel'))
+const DataPlayground = React.lazy(() => import('./DataPlayground'))
 
-type Page = 'home' | 'explorer' | 'query' | 'realestate' | 'bankroll' | 'nhlmodel'
+type Page = 'home' | 'explorer' | 'query' | 'playground' | 'realestate' | 'bankroll' | 'nhlmodel'
 type SortDir = 'asc' | 'desc' | null
 type ExplorerView = 'tree' | 'detail' | 'data'
 
@@ -828,8 +829,7 @@ function BottomTabBar({ page, setPage }: { page: Page; setPage: (p: Page) => voi
     { key: 'home', icon: '', label: 'Home' },
     { key: 'nhlmodel', icon: '', label: 'Model' },
     { key: 'bankroll', icon: '', label: 'Bankroll' },
-    { key: 'explorer', icon: '', label: 'Data' },
-    { key: 'query', icon: '', label: 'Query' },
+    { key: 'playground', icon: '', label: 'Playground' },
     { key: 'realestate', icon: '', label: 'Real Estate' },
   ]
   return (
@@ -901,10 +901,10 @@ export default function App() {
           <span className="text-base font-bold text-foreground tracking-tight whitespace-nowrap mr-7">
             NHC<span className="font-normal text-muted-foreground"> Admin</span>
           </span>
-          {(['home', 'nhlmodel', 'bankroll', 'explorer', 'query', 'realestate'] as Page[]).map(p => {
-            const labels: Record<Page, string> = { home: 'Home', nhlmodel: 'Model Outputs', bankroll: 'Bankroll', explorer: 'Data', query: 'Query', realestate: 'Real Estate' }
+          {(['home', 'nhlmodel', 'bankroll', 'playground', 'realestate'] as Page[]).map(p => {
+            const labels: Record<Page, string> = { home: 'Home', nhlmodel: 'Model Outputs', bankroll: 'Bankroll', playground: 'Playground', explorer: 'Data', query: 'Query', realestate: 'Real Estate' }
             return (
-              <button key={p} onClick={() => { setPage(p); if (p === 'explorer') setExplorerView('tree') }}
+              <button key={p} onClick={() => { setPage(p) }}
                 className={cn('rounded-md px-3.5 py-2 text-[13px] font-medium text-muted-foreground bg-transparent border-none cursor-pointer font-sans', page === p && 'text-foreground bg-muted')}>
                 {labels[p]}
               </button>
@@ -931,108 +931,12 @@ export default function App() {
           <Dashboard mobile={mobile} />
         )}
 
-        {/* DATA EXPLORER — Tree → Detail → Full Data */}
-        {page === 'explorer' && (
-          <div className="h-full flex flex-col min-h-0">
-            {explorerView === 'tree' && (
-              <div className="overflow-auto h-full">
-                <div className="flex items-center gap-3 mb-4">
-                  <h2 className={cn('font-bold m-0 text-foreground', mobile ? 'text-lg' : 'text-xl')}>Data Explorer</h2>
-                  <span className="text-xs text-muted-foreground">{fmtNum(tables.length)} tables · {fmtCompact(totalRows)} rows</span>
-                </div>
-                {/* Search */}
-                <div className="relative mb-4 max-w-[400px]">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm pointer-events-none"></span>
-                  <input type="text" value={sidebarSearch} onChange={e => setSidebarSearch(e.target.value)} placeholder="Search tables…"
-                    className={cn('w-full rounded-md border border-border bg-muted pl-9 pr-2.5 py-1.5 text-foreground font-sans outline-none', mobile ? 'h-12 text-base' : 'h-10 text-sm')} />
-                </div>
-                {/* Groups */}
-                <div className="flex flex-col gap-2">
-                  {filteredGroups.map(g => {
-                    const isExpanded = expandedGroups[g.label] ?? false
-                    return (
-                      <div key={g.label} className="rounded-lg border border-border bg-card p-0 overflow-hidden">
-                        <button onClick={() => toggleGroup(g.label)}
-                          className={cn('flex items-center justify-between w-full bg-transparent border-none cursor-pointer font-sans font-semibold text-foreground text-left', mobile ? 'p-4 text-base' : 'px-4 py-3.5 text-[15px]')}>
-                          <span>{isExpanded ? '▾' : '▸'} {g.icon} {g.label}</span>
-                          <span className="flex items-center gap-2.5">
-                            <span className="text-xs text-muted-foreground font-normal">{g.tables.length} tables</span>
-                            <span className="text-xs text-primary font-medium">{fmtCompact(g.totalRows)} rows</span>
-                          </span>
-                        </button>
-                        {isExpanded && (
-                          <div className="border-t border-border">
-                            {/* Flat tables (no sub-groups) */}
-                            {g.tables.sort((a, b) => b.row_count - a.row_count).map((t, i) => (
-                              <button key={t.name} onClick={() => selectTable(t.name)}
-                                className={cn(
-                                  'flex items-center justify-between w-full bg-transparent border-none cursor-pointer font-sans text-foreground text-left hover:bg-muted',
-                                  mobile ? 'py-3.5 px-4 pl-10 min-h-[48px] text-[15px]' : 'py-2.5 px-4 pl-10 text-sm',
-                                  i < g.tables.length - 1 && 'border-b border-border',
-                                )}>
-                                <span className={cn('font-mono', mobile ? 'text-sm' : 'text-[13px]')}>{t.name}</span>
-                                <span className="text-xs text-muted-foreground tabular-nums">{fmtCompact(t.row_count)}</span>
-                              </button>
-                            ))}
-                            {/* Sub-groups */}
-                            {g.subGroups?.map(sg => {
-                              const sgKey = `${g.label}::${sg.label}`
-                              const sgExpanded = expandedGroups[sgKey] ?? false
-                              return (
-                                <div key={sg.label}>
-                                  <button onClick={() => toggleGroup(sgKey)}
-                                    className={cn(
-                                      'flex items-center justify-between w-full bg-muted border-none border-b border-border cursor-pointer font-sans font-semibold text-muted-foreground text-left',
-                                      mobile ? 'py-3.5 px-4 pl-9 text-sm' : 'py-2.5 px-4 pl-9 text-[13px]',
-                                    )}>
-                                    <span>{sgExpanded ? '▾' : '▸'} {sg.label}</span>
-                                    <span className="flex items-center gap-2.5">
-                                      <span className="text-[11px] text-muted-foreground font-normal">{sg.tables.length} tables</span>
-                                      <span className="text-[11px] text-primary font-medium">{fmtCompact(sg.totalRows)} rows</span>
-                                    </span>
-                                  </button>
-                                  {sgExpanded && sg.tables.sort((a, b) => b.row_count - a.row_count).map((t, i) => (
-                                    <button key={t.name} onClick={() => selectTable(t.name)}
-                                      className={cn(
-                                        'flex items-center justify-between w-full bg-transparent border-none cursor-pointer font-sans text-foreground text-left hover:bg-muted',
-                                        mobile ? 'py-3.5 px-4 pl-14 min-h-[48px] text-[15px]' : 'py-2.5 px-4 pl-14 text-sm',
-                                        i < sg.tables.length - 1 && 'border-b border-border',
-                                      )}>
-                                      <span className={cn('font-mono', mobile ? 'text-sm' : 'text-[13px]')}>{t.name}</span>
-                                      <span className="text-xs text-muted-foreground tabular-nums">{fmtCompact(t.row_count)}</span>
-                                    </button>
-                                  ))}
-                                </div>
-                              )
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
-
-            {explorerView === 'detail' && selectedTable && (
-              <div className="h-full flex flex-col">
-                <button onClick={() => setExplorerView('tree')} className={cn('px-3 py-1 bg-muted border border-border rounded-md text-[11px] text-muted-foreground font-medium cursor-pointer font-sans self-start mb-3 flex items-center gap-1', mobile ? 'h-11' : 'h-9')}>← All Tables</button>
-                <div className="flex-1 min-h-0">
-                  <TableDetailPanel tableName={selectedTable} mobile={mobile}
-                    onBrowse={() => setExplorerView('data')}
-                    onRunQuery={handleRunQuery} />
-                </div>
-              </div>
-            )}
-
-            {explorerView === 'data' && selectedTable && (
-              <DataTable tableName={selectedTable} mobile={mobile} onBack={() => setExplorerView('detail')} />
-            )}
-          </div>
+        {/* DATA PLAYGROUND — replaces old explorer + query */}
+        {(page === 'playground' || page === 'explorer' || page === 'query') && (
+          <React.Suspense fallback={<div className="text-muted-foreground p-10">Loading playground...</div>}>
+            <DataPlayground mobile={mobile} initialSql={page === 'query' ? querySql : undefined} />
+          </React.Suspense>
         )}
-
-        {/* QUERY */}
-        {page === 'query' && <QueryPage mobile={mobile} initialSql={querySql} />}
 
         {/* NHL MODEL */}
         {page === 'nhlmodel' && (
@@ -1053,7 +957,7 @@ export default function App() {
       </div>
 
       {/* Bottom tab bar — mobile only */}
-      {mobile && <BottomTabBar page={page} setPage={p => { setPage(p); if (p === 'explorer') setExplorerView('tree') }} />}
+      {mobile && <BottomTabBar page={page} setPage={p => setPage(p)} />}
     </div>
   )
 }
