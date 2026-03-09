@@ -125,14 +125,14 @@ export default function ForeclosureMap({ onOpenComps }: { onOpenComps?: (foreclo
 
   return (
     <div className="h-full w-full relative">
-      <div className="absolute top-3 left-[60px] z-[1000] bg-card/90 backdrop-blur px-3 py-2 rounded-lg border border-border shadow-lg flex gap-2 flex-wrap items-center text-foreground text-xs font-semibold">
+      <div className="absolute top-3 left-3 right-3 sm:left-[60px] sm:right-auto z-[1000] bg-card/90 backdrop-blur px-3 py-2 rounded-lg border border-border shadow-lg flex gap-2 flex-wrap items-center text-foreground text-xs font-semibold">
         <span>Foreclosures: {foreclosures.length}</span>
         <span>•</span>
         <span>Multi-Family: {multiLoading ? '...' : multiFamily.length}</span>
         <select
           value={layerMode}
           onChange={(e) => setLayerMode(e.target.value as 'foreclosures' | 'multifamily' | 'both')}
-          className="bg-muted text-foreground border border-border rounded-md px-1.5 py-1 text-xs"
+          className="bg-muted text-foreground border border-border rounded-md px-2 py-1.5 text-xs min-h-[36px]"
         >
           <option value="foreclosures">Foreclosure Listings</option>
           <option value="multifamily">Multi-Family by Town</option>
@@ -143,7 +143,7 @@ export default function ForeclosureMap({ onOpenComps }: { onOpenComps?: (foreclo
             <select
               value={selectedTown}
               onChange={(e) => setSelectedTown(e.target.value)}
-              className="bg-muted text-foreground border border-border rounded-md px-1.5 py-1 text-xs max-w-[180px]"
+              className="bg-muted text-foreground border border-border rounded-md px-2 py-1.5 text-xs min-h-[36px] max-w-[180px] flex-1 min-w-[120px]"
             >
               <option value="" disabled>Select town...</option>
               <option value="all">All Towns</option>
@@ -156,7 +156,7 @@ export default function ForeclosureMap({ onOpenComps }: { onOpenComps?: (foreclo
             <select
               value={bucket}
               onChange={(e) => setBucket(e.target.value as 'all' | '2_fam' | '3_fam' | '4_fam' | '5_10' | '11_25' | '25_plus')}
-              className="bg-muted text-foreground border border-border rounded-md px-1.5 py-1 text-xs"
+              className="bg-muted text-foreground border border-border rounded-md px-2 py-1.5 text-xs min-h-[36px]"
             >
               <option value="all">All 2+ units</option>
               <option value="2_fam">2 Family</option>
@@ -169,7 +169,7 @@ export default function ForeclosureMap({ onOpenComps }: { onOpenComps?: (foreclo
             <select
               value={soldEra}
               onChange={(e) => setSoldEra(e.target.value as 'all' | 'pre2000' | '2000s' | '2010s' | '2020s')}
-              className="bg-muted text-foreground border border-border rounded-md px-1.5 py-1 text-xs"
+              className="bg-muted text-foreground border border-border rounded-md px-2 py-1.5 text-xs min-h-[36px]"
             >
               <option value="all">Any sale date</option>
               <option value="pre2000">Pre-2000</option>

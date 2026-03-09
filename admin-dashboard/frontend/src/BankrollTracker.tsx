@@ -119,14 +119,14 @@ export default function BankrollTracker({ mobile }: { mobile: boolean }) {
   }
 
   return (
-    <div className="page-enter flex h-full flex-col gap-4 overflow-auto pb-6">
+    <div className={cn('page-enter flex h-full flex-col gap-4 overflow-auto', mobile ? 'pb-24' : 'pb-6')}>
       <div className={cn('grid gap-3', mobile ? 'grid-cols-1' : 'grid-cols-[1.4fr_1fr]')}>
         <section className="card-hover rounded-xl border border-border bg-card p-4">
           <div className="mb-2 text-xs uppercase tracking-wider text-muted-foreground">Current Balance</div>
           <div className={cn('font-extrabold tracking-tighter text-foreground', mobile ? 'text-4xl' : 'text-5xl')}>
             <AnimatedMoney value={ledger.current_balance} />
           </div>
-          <div className="mt-4 grid grid-cols-4 gap-2.5">
+          <div className={cn('mt-4 grid gap-2.5', mobile ? 'grid-cols-2' : 'grid-cols-4')}>
             <div>
               <div className="mb-1 text-xs uppercase tracking-wide text-muted-foreground">Win Rate</div>
               <div className="text-lg font-bold tabular-nums text-foreground">{fmtPct(summary.win_rate)}</div>
@@ -268,6 +268,21 @@ export default function BankrollTracker({ mobile }: { mobile: boolean }) {
             <div className="flex flex-col items-center gap-2 py-6 text-center">
               <div className="text-3xl">📝</div>
               <div className="text-sm text-muted-foreground">No transactions recorded yet</div>
+            </div>
+          ) : mobile ? (
+            <div className="flex max-h-80 flex-col gap-2 overflow-auto">
+              {ledger.transactions.map((row) => (
+                <div key={row.id} className="flex items-center justify-between gap-3 border-b border-border/50 pb-2">
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold text-foreground">{row.event_type}</div>
+                    <div className="text-xs text-muted-foreground">{row.event_date} · {row.sportsbook || row.notes || '—'}</div>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <div className={cn('text-sm font-bold tabular-nums', row.amount >= 0 ? 'text-success' : 'text-destructive')}>{fmtMoney(row.amount)}</div>
+                    <div className="text-xs tabular-nums text-muted-foreground">{fmtMoney(row.balance)}</div>
+                  </div>
+                </div>
+              ))}
             </div>
           ) : (
             <div className="max-h-80 overflow-auto rounded-lg border border-border">
