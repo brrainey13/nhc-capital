@@ -133,6 +133,7 @@ async def get_bankroll_summary():
         """
         SELECT balance
         FROM bankroll
+        WHERE notes != 'ARCHIVED'
         ORDER BY id DESC
         LIMIT 1
         """
@@ -142,7 +143,7 @@ async def get_bankroll_summary():
         WITH graded AS (
             SELECT event_date, COALESCE(SUM(amount), 0) AS daily_pl
             FROM bankroll
-            WHERE event_type = 'bet_graded'
+            WHERE event_type = 'bet_graded' AND notes != 'ARCHIVED'
             GROUP BY event_date
         ),
         balances AS (
@@ -150,6 +151,7 @@ async def get_bankroll_summary():
                    event_date,
                    balance
             FROM bankroll
+            WHERE notes != 'ARCHIVED'
             ORDER BY event_date, id DESC
         )
         SELECT b.event_date,
@@ -169,6 +171,7 @@ async def get_bankroll_summary():
             COALESCE(SUM(pnl) FILTER (WHERE result IN ('W', 'L')), 0) AS total_pl,
             COALESCE(SUM(dollars) FILTER (WHERE result IN ('W', 'L')), 0) AS total_staked
         FROM nhl_picks
+        WHERE COALESCE(result, '') != 'ARCHIVED'
         """
     )
 

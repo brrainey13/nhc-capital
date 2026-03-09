@@ -4,7 +4,7 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 import { chartTooltipStyle } from '@/components/ui/chart-panel'
-import { cn } from '@/lib/utils'
+import { cn, useIsMobile } from '@/lib/utils'
 import { InteractiveScatterChart } from '@/components/charts/interactive-scatter-chart'
 
 interface ForeclosureSite {
@@ -66,16 +66,6 @@ interface Summary {
 
 const fmt = (v: number) => `$${Math.round(v).toLocaleString()}`
 const fmtK = (v: number) => v >= 1000000 ? `$${(v / 1000000).toFixed(1)}M` : `$${(v / 1000).toFixed(0)}K`
-
-function useIsMobile(bp = 768) {
-  const [m, setM] = useState(window.innerWidth < bp)
-  useEffect(() => {
-    const h = () => setM(window.innerWidth < bp)
-    window.addEventListener('resize', h)
-    return () => window.removeEventListener('resize', h)
-  }, [bp])
-  return m
-}
 
 function scoreColorClass(score: number): string {
   if (score >= 80) return 'text-success'
