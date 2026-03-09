@@ -25,6 +25,7 @@ const EXPENSES: Expense[] = [
   { description: "1x Blake Hosting Fee", amount: 200, owedTo: ['Blake'], repaid: 0 },
   { description: 'Kalshi Initial Capital (Ian, Connor, Blake, Preston)', amount: 200, owedTo: ['Ian', 'Connor', 'Blake', 'Preston'], repaid: 0 },
   { description: "Blake/Ian's Scaled Capital", amount: 600, owedTo: ['Blake', 'Ian'], repaid: 0 },
+  { description: 'NHL Initial Capital (Ian, Connor, Blake, Preston)', amount: 500, owedTo: ['Ian', 'Connor', 'Blake', 'Preston'], repaid: 0 },
 ]
 
 const TOTAL_EXPENSES = EXPENSES.reduce((s, e) => s + e.amount, 0)
