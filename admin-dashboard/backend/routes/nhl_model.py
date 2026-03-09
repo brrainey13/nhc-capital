@@ -121,7 +121,7 @@ def _load_model_info_sync() -> dict[str, Any]:
 
     return {
         "model_type": "LightGBM",
-        "model_path": str(model_path) if model_path else None,
+        "model_path": model_path.name if model_path else None,
         "model_found": model_path is not None or bool(feature_importances or feature_list or metadata),
         "n_features": n_features,
         "n_training_samples": training_rows,
@@ -131,8 +131,8 @@ def _load_model_info_sync() -> dict[str, Any]:
         ],
         "training_date": training_date,
         "artifacts": {
-            "metadata_path": str(metadata_path) if metadata_path.exists() else None,
-            "feature_importance_path": str(feature_csv_path) if feature_csv_path.exists() else None,
+            "metadata_found": metadata_path.exists(),
+            "feature_importance_found": feature_csv_path.exists(),
         },
     }
 
