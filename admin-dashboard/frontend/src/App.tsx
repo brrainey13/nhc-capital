@@ -8,7 +8,7 @@ import {
 import { useVirtualizer } from '@tanstack/react-virtual'
 import Dashboard from './Dashboard'
 import { ThemeToggle } from '@/components/ui/theme-toggle'
-import { cn } from '@/lib/utils'
+import { cn, useIsMobile } from '@/lib/utils'
 
 const API = '/api'
 
@@ -32,18 +32,6 @@ const DataPlayground = React.lazy(() => import('./DataPlayground'))
 type Page = 'home' | 'explorer' | 'query' | 'playground' | 'realestate' | 'bankroll' | 'nhlmodel'
 type SortDir = 'asc' | 'desc' | null
 type ExplorerView = 'tree' | 'detail' | 'data'
-
-/* ── Responsive hook ── */
-
-function useIsMobile(breakpoint = 768) {
-  const [mobile, setMobile] = useState(window.innerWidth < breakpoint)
-  useEffect(() => {
-    const handler = () => setMobile(window.innerWidth < breakpoint)
-    window.addEventListener('resize', handler)
-    return () => window.removeEventListener('resize', handler)
-  }, [breakpoint])
-  return mobile
-}
 
 /* ── Table → Project grouping ── */
 
