@@ -1,15 +1,10 @@
 import React, { useEffect, useState } from 'react'
-import {
-  CartesianGrid,
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts'
 import { cn } from '@/lib/utils'
-import { ChartPanel, chartTooltipStyle } from '@/components/ui/chart-panel'
+import { ChartPanel } from '@/components/ui/chart-panel'
+import { InteractiveLineChart } from '@/components/charts/interactive-line-chart'
+import { InteractiveBarChart } from '@/components/charts/interactive-bar-chart'
+import { ChartControls, downloadCSV } from '@/components/charts/chart-controls'
+import { useCountUp } from '@/components/charts/use-count-up'
 
 type LedgerRow = {
   id: number
@@ -56,6 +51,11 @@ function fmtPct(value: number) {
   return `${value.toFixed(1)}%`
 }
 
+function AnimatedMoney({ value }: { value: number }) {
+  const animated = useCountUp(value, 1000)
+  return <>{fmtMoney(animated)}</>
+}
+
 const inputClasses = 'w-full rounded-lg border border-border bg-muted px-3 py-2.5 text-sm text-foreground font-sans'
 
 export default function BankrollTracker({ mobile }: { mobile: boolean }) {
@@ -67,6 +67,7 @@ export default function BankrollTracker({ mobile }: { mobile: boolean }) {
   const [notes, setNotes] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [showBalanceBrush, setShowBalanceBrush] = useState(false)
 
   async function load() {
     const [ledgerRes, summaryRes] = await Promise.all([
@@ -118,11 +119,13 @@ export default function BankrollTracker({ mobile }: { mobile: boolean }) {
   }
 
   return (
-    <div className="flex h-full flex-col gap-4 overflow-auto pb-6">
+    <div className="page-enter flex h-full flex-col gap-4 overflow-auto pb-6">
       <div className={cn('grid gap-3', mobile ? 'grid-cols-1' : 'grid-cols-[1.4fr_1fr]')}>
-        <section className="rounded-xl border border-border bg-card p-4">
+        <section className="card-hover rounded-xl border border-border bg-card p-4">
           <div className="mb-2 text-xs uppercase tracking-wider text-muted-foreground">Current Balance</div>
-          <div className={cn('font-extrabold tracking-tighter text-foreground', mobile ? 'text-4xl' : 'text-5xl')}>{fmtMoney(ledger.current_balance)}</div>
+          <div className={cn('font-extrabold tracking-tighter text-foreground', mobile ? 'text-4xl' : 'text-5xl')}>
+            <AnimatedMoney value={ledger.current_balance} />
+          </div>
           <div className="mt-4 grid grid-cols-4 gap-2.5">
             <div>
               <div className="mb-1 text-xs uppercase tracking-wide text-muted-foreground">Win Rate</div>
@@ -138,7 +141,7 @@ export default function BankrollTracker({ mobile }: { mobile: boolean }) {
             </div>
             <div>
               <div className="mb-1 text-xs uppercase tracking-wide text-muted-foreground">P/L</div>
-              <div className="text-lg font-bold tabular-nums text-foreground">{fmtMoney(summary.total_pl)}</div>
+              <div className={cn('text-lg font-bold tabular-nums', summary.total_pl >= 0 ? 'text-success' : 'text-destructive')}>{fmtMoney(summary.total_pl)}</div>
             </div>
           </div>
         </section>
@@ -151,7 +154,7 @@ export default function BankrollTracker({ mobile }: { mobile: boolean }) {
                 type="button"
                 onClick={() => setEventType('deposit')}
                 className={cn(
-                  'flex-1 rounded-lg border px-3 py-2.5 text-sm font-semibold cursor-pointer font-sans',
+                  'flex-1 rounded-lg border px-3 py-2.5 text-sm font-semibold cursor-pointer font-sans transition-colors',
                   eventType === 'deposit'
                     ? 'bg-primary border-primary text-primary-foreground'
                     : 'bg-muted border-border text-muted-foreground'
@@ -163,7 +166,7 @@ export default function BankrollTracker({ mobile }: { mobile: boolean }) {
                 type="button"
                 onClick={() => setEventType('withdrawal')}
                 className={cn(
-                  'flex-1 rounded-lg border px-3 py-2.5 text-sm font-semibold cursor-pointer font-sans',
+                  'flex-1 rounded-lg border px-3 py-2.5 text-sm font-semibold cursor-pointer font-sans transition-colors',
                   eventType === 'withdrawal'
                     ? 'bg-primary border-primary text-primary-foreground'
                     : 'bg-muted border-border text-muted-foreground'
@@ -177,7 +180,7 @@ export default function BankrollTracker({ mobile }: { mobile: boolean }) {
             <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notes" rows={3} className={cn(inputClasses, 'resize-y')} />
             <button
               type="submit"
-              className="rounded-lg bg-primary px-3 py-2.5 text-sm font-bold text-primary-foreground hover:bg-primary/90 cursor-pointer font-sans"
+              className="rounded-lg bg-primary px-3 py-2.5 text-sm font-bold text-primary-foreground hover:bg-primary/90 cursor-pointer font-sans transition-colors"
               disabled={submitting}
             >
               {submitting ? 'Saving…' : `Add ${eventType}`}
@@ -190,60 +193,108 @@ export default function BankrollTracker({ mobile }: { mobile: boolean }) {
       <ChartPanel
         title="Balance Over Time"
         subtitle={`${summary.balance_chart.length} daily points`}
-        height={mobile ? 240 : 300}
+        height={mobile ? 260 : 320}
+        actions={
+          <ChartControls
+            showBrush={showBalanceBrush}
+            onBrushToggle={setShowBalanceBrush}
+            exportData={() => downloadCSV(summary.balance_chart as Record<string, unknown>[], 'balance-history.csv')}
+          />
+        }
       >
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={summary.balance_chart}>
-            <CartesianGrid strokeDasharray="" className="stroke-border" vertical={false} />
-            <XAxis dataKey="date" className="text-xs" stroke="hsl(var(--muted-foreground))" tick={{ fontSize: 11 }} />
-            <YAxis className="text-xs" stroke="hsl(var(--muted-foreground))" tick={{ fontSize: 11 }} tickFormatter={(v) => `$${Math.round(v)}`} width={70} />
-            <Tooltip contentStyle={chartTooltipStyle} formatter={(value) => fmtMoney(Number(value ?? 0))} />
-            <Line type="monotone" dataKey="balance" stroke="hsl(var(--primary))" strokeWidth={3} dot={false} />
-          </LineChart>
-        </ResponsiveContainer>
+        <InteractiveLineChart
+          data={summary.balance_chart}
+          lines={[{ dataKey: 'balance', color: 'hsl(var(--primary))', label: 'Balance' }]}
+          xKey="date"
+          formatY={(v) => `$${Math.round(v)}`}
+          showBrush={showBalanceBrush}
+          height={mobile ? 240 : 300}
+          gradientFill
+        />
+      </ChartPanel>
+
+      {/* Daily P/L Waterfall */}
+      <ChartPanel
+        title="Daily P/L"
+        subtitle="Profit and loss by day"
+        height={mobile ? 200 : 240}
+        actions={
+          <ChartControls
+            exportData={() => downloadCSV(summary.daily_pl as Record<string, unknown>[], 'daily-pl.csv')}
+          />
+        }
+      >
+        <InteractiveBarChart
+          data={summary.daily_pl}
+          bars={[{
+            dataKey: 'pnl',
+            color: 'hsl(var(--chart-1))',
+            label: 'P/L',
+            colorByValue: true,
+            positiveColor: 'hsl(var(--success))',
+            negativeColor: 'hsl(var(--destructive))',
+          }]}
+          xKey="date"
+          formatY={(v) => fmtMoney(v)}
+          height={mobile ? 180 : 220}
+        />
       </ChartPanel>
 
       <div className={cn('grid gap-3', mobile ? 'grid-cols-1' : 'grid-cols-[1fr_1.2fr]')}>
         <section className="rounded-xl border border-border bg-card p-4">
-          <div className="mb-3 text-xs uppercase tracking-wider text-muted-foreground">Daily P/L</div>
-          <div className="flex max-h-80 flex-col gap-2 overflow-auto">
-            {summary.daily_pl.slice().reverse().map((row) => (
-              <div key={row.date} className="flex items-center justify-between gap-3 border-b border-border/50 pb-2">
-                <span className="text-sm text-foreground">{row.date}</span>
-                <span className={cn('font-bold tabular-nums', row.pnl >= 0 ? 'text-success' : 'text-destructive')}>
-                  {row.pnl >= 0 ? '+' : '-'}{fmtMoney(Math.abs(row.pnl))}
-                </span>
-              </div>
-            ))}
-          </div>
+          <div className="mb-3 text-xs uppercase tracking-wider text-muted-foreground">Daily P/L History</div>
+          {summary.daily_pl.length === 0 ? (
+            <div className="flex flex-col items-center gap-2 py-6 text-center">
+              <div className="text-3xl">💰</div>
+              <div className="text-sm text-muted-foreground">No daily P/L data yet</div>
+            </div>
+          ) : (
+            <div className="flex max-h-80 flex-col gap-2 overflow-auto">
+              {summary.daily_pl.slice().reverse().map((row) => (
+                <div key={row.date} className="flex items-center justify-between gap-3 border-b border-border/50 pb-2 transition-colors hover:bg-muted/30">
+                  <span className="text-sm text-foreground">{row.date}</span>
+                  <span className={cn('font-bold tabular-nums', row.pnl >= 0 ? 'text-success' : 'text-destructive')}>
+                    {row.pnl >= 0 ? '+' : '-'}{fmtMoney(Math.abs(row.pnl))}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </section>
 
         <section className="rounded-xl border border-border bg-card p-4">
           <div className="mb-3 text-xs uppercase tracking-wider text-muted-foreground">Transaction History</div>
-          <div className="max-h-80 overflow-auto rounded-lg border border-border">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-left text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                  <th className="px-3 py-2.5 sticky top-0 bg-card">Date</th>
-                  <th className="px-3 py-2.5 sticky top-0 bg-card">Type</th>
-                  <th className="px-3 py-2.5 sticky top-0 bg-card">Amount</th>
-                  <th className="px-3 py-2.5 sticky top-0 bg-card">Balance</th>
-                  <th className="px-3 py-2.5 sticky top-0 bg-card">Book</th>
-                </tr>
-              </thead>
-              <tbody>
-                {ledger.transactions.map((row) => (
-                  <tr key={row.id} className="border-b border-border/50 hover:bg-muted/50 transition-colors">
-                    <td className="px-3 py-2.5 text-foreground tabular-nums">{row.event_date}</td>
-                    <td className="px-3 py-2.5 text-foreground tabular-nums">{row.event_type}</td>
-                    <td className={cn('px-3 py-2.5 tabular-nums', row.amount >= 0 ? 'text-success' : 'text-destructive')}>{fmtMoney(row.amount)}</td>
-                    <td className="px-3 py-2.5 text-foreground tabular-nums">{fmtMoney(row.balance)}</td>
-                    <td className="px-3 py-2.5 text-foreground tabular-nums">{row.sportsbook || row.notes || '—'}</td>
+          {ledger.transactions.length === 0 ? (
+            <div className="flex flex-col items-center gap-2 py-6 text-center">
+              <div className="text-3xl">📝</div>
+              <div className="text-sm text-muted-foreground">No transactions recorded yet</div>
+            </div>
+          ) : (
+            <div className="max-h-80 overflow-auto rounded-lg border border-border">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border text-left text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                    <th className="sticky top-0 bg-card px-3 py-2.5">Date</th>
+                    <th className="sticky top-0 bg-card px-3 py-2.5">Type</th>
+                    <th className="sticky top-0 bg-card px-3 py-2.5">Amount</th>
+                    <th className="sticky top-0 bg-card px-3 py-2.5">Balance</th>
+                    <th className="sticky top-0 bg-card px-3 py-2.5">Book</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {ledger.transactions.map((row) => (
+                    <tr key={row.id} className="border-b border-border/50 transition-colors hover:bg-muted/50">
+                      <td className="px-3 py-2.5 tabular-nums text-foreground">{row.event_date}</td>
+                      <td className="px-3 py-2.5 tabular-nums text-foreground">{row.event_type}</td>
+                      <td className={cn('px-3 py-2.5 tabular-nums', row.amount >= 0 ? 'text-success' : 'text-destructive')}>{fmtMoney(row.amount)}</td>
+                      <td className="px-3 py-2.5 tabular-nums text-foreground">{fmtMoney(row.balance)}</td>
+                      <td className="px-3 py-2.5 tabular-nums text-foreground">{row.sportsbook || row.notes || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </section>
       </div>
     </div>
