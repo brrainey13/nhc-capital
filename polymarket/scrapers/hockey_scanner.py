@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Hockey Goalie Scanner v3 - Simpler parsing."""
+"""Hockey Goalie Scanner v3 — Simpler parsing."""
 
 import re
 from datetime import datetime
