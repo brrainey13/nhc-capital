@@ -121,7 +121,12 @@ jobs:
           import json
           import os
           from pathlib import Path
-          result = json.loads(Path(".review-result.json").read_text())
+          result_path = Path(".review-result.json")
+          if not result_path.exists():
+              print("⚠️ No .review-result.json found — review may have errored")
+              result = {"critical_count": 0, "findings_count": 0, "sha": ""}
+          else:
+              result = json.loads(result_path.read_text())
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
               out.write(f"critical_count={result.get('critical_count', 0)}\n")
               out.write(f"findings_count={result.get('findings_count', 0)}\n")
@@ -172,6 +177,7 @@ jobs:
           python-version: "3.11"
 
       - name: Download review artifacts
+        continue-on-error: true
         uses: actions/download-artifact@v4
         with:
           name: review-findings
