@@ -333,6 +333,7 @@ async def get_today_picks():
             pnl
         FROM nhl_picks
         WHERE pick_date = CURRENT_DATE
+          AND COALESCE(result, '') != 'ARCHIVED'
         ORDER BY edge DESC NULLS LAST, player
         """
     )
@@ -379,7 +380,10 @@ async def get_pick_history(
     pool = get_pool("nhl_picks")
     strategy_expr = await _pick_strategy_expr()
     params: list[Any] = [days]
-    filters = ["pick_date >= CURRENT_DATE - ($1::int * INTERVAL '1 day')"]
+    filters = [
+        "pick_date >= CURRENT_DATE - ($1::int * INTERVAL '1 day')",
+        "COALESCE(result, '') != 'ARCHIVED'",
+    ]
     if strategy:
         params.append(strategy)
         filters.append(f"{strategy_expr} = $2")
@@ -415,6 +419,7 @@ async def get_pick_history(
         SELECT DISTINCT {strategy_expr} AS strategy
         FROM nhl_picks
         WHERE pick_date >= CURRENT_DATE - ($1::int * INTERVAL '1 day')
+          AND COALESCE(result, '') != 'ARCHIVED'
         ORDER BY strategy
         """,
         days,
@@ -565,6 +570,7 @@ async def get_model_strategies(days: Annotated[int, Query(ge=1, le=365)] = 30):
             COALESCE(AVG(edge), 0) AS avg_edge
         FROM nhl_picks
         WHERE pick_date >= CURRENT_DATE - ($1::int * INTERVAL '1 day')
+          AND COALESCE(result, '') != 'ARCHIVED'
         GROUP BY 1
         ORDER BY total_pl DESC, avg_edge DESC
         """,
