@@ -7,6 +7,7 @@ import {
 } from '@tanstack/react-table'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import Dashboard from './Dashboard'
+import { ThemeToggle } from '@/components/ui/theme-toggle'
 
 const API = '/api'
 
@@ -863,6 +864,7 @@ export default function App() {
           })}
           <div style={{ flex: 1 }} />
           <span style={{ fontSize: 11, color: C.textMuted }}>{fmtNum(tables.length)} tables · {fmtCompact(totalRows)} rows</span>
+          <ThemeToggle />
         </nav>
       )}
 
