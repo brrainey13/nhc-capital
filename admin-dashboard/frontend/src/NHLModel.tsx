@@ -237,7 +237,7 @@ export default function NHLModel({ mobile }: { mobile: boolean }) {
   }
 
   return (
-    <div className="page-enter flex h-full flex-col gap-4 overflow-auto pb-6">
+    <div className={cn('page-enter flex h-full flex-col gap-4 overflow-auto', mobile ? 'pb-24' : 'pb-6')}>
       {/* Model Info + Feature Importance */}
       <section className="rounded-xl border border-border bg-card p-4 shadow-lg">
         <div className="mb-4 flex flex-wrap items-baseline justify-between gap-3">
@@ -322,6 +322,27 @@ export default function NHLModel({ mobile }: { mobile: boolean }) {
             <div className="text-sm text-muted-foreground">No picks generated yet today</div>
             <div className="text-xs text-muted-foreground">Check back when the model has run</div>
           </div>
+        ) : mobile ? (
+          <div className="flex max-h-[420px] flex-col gap-2 overflow-auto">
+            {sortedTodayPicks.map((pick) => (
+              <div key={pick.pick_id} className="rounded-lg border border-border bg-muted/30 p-3">
+                <div className="mb-1.5 flex items-center justify-between gap-2">
+                  <span className="truncate text-sm font-semibold text-foreground">{pick.player}</span>
+                  <span className={cn('shrink-0 text-sm font-bold tabular-nums', edgeColorClass(pick.edge_pct))}>{fmtPct(pick.edge_pct, 2)}</span>
+                </div>
+                <div className="mb-1.5 text-xs text-muted-foreground">{pick.market} · {pick.book || '—'}</div>
+                <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs tabular-nums">
+                  <span><span className="text-muted-foreground">Line </span><span className="text-foreground">{pick.line.toFixed(1)}</span></span>
+                  <span><span className="text-muted-foreground">Odds </span><span className="text-foreground">{fmtOdds(pick.odds)}</span></span>
+                  <span><span className="text-muted-foreground">Prob </span><span className="text-foreground">{pick.model_prob_pct > 0 ? fmtPct(pick.model_prob_pct, 1) : '—'}</span></span>
+                  <span><span className="text-muted-foreground">Stake </span><span className="text-foreground">{pick.stake.toFixed(1)}u</span></span>
+                </div>
+              </div>
+            ))}
+            <div className="rounded-lg border border-border bg-muted px-3 py-2.5 text-sm font-bold tabular-nums text-foreground">
+              Total Stake: {today.total_stake.toFixed(1)}u
+            </div>
+          </div>
         ) : (
           <div className="max-h-[420px] overflow-auto rounded-xl border border-border">
             <table className="w-full text-xs">
@@ -399,6 +420,23 @@ export default function NHLModel({ mobile }: { mobile: boolean }) {
           <div className="flex flex-col items-center gap-2 py-8 text-center">
             <div className="text-3xl">📋</div>
             <div className="text-sm text-muted-foreground">No pick history for this period</div>
+          </div>
+        ) : mobile ? (
+          <div className="flex max-h-[420px] flex-col gap-2 overflow-auto">
+            {history.picks.map((pick) => (
+              <div key={pick.pick_id} className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/30 p-3">
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-semibold text-foreground">{pick.player}</div>
+                  <div className="text-xs text-muted-foreground">{pick.market} · {fmtDate(pick.pick_date)}</div>
+                </div>
+                <div className="shrink-0 text-right">
+                  <div className={cn('text-sm font-bold', resultColorClass(pick.result))}>{pick.result || 'Pending'}</div>
+                  <div className={cn('text-xs tabular-nums', pick.pnl >= 0 ? 'text-success' : 'text-destructive')}>
+                    {pick.result === 'Pending' ? '—' : fmtMoney(pick.pnl)}
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         ) : (
           <div className="max-h-[420px] overflow-auto rounded-xl border border-border">

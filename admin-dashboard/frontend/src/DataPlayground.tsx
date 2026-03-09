@@ -40,12 +40,12 @@ export default function DataPlayground({ mobile, initialSql }: {
         {MODE_TABS.map(t => (
           <button key={t.key} onClick={() => setMode(t.key)}
             className={cn(
-              'px-3.5 py-2 text-[13px] font-medium bg-transparent border-none cursor-pointer font-sans rounded-t-md transition-colors',
+              'px-3.5 py-3 text-[13px] font-medium bg-transparent border-none cursor-pointer font-sans rounded-t-md transition-colors min-h-[44px]',
               mode === t.key
                 ? 'text-foreground border-b-2 border-primary'
                 : 'text-muted-foreground hover:text-foreground',
             )}>
-            <span className="mr-1.5">{t.icon}</span>{t.label}
+            <span className="mr-1.5">{t.icon}</span>{mobile ? t.label.split(' ')[0] : t.label}
           </button>
         ))}
         <div className="flex-1" />

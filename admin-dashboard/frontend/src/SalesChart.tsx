@@ -299,7 +299,7 @@ export default function SalesChart({
           <button
             onClick={() => setViewMode('chart')}
             className={cn(
-              'cursor-pointer rounded-l-md px-3.5 py-1.5 text-xs font-semibold transition-colors',
+              'cursor-pointer rounded-l-md px-3.5 py-2.5 text-xs font-semibold transition-colors min-h-[44px]',
               viewMode === 'chart'
                 ? 'bg-[hsl(var(--chart-3))] text-white'
                 : 'border border-border bg-muted text-muted-foreground hover:text-foreground'
@@ -310,7 +310,7 @@ export default function SalesChart({
           <button
             onClick={() => setViewMode('scatter')}
             className={cn(
-              'cursor-pointer rounded-r-md px-3.5 py-1.5 text-xs font-semibold transition-colors',
+              'cursor-pointer rounded-r-md px-3.5 py-2.5 text-xs font-semibold transition-colors min-h-[44px]',
               viewMode === 'scatter'
                 ? 'bg-[hsl(var(--chart-3))] text-white'
                 : 'border border-border bg-muted text-muted-foreground hover:text-foreground'

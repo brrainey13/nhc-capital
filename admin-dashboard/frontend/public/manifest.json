@@ -1,12 +1,15 @@
 {
-  "name": "NHC Admin",
-  "short_name": "NHC",
-  "description": "NH Capital Admin Dashboard",
+  "id": "/",
+  "name": "NHC Admin Dashboard",
+  "short_name": "NHC Admin",
+  "description": "NH Capital Admin Dashboard — ops, betting models, bankroll tracking",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#0f1117",
   "theme_color": "#0f1117",
   "orientation": "any",
+  "categories": ["finance", "business"],
   "icons": [
     {
       "src": "/icon-192.png",

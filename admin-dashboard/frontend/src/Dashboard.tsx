@@ -350,46 +350,70 @@ export default function Dashboard({ mobile }: DashboardProps) {
             <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Session Activity</div>
             <div className="text-xs text-muted-foreground">Sorted by estimated burn rate with freshness coloring</div>
           </div>
-          <div className="overflow-x-auto">
-            <table className={`w-full border-collapse ${mobile ? 'min-w-[760px]' : ''}`}>
-              <thead>
-                <tr>
-                  {['Session', 'Model', 'Tokens Used', 'Share', 'Burn Rate', 'Last Active'].map((col, i) => (
-                    <th key={col} className={`border-b border-border px-3 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider text-muted-foreground ${i === 0 ? 'w-[28%]' : ''}`}>
-                      {col}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {sessionRows.map((session) => {
-                  const hoursSince = session.updated_at ? (nowMs - new Date(session.updated_at).getTime()) / 3_600_000 : null
-                  const color = getRecencyColor(hoursSince)
-                  return (
-                    <tr key={session.key} className="transition-colors hover:bg-muted/30">
-                      <td className="border-b border-border px-3 py-3.5 align-top text-sm tabular-nums text-foreground">
-                        <div className="flex items-center gap-2.5">
-                          <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: color, boxShadow: `0 0 12px ${color}55` }} />
-                          <div className="min-w-0">
-                            <div className="truncate font-semibold text-foreground">{session.label}</div>
-                            <div className="mt-0.5 text-[11px] text-muted-foreground">{session.key.slice(0, 12)}…</div>
+          {mobile ? (
+            <div className="flex flex-col gap-2.5">
+              {sessionRows.map((session) => {
+                const hoursSince = session.updated_at ? (nowMs - new Date(session.updated_at).getTime()) / 3_600_000 : null
+                const color = getRecencyColor(hoursSince)
+                return (
+                  <div key={session.key} className="rounded-lg border border-border bg-muted/30 p-3">
+                    <div className="mb-2 flex items-center gap-2">
+                      <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: color, boxShadow: `0 0 12px ${color}55` }} />
+                      <span className="truncate text-sm font-semibold text-foreground">{session.label}</span>
+                      <span className="ml-auto text-xs font-semibold" style={{ color }}>{fmtRelativeFromNow(session.updated_at, nowMs)}</span>
+                    </div>
+                    <div className="mb-1 truncate text-xs text-muted-foreground">{session.model || '—'}</div>
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+                      <span className="text-foreground"><span className="text-muted-foreground">Tokens </span>{fmtNum(session.total_tokens)}</span>
+                      <span className="text-foreground"><span className="text-muted-foreground">Share </span>{fmtPct(session.share_pct ?? 0)}</span>
+                      <span className="text-foreground"><span className="text-muted-foreground">Burn </span>{fmtCompact(Math.round(session.burn_rate_24h_est ?? 0))}/h</span>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr>
+                    {['Session', 'Model', 'Tokens Used', 'Share', 'Burn Rate', 'Last Active'].map((col, i) => (
+                      <th key={col} className={`border-b border-border px-3 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider text-muted-foreground ${i === 0 ? 'w-[28%]' : ''}`}>
+                        {col}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {sessionRows.map((session) => {
+                    const hoursSince = session.updated_at ? (nowMs - new Date(session.updated_at).getTime()) / 3_600_000 : null
+                    const color = getRecencyColor(hoursSince)
+                    return (
+                      <tr key={session.key} className="transition-colors hover:bg-muted/30">
+                        <td className="border-b border-border px-3 py-3.5 align-top text-sm tabular-nums text-foreground">
+                          <div className="flex items-center gap-2.5">
+                            <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: color, boxShadow: `0 0 12px ${color}55` }} />
+                            <div className="min-w-0">
+                              <div className="truncate font-semibold text-foreground">{session.label}</div>
+                              <div className="mt-0.5 text-[11px] text-muted-foreground">{session.key.slice(0, 12)}…</div>
+                            </div>
                           </div>
-                        </div>
-                      </td>
-                      <td className="max-w-[220px] truncate border-b border-border px-3 py-3.5 align-top text-sm tabular-nums text-muted-foreground">{session.model || '—'}</td>
-                      <td className="border-b border-border px-3 py-3.5 align-top text-sm tabular-nums text-foreground">{fmtNum(session.total_tokens)}</td>
-                      <td className="border-b border-border px-3 py-3.5 align-top text-sm tabular-nums text-foreground">{fmtPct(session.share_pct ?? 0)}</td>
-                      <td className="border-b border-border px-3 py-3.5 align-top text-sm tabular-nums text-foreground">{fmtCompact(Math.round(session.burn_rate_24h_est ?? 0))}/h</td>
-                      <td className="border-b border-border px-3 py-3.5 align-top text-sm tabular-nums text-foreground">
-                        <div className="font-semibold" style={{ color }}>{fmtRelativeFromNow(session.updated_at, nowMs)}</div>
-                        <div className="mt-0.5 text-[11px] text-muted-foreground">{fmtDateTime(session.updated_at)}</div>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+                        </td>
+                        <td className="max-w-[220px] truncate border-b border-border px-3 py-3.5 align-top text-sm tabular-nums text-muted-foreground">{session.model || '—'}</td>
+                        <td className="border-b border-border px-3 py-3.5 align-top text-sm tabular-nums text-foreground">{fmtNum(session.total_tokens)}</td>
+                        <td className="border-b border-border px-3 py-3.5 align-top text-sm tabular-nums text-foreground">{fmtPct(session.share_pct ?? 0)}</td>
+                        <td className="border-b border-border px-3 py-3.5 align-top text-sm tabular-nums text-foreground">{fmtCompact(Math.round(session.burn_rate_24h_est ?? 0))}/h</td>
+                        <td className="border-b border-border px-3 py-3.5 align-top text-sm tabular-nums text-foreground">
+                          <div className="font-semibold" style={{ color }}>{fmtRelativeFromNow(session.updated_at, nowMs)}</div>
+                          <div className="mt-0.5 text-[11px] text-muted-foreground">{fmtDateTime(session.updated_at)}</div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
 
         <div className="flex flex-col gap-4">

@@ -822,6 +822,23 @@ function RealEstatePage({ mobile }: { mobile: boolean }) {
   )
 }
 
+/* ── Mobile Loading Fallback ── */
+
+function MobileLoadingFallback({ label }: { label: string }) {
+  return (
+    <div className="flex h-full items-center justify-center">
+      <div className="flex flex-col items-center gap-3">
+        <div className="flex gap-1.5">
+          <div className="h-2 w-2 rounded-full bg-primary mobile-loading-dot" />
+          <div className="h-2 w-2 rounded-full bg-primary mobile-loading-dot" />
+          <div className="h-2 w-2 rounded-full bg-primary mobile-loading-dot" />
+        </div>
+        <span className="text-sm text-muted-foreground">{label}…</span>
+      </div>
+    </div>
+  )
+}
+
 /* ── Bottom Tab Bar (mobile) ── */
 
 function BottomTabBar({ page, setPage }: { page: Page; setPage: (p: Page) => void }) {
@@ -837,11 +854,11 @@ function BottomTabBar({ page, setPage }: { page: Page; setPage: (p: Page) => voi
       {tabs.map(t => (
         <button key={t.key} onClick={() => setPage(t.key)}
           className={cn(
-            'flex-1 flex flex-col items-center justify-center gap-0.5 pt-2.5 pb-1 min-h-[52px] bg-transparent border-none cursor-pointer font-sans text-[10px]',
+            'flex-1 flex flex-col items-center justify-center gap-0.5 pt-2.5 pb-1 min-h-[56px] bg-transparent border-none cursor-pointer font-sans text-[10px] transition-colors',
             page === t.key ? 'text-primary font-semibold' : 'text-muted-foreground font-normal',
           )}
           style={{ WebkitTapHighlightColor: 'transparent' }}>
-          <span className="text-xl">{t.icon}</span><span>{t.label}</span>
+          <span className="text-[22px] leading-none">{t.icon}</span><span>{t.label}</span>
         </button>
       ))}
     </nav>
@@ -933,21 +950,21 @@ export default function App() {
 
         {/* DATA PLAYGROUND — replaces old explorer + query */}
         {(page === 'playground' || page === 'explorer' || page === 'query') && (
-          <React.Suspense fallback={<div className="text-muted-foreground p-10">Loading playground...</div>}>
+          <React.Suspense fallback={<MobileLoadingFallback label="Loading playground" />}>
             <DataPlayground mobile={mobile} initialSql={page === 'query' ? querySql : undefined} />
           </React.Suspense>
         )}
 
         {/* NHL MODEL */}
         {page === 'nhlmodel' && (
-          <React.Suspense fallback={<div className="text-muted-foreground p-10">Loading model outputs...</div>}>
+          <React.Suspense fallback={<MobileLoadingFallback label="Loading model outputs" />}>
             <NHLModel mobile={mobile} />
           </React.Suspense>
         )}
 
         {/* BANKROLL */}
         {page === 'bankroll' && (
-          <React.Suspense fallback={<div className="text-muted-foreground p-10">Loading bankroll...</div>}>
+          <React.Suspense fallback={<MobileLoadingFallback label="Loading bankroll" />}>
             <BankrollTracker mobile={mobile} />
           </React.Suspense>
         )}
