@@ -8,6 +8,8 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
+import { cn } from '@/lib/utils'
+import { ChartPanel, chartTooltipStyle } from '@/components/ui/chart-panel'
 
 type LedgerRow = {
   id: number
@@ -53,6 +55,8 @@ function fmtMoney(value: number) {
 function fmtPct(value: number) {
   return `${value.toFixed(1)}%`
 }
+
+const inputClasses = 'w-full rounded-lg border border-border bg-muted px-3 py-2.5 text-sm text-foreground font-sans'
 
 export default function BankrollTracker({ mobile }: { mobile: boolean }) {
   const [ledger, setLedger] = useState<LedgerResponse | null>(null)
@@ -110,67 +114,103 @@ export default function BankrollTracker({ mobile }: { mobile: boolean }) {
   }
 
   if (!ledger || !summary) {
-    return <div style={{ color: '#8b8f9a', padding: 24 }}>Loading bankroll…</div>
+    return <div className="p-6 text-muted-foreground">Loading bankroll…</div>
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, height: '100%', overflow: 'auto', paddingBottom: 24 }}>
-      <div style={{ display: 'grid', gap: 12, gridTemplateColumns: mobile ? '1fr' : '1.4fr 1fr' }}>
-        <section style={card}>
-          <div style={{ fontSize: 11, color: '#8b8f9a', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Current Balance</div>
-          <div style={{ fontSize: mobile ? 36 : 48, fontWeight: 800, color: '#f3f4f6', letterSpacing: '-0.04em' }}>{fmtMoney(ledger.current_balance)}</div>
-          <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', marginTop: 18 }}>
-            <Stat label="Win Rate" value={fmtPct(summary.win_rate)} />
-            <Stat label="ROI" value={fmtPct(summary.roi)} />
-            <Stat label="W-L" value={`${summary.wins}-${summary.losses}`} />
-            <Stat label="P/L" value={fmtMoney(summary.total_pl)} />
+    <div className="flex h-full flex-col gap-4 overflow-auto pb-6">
+      <div className={cn('grid gap-3', mobile ? 'grid-cols-1' : 'grid-cols-[1.4fr_1fr]')}>
+        <section className="rounded-xl border border-border bg-card p-4">
+          <div className="mb-2 text-xs uppercase tracking-wider text-muted-foreground">Current Balance</div>
+          <div className={cn('font-extrabold tracking-tighter text-foreground', mobile ? 'text-4xl' : 'text-5xl')}>{fmtMoney(ledger.current_balance)}</div>
+          <div className="mt-4 grid grid-cols-4 gap-2.5">
+            <div>
+              <div className="mb-1 text-xs uppercase tracking-wide text-muted-foreground">Win Rate</div>
+              <div className="text-lg font-bold tabular-nums text-foreground">{fmtPct(summary.win_rate)}</div>
+            </div>
+            <div>
+              <div className="mb-1 text-xs uppercase tracking-wide text-muted-foreground">ROI</div>
+              <div className="text-lg font-bold tabular-nums text-foreground">{fmtPct(summary.roi)}</div>
+            </div>
+            <div>
+              <div className="mb-1 text-xs uppercase tracking-wide text-muted-foreground">W-L</div>
+              <div className="text-lg font-bold tabular-nums text-foreground">{`${summary.wins}-${summary.losses}`}</div>
+            </div>
+            <div>
+              <div className="mb-1 text-xs uppercase tracking-wide text-muted-foreground">P/L</div>
+              <div className="text-lg font-bold tabular-nums text-foreground">{fmtMoney(summary.total_pl)}</div>
+            </div>
           </div>
         </section>
 
-        <section style={card}>
-          <div style={{ fontSize: 11, color: '#8b8f9a', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>Manual Entry</div>
-          <form onSubmit={submitManualEntry} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button type="button" onClick={() => setEventType('deposit')} style={eventType === 'deposit' ? tabActive : tab}>Deposit</button>
-              <button type="button" onClick={() => setEventType('withdrawal')} style={eventType === 'withdrawal' ? tabActive : tab}>Withdrawal</button>
+        <section className="rounded-xl border border-border bg-card p-4">
+          <div className="mb-2.5 text-xs uppercase tracking-wider text-muted-foreground">Manual Entry</div>
+          <form onSubmit={submitManualEntry} className="flex flex-col gap-2.5">
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setEventType('deposit')}
+                className={cn(
+                  'flex-1 rounded-lg border px-3 py-2.5 text-sm font-semibold cursor-pointer font-sans',
+                  eventType === 'deposit'
+                    ? 'bg-primary border-primary text-primary-foreground'
+                    : 'bg-muted border-border text-muted-foreground'
+                )}
+              >
+                Deposit
+              </button>
+              <button
+                type="button"
+                onClick={() => setEventType('withdrawal')}
+                className={cn(
+                  'flex-1 rounded-lg border px-3 py-2.5 text-sm font-semibold cursor-pointer font-sans',
+                  eventType === 'withdrawal'
+                    ? 'bg-primary border-primary text-primary-foreground'
+                    : 'bg-muted border-border text-muted-foreground'
+                )}
+              >
+                Withdrawal
+              </button>
             </div>
-            <input value={amount} onChange={(e) => setAmount(e.target.value)} type="number" min="0" step="0.01" placeholder="Amount" style={input} required />
-            <input value={sportsbook} onChange={(e) => setSportsbook(e.target.value)} placeholder="Sportsbook" style={input} />
-            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notes" rows={3} style={{ ...input, resize: 'vertical' }} />
-            <button type="submit" style={submitBtn} disabled={submitting}>
+            <input value={amount} onChange={(e) => setAmount(e.target.value)} type="number" min="0" step="0.01" placeholder="Amount" className={inputClasses} required />
+            <input value={sportsbook} onChange={(e) => setSportsbook(e.target.value)} placeholder="Sportsbook" className={inputClasses} />
+            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notes" rows={3} className={cn(inputClasses, 'resize-y')} />
+            <button
+              type="submit"
+              className="rounded-lg bg-primary px-3 py-2.5 text-sm font-bold text-primary-foreground hover:bg-primary/90 cursor-pointer font-sans"
+              disabled={submitting}
+            >
               {submitting ? 'Saving…' : `Add ${eventType}`}
             </button>
-            {error && <div style={{ color: '#f87171', fontSize: 12 }}>{error}</div>}
+            {error && <div className="text-xs text-destructive">{error}</div>}
           </form>
         </section>
       </div>
 
-      <section style={card}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12, gap: 8, flexWrap: 'wrap' }}>
-          <div style={{ fontSize: 11, color: '#8b8f9a', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Balance Over Time</div>
-          <div style={{ fontSize: 12, color: '#94a3b8' }}>{summary.balance_chart.length} daily points</div>
-        </div>
-        <div style={{ height: mobile ? 240 : 300 }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={summary.balance_chart}>
-              <CartesianGrid stroke="#2a2d37" vertical={false} />
-              <XAxis dataKey="date" stroke="#8b8f9a" tick={{ fontSize: 11 }} />
-              <YAxis stroke="#8b8f9a" tick={{ fontSize: 11 }} tickFormatter={(v) => `$${Math.round(v)}`} width={70} />
-              <Tooltip formatter={(value) => fmtMoney(Number(value ?? 0))} />
-              <Line type="monotone" dataKey="balance" stroke="#4f8cff" strokeWidth={3} dot={false} />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      </section>
+      <ChartPanel
+        title="Balance Over Time"
+        subtitle={`${summary.balance_chart.length} daily points`}
+        height={mobile ? 240 : 300}
+      >
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={summary.balance_chart}>
+            <CartesianGrid strokeDasharray="" className="stroke-border" vertical={false} />
+            <XAxis dataKey="date" className="text-xs" stroke="hsl(var(--muted-foreground))" tick={{ fontSize: 11 }} />
+            <YAxis className="text-xs" stroke="hsl(var(--muted-foreground))" tick={{ fontSize: 11 }} tickFormatter={(v) => `$${Math.round(v)}`} width={70} />
+            <Tooltip contentStyle={chartTooltipStyle} formatter={(value) => fmtMoney(Number(value ?? 0))} />
+            <Line type="monotone" dataKey="balance" stroke="hsl(var(--primary))" strokeWidth={3} dot={false} />
+          </LineChart>
+        </ResponsiveContainer>
+      </ChartPanel>
 
-      <div style={{ display: 'grid', gap: 12, gridTemplateColumns: mobile ? '1fr' : '1fr 1.2fr' }}>
-        <section style={card}>
-          <div style={{ fontSize: 11, color: '#8b8f9a', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>Daily P/L</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 320, overflow: 'auto' }}>
+      <div className={cn('grid gap-3', mobile ? 'grid-cols-1' : 'grid-cols-[1fr_1.2fr]')}>
+        <section className="rounded-xl border border-border bg-card p-4">
+          <div className="mb-3 text-xs uppercase tracking-wider text-muted-foreground">Daily P/L</div>
+          <div className="flex max-h-80 flex-col gap-2 overflow-auto">
             {summary.daily_pl.slice().reverse().map((row) => (
-              <div key={row.date} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, paddingBottom: 8, borderBottom: '1px solid #2a2d37' }}>
-                <span style={{ color: '#cbd5e1', fontSize: 13 }}>{row.date}</span>
-                <span style={{ color: row.pnl >= 0 ? '#4ade80' : '#f87171', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
+              <div key={row.date} className="flex items-center justify-between gap-3 border-b border-border/50 pb-2">
+                <span className="text-sm text-foreground">{row.date}</span>
+                <span className={cn('font-bold tabular-nums', row.pnl >= 0 ? 'text-success' : 'text-destructive')}>
                   {row.pnl >= 0 ? '+' : '-'}{fmtMoney(Math.abs(row.pnl))}
                 </span>
               </div>
@@ -178,27 +218,27 @@ export default function BankrollTracker({ mobile }: { mobile: boolean }) {
           </div>
         </section>
 
-        <section style={card}>
-          <div style={{ fontSize: 11, color: '#8b8f9a', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>Transaction History</div>
-          <div style={{ maxHeight: 320, overflow: 'auto', border: '1px solid #2a2d37', borderRadius: 10 }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+        <section className="rounded-xl border border-border bg-card p-4">
+          <div className="mb-3 text-xs uppercase tracking-wider text-muted-foreground">Transaction History</div>
+          <div className="max-h-80 overflow-auto rounded-lg border border-border">
+            <table className="w-full text-sm">
               <thead>
-                <tr>
-                  <th style={th}>Date</th>
-                  <th style={th}>Type</th>
-                  <th style={th}>Amount</th>
-                  <th style={th}>Balance</th>
-                  <th style={th}>Book</th>
+                <tr className="border-b border-border text-left text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  <th className="px-3 py-2.5 sticky top-0 bg-card">Date</th>
+                  <th className="px-3 py-2.5 sticky top-0 bg-card">Type</th>
+                  <th className="px-3 py-2.5 sticky top-0 bg-card">Amount</th>
+                  <th className="px-3 py-2.5 sticky top-0 bg-card">Balance</th>
+                  <th className="px-3 py-2.5 sticky top-0 bg-card">Book</th>
                 </tr>
               </thead>
               <tbody>
                 {ledger.transactions.map((row) => (
-                  <tr key={row.id}>
-                    <td style={td}>{row.event_date}</td>
-                    <td style={td}>{row.event_type}</td>
-                    <td style={{ ...td, color: row.amount >= 0 ? '#4ade80' : '#f87171' }}>{fmtMoney(row.amount)}</td>
-                    <td style={td}>{fmtMoney(row.balance)}</td>
-                    <td style={td}>{row.sportsbook || row.notes || '—'}</td>
+                  <tr key={row.id} className="border-b border-border/50 hover:bg-muted/50 transition-colors">
+                    <td className="px-3 py-2.5 text-foreground tabular-nums">{row.event_date}</td>
+                    <td className="px-3 py-2.5 text-foreground tabular-nums">{row.event_type}</td>
+                    <td className={cn('px-3 py-2.5 tabular-nums', row.amount >= 0 ? 'text-success' : 'text-destructive')}>{fmtMoney(row.amount)}</td>
+                    <td className="px-3 py-2.5 text-foreground tabular-nums">{fmtMoney(row.balance)}</td>
+                    <td className="px-3 py-2.5 text-foreground tabular-nums">{row.sportsbook || row.notes || '—'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -208,83 +248,4 @@ export default function BankrollTracker({ mobile }: { mobile: boolean }) {
       </div>
     </div>
   )
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <div style={{ fontSize: 11, color: '#8b8f9a', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</div>
-      <div style={{ fontSize: 18, fontWeight: 700, color: '#f8fafc', fontVariantNumeric: 'tabular-nums' }}>{value}</div>
-    </div>
-  )
-}
-
-const card: React.CSSProperties = {
-  background: '#181a20',
-  border: '1px solid #2a2d37',
-  borderRadius: 14,
-  padding: 16,
-}
-
-const input: React.CSSProperties = {
-  background: '#252830',
-  border: '1px solid #333642',
-  borderRadius: 10,
-  color: '#f8fafc',
-  padding: '10px 12px',
-  fontFamily: 'inherit',
-  fontSize: 14,
-}
-
-const tab: React.CSSProperties = {
-  flex: 1,
-  background: '#252830',
-  border: '1px solid #333642',
-  borderRadius: 10,
-  color: '#94a3b8',
-  padding: '10px 12px',
-  cursor: 'pointer',
-  fontFamily: 'inherit',
-  fontSize: 13,
-  fontWeight: 600,
-}
-
-const tabActive: React.CSSProperties = {
-  ...tab,
-  background: '#4f8cff',
-  borderColor: '#4f8cff',
-  color: '#ffffff',
-}
-
-const submitBtn: React.CSSProperties = {
-  background: '#4f8cff',
-  border: '1px solid #4f8cff',
-  borderRadius: 10,
-  color: '#ffffff',
-  padding: '10px 12px',
-  cursor: 'pointer',
-  fontFamily: 'inherit',
-  fontSize: 14,
-  fontWeight: 700,
-}
-
-const th: React.CSSProperties = {
-  textAlign: 'left',
-  color: '#8b8f9a',
-  fontSize: 11,
-  fontWeight: 700,
-  letterSpacing: '0.04em',
-  textTransform: 'uppercase',
-  padding: '10px 12px',
-  position: 'sticky',
-  top: 0,
-  background: '#181a20',
-  borderBottom: '1px solid #2a2d37',
-}
-
-const td: React.CSSProperties = {
-  color: '#e2e8f0',
-  padding: '10px 12px',
-  borderBottom: '1px solid #2a2d37',
-  fontVariantNumeric: 'tabular-nums',
 }

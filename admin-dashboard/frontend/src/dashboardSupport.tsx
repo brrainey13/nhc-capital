@@ -1,28 +1,8 @@
 import React from 'react'
+import { cn } from '@/lib/utils'
 
 export const API = '/api'
 export const EST = 'America/New_York'
-
-export const C = {
-  bg: '#0f1117',
-  surface: '#181a20',
-  surfaceHover: '#1e2028',
-  surfaceActive: '#252830',
-  border: '#2a2d37',
-  borderLight: '#333642',
-  text: '#e4e5e9',
-  textSecondary: '#8b8f9a',
-  textMuted: '#5f6370',
-  accent: '#4f8cff',
-  accentDim: '#3a6fd8',
-  accentBg: 'rgba(79,140,255,0.08)',
-  white: '#ffffff',
-  danger: '#ef4444',
-  dangerBg: 'rgba(239,68,68,0.1)',
-  success: '#22c55e',
-  purple: '#a855f7',
-  purpleBg: 'rgba(168,85,247,0.08)',
-}
 
 export type SessionInfo = {
   key: string
@@ -189,20 +169,20 @@ export function fmtCountdown(seconds: number | null, nowMs: number, resetAt: str
 }
 
 export function getRecencyColor(hours: number | null): string {
-  if (hours == null) return C.textMuted
-  if (hours < 1) return C.success
-  if (hours < 6) return '#f59e0b'
-  return C.textMuted
+  if (hours == null) return 'hsl(var(--muted-foreground))'
+  if (hours < 1) return 'hsl(var(--success))'
+  if (hours < 6) return 'hsl(var(--warning))'
+  return 'hsl(var(--muted-foreground))'
 }
 
 export function getRateLimitColor(status: UsageData['claude_rate_limit']['status']): string {
-  if (status === 'active') return C.success
-  if (status === 'limited') return C.danger
-  return C.textMuted
+  if (status === 'active') return 'hsl(var(--success))'
+  if (status === 'limited') return 'hsl(var(--destructive))'
+  return 'hsl(var(--muted-foreground))'
 }
 
-export function metricCardSpan(mobile: boolean, basis: string): React.CSSProperties {
-  return { minWidth: 0, display: 'flex', flexDirection: 'column', gap: 12, ...(mobile ? {} : { flex: basis }) }
+export function metricCardSpan(mobile: boolean, basis: string): string {
+  return cn('min-w-0 flex flex-col gap-3', !mobile && `flex-[${basis}]`)
 }
 
 export function buildHealthRows({
@@ -224,37 +204,37 @@ export function buildHealthRows({
     {
       label: 'API',
       status: health?.status === 'ok' ? 'Healthy' : 'Unavailable',
-      color: health?.status === 'ok' ? C.success : C.danger,
+      color: health?.status === 'ok' ? 'hsl(var(--success))' : 'hsl(var(--destructive))',
       detail: health?.status === 'ok' ? 'GET /api/health responding' : 'Health check failed',
     },
     {
       label: 'Database',
       status: tables ? 'Connected' : 'Unknown',
-      color: tables ? C.success : C.textMuted,
+      color: tables ? 'hsl(var(--success))' : 'hsl(var(--muted-foreground))',
       detail: tables ? `${fmtNum(tables.length)} tables discovered` : 'No DB telemetry loaded',
     },
     {
       label: 'Cloudflare Tunnel',
       status: hostMode,
-      color: hostMode === 'Cloudflare edge' ? C.success : '#f59e0b',
+      color: hostMode === 'Cloudflare edge' ? 'hsl(var(--success))' : 'hsl(var(--warning))',
       detail: hostMode === 'Cloudflare edge' ? window.location.hostname : 'Running outside production edge path',
     },
     {
       label: 'Telemetry',
       status: usage ? 'Fresh' : 'Unknown',
-      color: usage ? (usage.freshness.staleness_seconds && usage.freshness.staleness_seconds > 600 ? '#f59e0b' : C.success) : C.textMuted,
+      color: usage ? (usage.freshness.staleness_seconds && usage.freshness.staleness_seconds > 600 ? 'hsl(var(--warning))' : 'hsl(var(--success))') : 'hsl(var(--muted-foreground))',
       detail: usage ? `Latest session ${fmtRelativeFromNow(usage.freshness.latest_session_update_at, nowMs)}` : 'Usage feed unavailable',
     },
     {
       label: 'Cost Feed',
       status: claudeCosts?.error ? 'Degraded' : claudeCosts ? 'Healthy' : 'Unknown',
-      color: claudeCosts?.error ? '#f59e0b' : claudeCosts ? C.success : C.textMuted,
+      color: claudeCosts?.error ? 'hsl(var(--warning))' : claudeCosts ? 'hsl(var(--success))' : 'hsl(var(--muted-foreground))',
       detail: claudeCosts?.error ? 'CodexBar returned an error' : claudeCosts ? `Fetched ${fmtRelativeFromNow(claudeCosts.fetched_at, nowMs)}` : 'Cost feed unavailable',
     },
     {
       label: 'Cron + Git',
       status: 'Not exposed',
-      color: C.textMuted,
+      color: 'hsl(var(--muted-foreground))',
       detail: 'Current backend health payload does not include cron or deploy metadata',
     },
   ]
@@ -262,8 +242,8 @@ export function buildHealthRows({
 
 export function LoadingState() {
   return (
-    <section style={panelStyle}>
-      <div style={{ fontSize: 13, color: C.textMuted }}>Loading dashboard telemetry…</div>
+    <section className="rounded-xl border border-border bg-card p-4 shadow-lg">
+      <div className="text-[13px] text-muted-foreground">Loading dashboard telemetry…</div>
     </section>
   )
 }
@@ -280,12 +260,12 @@ export function MetricCard({
   children: React.ReactNode
 }) {
   return (
-    <section style={{ ...panelStyle, position: 'relative', overflow: 'hidden', minHeight: 182 }}>
-      <div style={{ position: 'absolute', inset: 0, background: `radial-gradient(circle at top right, ${accent}18 0%, transparent 45%)`, pointerEvents: 'none' }} />
-      <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 12, height: '100%' }}>
-        <div style={{ fontSize: 11, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700 }}>{title}</div>
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>{children}</div>
-        <div style={{ fontSize: 11, color: C.textMuted }}>{footer}</div>
+    <section className="rounded-xl border border-border bg-card p-4 shadow-lg relative overflow-hidden min-h-[182px]">
+      <div className="absolute inset-0 pointer-events-none" style={{ background: `radial-gradient(circle at top right, ${accent}18 0%, transparent 45%)` }} />
+      <div className="relative flex flex-col gap-3 h-full">
+        <div className="text-[11px] text-muted-foreground uppercase tracking-wide font-bold">{title}</div>
+        <div className="flex-1 flex flex-col gap-3">{children}</div>
+        <div className="text-[11px] text-muted-foreground">{footer}</div>
       </div>
     </section>
   )
@@ -293,9 +273,9 @@ export function MetricCard({
 
 export function SectionHeader({ title, subtitle }: { title: string; subtitle: string }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
-      <div style={{ fontSize: 12, color: C.textSecondary, textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700 }}>{title}</div>
-      <div style={{ fontSize: 12, color: C.textMuted }}>{subtitle}</div>
+    <div className="flex items-baseline justify-between gap-3 flex-wrap mb-3.5">
+      <div className="text-xs text-muted-foreground uppercase tracking-wider font-bold">{title}</div>
+      <div className="text-xs text-muted-foreground">{subtitle}</div>
     </div>
   )
 }
@@ -303,22 +283,14 @@ export function SectionHeader({ title, subtitle }: { title: string; subtitle: st
 export function StatusPill({ label, color, subtle }: { label: string; color: string; subtle?: boolean }) {
   return (
     <span
+      className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[11px] font-bold uppercase tracking-wider"
       style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 6,
-        padding: '6px 10px',
-        borderRadius: 999,
         border: `1px solid ${color}33`,
         background: subtle ? `${color}14` : `${color}18`,
         color,
-        fontSize: 11,
-        fontWeight: 700,
-        textTransform: 'uppercase',
-        letterSpacing: '0.05em',
       }}
     >
-      <span style={{ width: 6, height: 6, borderRadius: '50%', background: color }} />
+      <span className="w-1.5 h-1.5 rounded-full" style={{ background: color }} />
       {label}
     </span>
   )
@@ -326,55 +298,18 @@ export function StatusPill({ label, color, subtle }: { label: string; color: str
 
 export function ProgressBar({ value, color }: { value: number; color: string }) {
   return (
-    <div style={{ height: 10, width: '100%', borderRadius: 999, background: C.surfaceActive, overflow: 'hidden', border: `1px solid ${C.border}` }}>
-      <div style={{ width: `${Math.min(value, 100)}%`, height: '100%', borderRadius: 999, background: `linear-gradient(90deg, ${color}, ${C.purple})` }} />
+    <div className="h-2.5 w-full rounded-full overflow-hidden border border-border bg-muted">
+      <div
+        className="h-full rounded-full"
+        style={{ width: `${Math.min(value, 100)}%`, background: `linear-gradient(90deg, ${color}, hsl(var(--primary)))` }}
+      />
     </div>
   )
 }
 
-export const panelStyle: React.CSSProperties = {
-  background: C.surface,
-  border: `1px solid ${C.border}`,
-  borderRadius: 16,
-  padding: 16,
-  boxShadow: '0 18px 40px rgba(0, 0, 0, 0.22)',
-}
-
-export const tableHeadStyle: React.CSSProperties = {
-  padding: '10px 12px',
-  textAlign: 'left',
-  color: C.textMuted,
-  fontSize: 11,
-  fontWeight: 700,
-  letterSpacing: '0.05em',
-  textTransform: 'uppercase',
-  borderBottom: `1px solid ${C.border}`,
-}
-
-export const tableCellStyle: React.CSSProperties = {
-  padding: '14px 12px',
-  color: C.text,
-  fontSize: 13,
-  borderBottom: `1px solid ${C.border}`,
-  fontVariantNumeric: 'tabular-nums',
-  verticalAlign: 'top',
-}
-
 export const tooltipStyle = {
-  backgroundColor: '#11151d',
-  border: `1px solid ${C.borderLight}`,
-  borderRadius: 12,
-  color: C.text,
-}
-
-export const emptyChartStyle: React.CSSProperties = {
-  height: '100%',
-  borderRadius: 12,
-  border: `1px dashed ${C.borderLight}`,
-  background: C.surfaceActive,
-  color: C.textMuted,
-  fontSize: 12,
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
+  backgroundColor: 'hsl(var(--card))',
+  border: '1px solid hsl(var(--border))',
+  borderRadius: 'var(--radius)',
+  color: 'hsl(var(--foreground))',
 }

@@ -107,7 +107,7 @@ export default function ForeclosureMap({ onOpenComps }: { onOpenComps?: (foreclo
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', color: '#aaa', fontSize: 16 }}>
+      <div className="flex items-center justify-center h-full text-muted-foreground">
         Loading map data...
       </div>
     );
@@ -115,7 +115,7 @@ export default function ForeclosureMap({ onOpenComps }: { onOpenComps?: (foreclo
 
   if (error) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', color: '#ff6b6b', fontSize: 14 }}>
+      <div className="flex items-center justify-center h-full text-destructive text-sm">
         {error}
       </div>
     );
@@ -124,23 +124,15 @@ export default function ForeclosureMap({ onOpenComps }: { onOpenComps?: (foreclo
   const CT_CENTER: [number, number] = [41.55, -72.65];
 
   return (
-    <div style={{ height: '100%', width: '100%', position: 'relative' }}>
-      <div
-        style={{
-          position: 'absolute', top: 12, left: 60, zIndex: 1000,
-          background: 'rgba(30,60,90,0.9)', padding: '8px 12px', borderRadius: 8,
-          color: '#fff', fontSize: 12, fontWeight: 600,
-          border: '1px solid rgba(0,0,0,0.15)', boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
-          display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center',
-        }}
-      >
+    <div className="h-full w-full relative">
+      <div className="absolute top-3 left-[60px] z-[1000] bg-card/90 backdrop-blur px-3 py-2 rounded-lg border border-border shadow-lg flex gap-2 flex-wrap items-center text-foreground text-xs font-semibold">
         <span>Foreclosures: {foreclosures.length}</span>
         <span>•</span>
         <span>Multi-Family: {multiLoading ? '...' : multiFamily.length}</span>
         <select
           value={layerMode}
           onChange={(e) => setLayerMode(e.target.value as 'foreclosures' | 'multifamily' | 'both')}
-          style={{ background: '#1d2d44', color: '#fff', border: '1px solid #415a77', borderRadius: 6, padding: '4px 6px' }}
+          className="bg-muted text-foreground border border-border rounded-md px-1.5 py-1 text-xs"
         >
           <option value="foreclosures">Foreclosure Listings</option>
           <option value="multifamily">Multi-Family by Town</option>
@@ -151,7 +143,7 @@ export default function ForeclosureMap({ onOpenComps }: { onOpenComps?: (foreclo
             <select
               value={selectedTown}
               onChange={(e) => setSelectedTown(e.target.value)}
-              style={{ background: '#1d2d44', color: '#fff', border: '1px solid #415a77', borderRadius: 6, padding: '4px 6px', maxWidth: 180 }}
+              className="bg-muted text-foreground border border-border rounded-md px-1.5 py-1 text-xs max-w-[180px]"
             >
               <option value="" disabled>Select town...</option>
               <option value="all">All Towns</option>
@@ -164,7 +156,7 @@ export default function ForeclosureMap({ onOpenComps }: { onOpenComps?: (foreclo
             <select
               value={bucket}
               onChange={(e) => setBucket(e.target.value as 'all' | '2_fam' | '3_fam' | '4_fam' | '5_10' | '11_25' | '25_plus')}
-              style={{ background: '#1d2d44', color: '#fff', border: '1px solid #415a77', borderRadius: 6, padding: '4px 6px' }}
+              className="bg-muted text-foreground border border-border rounded-md px-1.5 py-1 text-xs"
             >
               <option value="all">All 2+ units</option>
               <option value="2_fam">2 Family</option>
@@ -177,7 +169,7 @@ export default function ForeclosureMap({ onOpenComps }: { onOpenComps?: (foreclo
             <select
               value={soldEra}
               onChange={(e) => setSoldEra(e.target.value as 'all' | 'pre2000' | '2000s' | '2010s' | '2020s')}
-              style={{ background: '#1d2d44', color: '#fff', border: '1px solid #415a77', borderRadius: 6, padding: '4px 6px' }}
+              className="bg-muted text-foreground border border-border rounded-md px-1.5 py-1 text-xs"
             >
               <option value="all">Any sale date</option>
               <option value="pre2000">Pre-2000</option>
