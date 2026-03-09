@@ -1,17 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
-  Area,
-  AreaChart,
-  Bar,
-  BarChart,
-  CartesianGrid,
   Cell,
   Pie,
   PieChart,
   ResponsiveContainer,
+  Sector,
   Tooltip,
-  XAxis,
-  YAxis,
 } from 'recharts'
 import {
   API,
@@ -37,6 +31,9 @@ import { StatCard } from '@/components/ui/stat-card'
 import { ChartPanel, chartTooltipStyle } from '@/components/ui/chart-panel'
 import { ProgressBar } from '@/components/ui/progress-bar'
 import { StatusBadge } from '@/components/ui/status-badge'
+import { InteractiveAreaChart } from '@/components/charts/interactive-area-chart'
+import { InteractiveBarChart } from '@/components/charts/interactive-bar-chart'
+import { ChartControls, downloadCSV } from '@/components/charts/chart-controls'
 
 type DashboardProps = { mobile: boolean }
 
@@ -48,6 +45,8 @@ export default function Dashboard({ mobile }: DashboardProps) {
   const [loading, setLoading] = useState(true)
   const [loadFailed, setLoadFailed] = useState(false)
   const [nowMs, setNowMs] = useState(Date.now())
+  const [showBurnBrush, setShowBurnBrush] = useState(false)
+  const [activePieIndex, setActivePieIndex] = useState<number | undefined>(undefined)
 
   useEffect(() => {
     let cancelled = false
@@ -190,8 +189,25 @@ export default function Dashboard({ mobile }: DashboardProps) {
 
   const rateLimitColor = getRateLimitColor(usage.claude_rate_limit.status)
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const renderActiveShape = (props: any) => {
+    const { cx, cy, innerRadius, outerRadius, startAngle, endAngle, fill, payload, percent } = props
+    return (
+      <g>
+        <text x={cx} y={cy - 6} textAnchor="middle" fill="hsl(var(--foreground))" className="text-xs font-bold">
+          {payload.model?.split('/').pop() ?? ''}
+        </text>
+        <text x={cx} y={cy + 12} textAnchor="middle" fill="hsl(var(--muted-foreground))" className="text-[10px]">
+          {(percent * 100).toFixed(1)}%
+        </text>
+        <Sector cx={cx} cy={cy} innerRadius={innerRadius - 3} outerRadius={outerRadius + 6} startAngle={startAngle} endAngle={endAngle} fill={fill} />
+        <Sector cx={cx} cy={cy} innerRadius={outerRadius + 8} outerRadius={outerRadius + 11} startAngle={startAngle} endAngle={endAngle} fill={fill} opacity={0.4} />
+      </g>
+    )
+  }
+
   return (
-    <div className={`h-full overflow-auto ${mobile ? 'pb-24' : 'pb-6'}`}>
+    <div className={`page-enter h-full overflow-auto ${mobile ? 'pb-24' : 'pb-6'}`}>
       <PageHeader
         title="Ops Command Center"
         subtitle={
@@ -238,7 +254,8 @@ export default function Dashboard({ mobile }: DashboardProps) {
 
         <StatCard
           label="Token Budget"
-          value={fmtNum(tokenBudget.used)}
+          animateValue={tokenBudget.used}
+          formatAnimatedValue={(v) => fmtNum(Math.round(v))}
           subtitle="Last 24h tokens across recent sessions"
           accentColor="hsl(var(--primary))"
           footer={tokenBudget.capacity > 0 ? `${fmtNum(tokenBudget.remaining)} remaining capacity` : 'Context capacity unavailable'}
@@ -266,17 +283,13 @@ export default function Dashboard({ mobile }: DashboardProps) {
               </div>
               <div className={`shrink-0 ${mobile ? 'h-14 w-24' : 'h-14 w-[120px]'}`}>
                 {dailyCostSeries.length > 0 ? (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={dailyCostSeries}>
-                      <defs>
-                        <linearGradient id="costSpark" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="hsl(var(--chart-2))" stopOpacity={0.8} />
-                          <stop offset="100%" stopColor="hsl(var(--chart-2))" stopOpacity={0.08} />
-                        </linearGradient>
-                      </defs>
-                      <Area type="monotone" dataKey="cost" stroke="hsl(var(--chart-2))" strokeWidth={2.5} fill="url(#costSpark)" />
-                    </AreaChart>
-                  </ResponsiveContainer>
+                  <InteractiveAreaChart
+                    data={dailyCostSeries}
+                    areas={[{ dataKey: 'cost', color: 'hsl(var(--chart-2))', label: 'Cost' }]}
+                    xKey="label"
+                    height={56}
+                    animationDuration={800}
+                  />
                 ) : (
                   <div className="h-full rounded-lg border border-border bg-muted" />
                 )}
@@ -287,7 +300,7 @@ export default function Dashboard({ mobile }: DashboardProps) {
 
         <StatCard
           label="Active Sessions"
-          value={String(activeSessionsLastHour.length)}
+          animateValue={activeSessionsLastHour.length}
           subtitle="Updated within the last hour"
           accentColor="hsl(var(--chart-3))"
           footer={`${fmtNum(usage.totals.session_count)} sessions total`}
@@ -312,27 +325,22 @@ export default function Dashboard({ mobile }: DashboardProps) {
         subtitle={`${fmtCompact(Math.round(usage.windows.last_24h?.burn_rate_tokens_per_hour ?? 0))} tokens/hour avg · last 24h in ${usage.trend.bucket_minutes}-minute buckets`}
         height={mobile ? 240 : 320}
         className="mb-4"
+        actions={
+          <ChartControls
+            showBrush={showBurnBrush}
+            onBrushToggle={setShowBurnBrush}
+            exportData={() => downloadCSV(burnTrend as Record<string, unknown>[], 'token-burn.csv')}
+          />
+        }
       >
-        <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={burnTrend} margin={{ top: 10, right: 8, left: 0, bottom: 0 }}>
-            <defs>
-              <linearGradient id="burnFill" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.7} />
-                <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0.05} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid stroke="hsl(var(--border))" vertical={false} />
-            <XAxis dataKey="label" stroke="hsl(var(--muted-foreground))" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} />
-            <YAxis stroke="hsl(var(--muted-foreground))" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} tickFormatter={(value) => fmtCompact(Number(value))} width={72} />
-            <Tooltip
-              contentStyle={chartTooltipStyle}
-              cursor={{ stroke: 'hsl(var(--primary) / 0.3)', strokeWidth: 1 }}
-              formatter={(value: number | string | undefined) => [fmtNum(Number(value ?? 0)), 'Tokens']}
-              labelFormatter={(_, payload) => fmtDateTime(payload?.[0]?.payload?.start ?? null)}
-            />
-            <Area type="monotone" dataKey="tokens" stroke="hsl(var(--primary))" strokeWidth={3} fill="url(#burnFill)" />
-          </AreaChart>
-        </ResponsiveContainer>
+        <InteractiveAreaChart
+          data={burnTrend}
+          areas={[{ dataKey: 'tokens', color: 'hsl(var(--primary))', label: 'Tokens' }]}
+          xKey="label"
+          formatY={(v) => fmtCompact(v)}
+          showBrush={showBurnBrush}
+          height={mobile ? 220 : 300}
+        />
       </ChartPanel>
 
       {/* Session Activity + Cost Breakdown */}
@@ -358,7 +366,7 @@ export default function Dashboard({ mobile }: DashboardProps) {
                   const hoursSince = session.updated_at ? (nowMs - new Date(session.updated_at).getTime()) / 3_600_000 : null
                   const color = getRecencyColor(hoursSince)
                   return (
-                    <tr key={session.key}>
+                    <tr key={session.key} className="transition-colors hover:bg-muted/30">
                       <td className="border-b border-border px-3 py-3.5 align-top text-sm tabular-nums text-foreground">
                         <div className="flex items-center gap-2.5">
                           <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: color, boxShadow: `0 0 12px ${color}55` }} />
@@ -398,7 +406,19 @@ export default function Dashboard({ mobile }: DashboardProps) {
                   {costBreakdown.length > 0 ? (
                     <ResponsiveContainer width="100%" height="100%">
                       <PieChart>
-                        <Pie data={costBreakdown} dataKey="cost" nameKey="model" innerRadius={58} outerRadius={82} paddingAngle={2} stroke="none">
+                        {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                        <Pie
+                          data={costBreakdown}
+                          dataKey="cost"
+                          nameKey="model"
+                          innerRadius={58}
+                          outerRadius={82}
+                          paddingAngle={2}
+                          stroke="none"
+                          {...{ activeIndex: activePieIndex, activeShape: renderActiveShape } as any}
+                          onMouseEnter={(_: unknown, index: number) => setActivePieIndex(index)}
+                          onMouseLeave={() => setActivePieIndex(undefined)}
+                        >
                           {costBreakdown.map((entry) => (
                             <Cell key={entry.model} fill={entry.color} />
                           ))}
@@ -428,7 +448,7 @@ export default function Dashboard({ mobile }: DashboardProps) {
                           <span className="font-medium text-foreground">{fmtCurrency(entry.cost)}</span>
                         </div>
                         <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-                          <div className="h-full rounded-full" style={{ width: `${pct}%`, background: entry.color }} />
+                          <div className="h-full rounded-full transition-all duration-700" style={{ width: `${pct}%`, background: entry.color }} />
                         </div>
                       </div>
                     )
@@ -441,15 +461,14 @@ export default function Dashboard({ mobile }: DashboardProps) {
               <div className="mb-2.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Daily Cost</div>
               <div className="h-[180px]">
                 {dailyCostSeries.length > 0 ? (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={dailyCostSeries}>
-                      <CartesianGrid stroke="hsl(var(--border))" vertical={false} />
-                      <XAxis dataKey="label" stroke="hsl(var(--muted-foreground))" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} />
-                      <YAxis stroke="hsl(var(--muted-foreground))" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} tickFormatter={(value) => `$${Number(value).toFixed(0)}`} width={52} />
-                      <Tooltip contentStyle={chartTooltipStyle} formatter={(value: number | string | undefined) => [fmtCurrency(Number(value ?? 0)), 'Cost']} labelFormatter={(_, payload) => payload?.[0]?.payload?.date ?? ''} />
-                      <Bar dataKey="cost" radius={[8, 8, 0, 0]} fill="hsl(var(--primary))" />
-                    </BarChart>
-                  </ResponsiveContainer>
+                  <InteractiveBarChart
+                    data={dailyCostSeries}
+                    bars={[{ dataKey: 'cost', color: 'hsl(var(--primary))', label: 'Cost' }]}
+                    xKey="label"
+                    formatY={(v) => `$${v.toFixed(0)}`}
+                    height={170}
+                    showSortToggle={false}
+                  />
                 ) : (
                   <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-border bg-muted text-xs text-muted-foreground">
                     No daily cost history available.
@@ -469,7 +488,7 @@ export default function Dashboard({ mobile }: DashboardProps) {
         </div>
         <div className={`grid gap-3 ${mobile ? 'grid-cols-1' : 'grid-cols-3'}`}>
           {healthRows.map((row) => (
-            <div key={row.label} className="rounded-xl border border-border bg-muted p-3.5">
+            <div key={row.label} className="card-hover rounded-xl border border-border bg-muted p-3.5">
               <div className="mb-2.5 flex items-center justify-between gap-2.5">
                 <div className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">{row.label}</div>
                 <StatusBadge label={row.status} color={row.color} subtle />

@@ -1,16 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts'
-import { ChartPanel, chartTooltipStyle } from '@/components/ui/chart-panel'
+import { ChartPanel } from '@/components/ui/chart-panel'
 import { cn } from '@/lib/utils'
+import { InteractiveBarChart } from '@/components/charts/interactive-bar-chart'
+import { ChartControls, downloadCSV } from '@/components/charts/chart-controls'
 
 type ModelInfo = {
   model_type: string
@@ -212,8 +204,20 @@ export default function NHLModel({ mobile }: { mobile: boolean }) {
     return sortPicks(today.picks, sortKey, sortDir)
   }, [today, sortKey, sortDir])
 
-  const topFeatures = modelInfo?.feature_importances.slice(0, 15) ?? []
+  const topFeatures = useMemo(() => modelInfo?.feature_importances.slice(0, 15) ?? [], [modelInfo])
   const strategyOptions = useMemo(() => ['All', ...(history?.strategies ?? [])], [history])
+
+  const confidenceCounts = useMemo(() => {
+    if (!today) return []
+    const counts: Record<string, number> = { HIGH: 0, MEDIUM: 0, LOW: 0 }
+    for (const pick of today.picks) {
+      const conf = (pick.confidence ?? 'LOW').toUpperCase()
+      counts[conf] = (counts[conf] ?? 0) + 1
+    }
+    return Object.entries(counts)
+      .filter(([, count]) => count > 0)
+      .map(([confidence, count]) => ({ confidence, count }))
+  }, [today])
 
   if (error) {
     return <div className="p-6 text-destructive">Failed to load model outputs: {error}</div>
@@ -233,7 +237,7 @@ export default function NHLModel({ mobile }: { mobile: boolean }) {
   }
 
   return (
-    <div className="flex h-full flex-col gap-4 overflow-auto pb-6">
+    <div className="page-enter flex h-full flex-col gap-4 overflow-auto pb-6">
       {/* Model Info + Feature Importance */}
       <section className="rounded-xl border border-border bg-card p-4 shadow-lg">
         <div className="mb-4 flex flex-wrap items-baseline justify-between gap-3">
@@ -261,22 +265,28 @@ export default function NHLModel({ mobile }: { mobile: boolean }) {
             <div className="text-xl font-bold tabular-nums text-primary">{modelInfo.model_path ? 'Found' : 'Missing'}</div>
           </div>
         </div>
-        <ChartPanel title="Feature Importance" height={mobile ? 320 : 360}>
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={topFeatures} layout="vertical" margin={{ top: 8, right: 20, bottom: 8, left: 64 }}>
-              <CartesianGrid stroke="hsl(var(--border))" horizontal={false} />
-              <XAxis type="number" stroke="hsl(var(--muted-foreground))" tick={{ fontSize: 11 }} />
-              <YAxis type="category" dataKey="feature" stroke="hsl(var(--muted-foreground))" tick={{ fontSize: 11 }} width={150} />
-              <Tooltip contentStyle={chartTooltipStyle} formatter={(value) => Number(value).toFixed(0)} />
-              <Bar dataKey="importance" radius={[0, 6, 6, 0]}>
-                {topFeatures.map((item) => <Cell key={item.feature} fill="hsl(var(--primary))" />)}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+        <ChartPanel
+          title="Feature Importance"
+          height={mobile ? 320 : 360}
+          actions={
+            <ChartControls
+              exportData={() => downloadCSV(topFeatures as Record<string, unknown>[], 'feature-importance.csv')}
+            />
+          }
+        >
+          <InteractiveBarChart
+            data={topFeatures}
+            bars={[{ dataKey: 'importance', color: 'hsl(var(--primary))', label: 'Importance' }]}
+            xKey="feature"
+            layout="vertical"
+            height={mobile ? 300 : 340}
+            showSortToggle
+            formatY={(v) => v.toFixed(0)}
+          />
         </ChartPanel>
       </section>
 
-      {/* Today's Picks */}
+      {/* Today's Picks + Confidence Distribution */}
       <section className="rounded-xl border border-border bg-card p-4 shadow-lg">
         <div className="mb-3 flex flex-wrap items-baseline justify-between gap-3">
           <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Today&apos;s Picks</div>
@@ -286,8 +296,32 @@ export default function NHLModel({ mobile }: { mobile: boolean }) {
             <span className="text-xs text-muted-foreground">{fmtMoney(today.total_stake_dollars)}</span>
           </div>
         </div>
+
+        {/* Pick Confidence Distribution */}
+        {confidenceCounts.length > 0 && (
+          <div className="mb-3">
+            <ChartPanel title="Pick Confidence Distribution" height={120}>
+              <InteractiveBarChart
+                data={confidenceCounts}
+                bars={[{
+                  dataKey: 'count',
+                  color: 'hsl(var(--chart-1))',
+                  label: 'Picks',
+                  colorByValue: false,
+                }]}
+                xKey="confidence"
+                height={100}
+              />
+            </ChartPanel>
+          </div>
+        )}
+
         {today.picks.length === 0 ? (
-          <div className="py-3.5 text-muted-foreground">No picks generated yet today</div>
+          <div className="flex flex-col items-center gap-2 py-8 text-center">
+            <div className="text-3xl">🏒</div>
+            <div className="text-sm text-muted-foreground">No picks generated yet today</div>
+            <div className="text-xs text-muted-foreground">Check back when the model has run</div>
+          </div>
         ) : (
           <div className="max-h-[420px] overflow-auto rounded-xl border border-border">
             <table className="w-full text-xs">
@@ -306,16 +340,17 @@ export default function NHLModel({ mobile }: { mobile: boolean }) {
                     <th
                       key={key}
                       onClick={() => toggleSort(key)}
-                      className="sticky top-0 cursor-pointer border-b border-border bg-card px-3 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider text-muted-foreground"
+                      className="sticky top-0 cursor-pointer border-b border-border bg-card px-3 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground"
                     >
                       {label}
+                      {sortKey === key && <span className="ml-1">{sortDir === 'desc' ? '↓' : '↑'}</span>}
                     </th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {sortedTodayPicks.map((pick) => (
-                  <tr key={pick.pick_id} className="border-b border-border/50 hover:bg-muted/50 transition-colors">
+                  <tr key={pick.pick_id} className="border-b border-border/50 transition-colors hover:bg-muted/50">
                     <td className="px-3 py-2.5 tabular-nums text-foreground">{pick.player}</td>
                     <td className="px-3 py-2.5 tabular-nums text-foreground">{pick.market}</td>
                     <td className="px-3 py-2.5 tabular-nums text-foreground">{pick.line.toFixed(1)}</td>
@@ -360,30 +395,37 @@ export default function NHLModel({ mobile }: { mobile: boolean }) {
             </select>
           </label>
         </div>
-        <div className="max-h-[420px] overflow-auto rounded-xl border border-border">
-          <table className="w-full text-xs">
-            <thead>
-              <tr>
-                {['Date', 'Player', 'Market', 'Result', 'P/L'].map((label) => (
-                  <th key={label} className="sticky top-0 border-b border-border bg-card px-3 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                    {label}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {history.picks.map((pick) => (
-                <tr key={pick.pick_id} className="border-b border-border/50 hover:bg-muted/50 transition-colors">
-                  <td className="px-3 py-2.5 tabular-nums text-foreground">{fmtDate(pick.pick_date)}</td>
-                  <td className="px-3 py-2.5 tabular-nums text-foreground">{pick.player}</td>
-                  <td className="px-3 py-2.5 tabular-nums text-foreground">{pick.market}</td>
-                  <td className={cn('px-3 py-2.5 tabular-nums font-bold', resultColorClass(pick.result))}>{pick.result || 'Pending'}</td>
-                  <td className={cn('px-3 py-2.5 tabular-nums', pick.pnl >= 0 ? 'text-success' : 'text-destructive')}>{pick.result === 'Pending' ? '\u2014' : fmtMoney(pick.pnl)}</td>
+        {history.picks.length === 0 ? (
+          <div className="flex flex-col items-center gap-2 py-8 text-center">
+            <div className="text-3xl">📋</div>
+            <div className="text-sm text-muted-foreground">No pick history for this period</div>
+          </div>
+        ) : (
+          <div className="max-h-[420px] overflow-auto rounded-xl border border-border">
+            <table className="w-full text-xs">
+              <thead>
+                <tr>
+                  {['Date', 'Player', 'Market', 'Result', 'P/L'].map((label) => (
+                    <th key={label} className="sticky top-0 border-b border-border bg-card px-3 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                      {label}
+                    </th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {history.picks.map((pick) => (
+                  <tr key={pick.pick_id} className="border-b border-border/50 transition-colors hover:bg-muted/50">
+                    <td className="px-3 py-2.5 tabular-nums text-foreground">{fmtDate(pick.pick_date)}</td>
+                    <td className="px-3 py-2.5 tabular-nums text-foreground">{pick.player}</td>
+                    <td className="px-3 py-2.5 tabular-nums text-foreground">{pick.market}</td>
+                    <td className={cn('px-3 py-2.5 tabular-nums font-bold', resultColorClass(pick.result))}>{pick.result || 'Pending'}</td>
+                    <td className={cn('px-3 py-2.5 tabular-nums', pick.pnl >= 0 ? 'text-success' : 'text-destructive')}>{pick.result === 'Pending' ? '\u2014' : fmtMoney(pick.pnl)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
 
       {/* Strategy Performance */}
@@ -391,7 +433,7 @@ export default function NHLModel({ mobile }: { mobile: boolean }) {
         <div className="mb-3 text-[11px] uppercase tracking-wider text-muted-foreground">Strategy Performance</div>
         <div className={cn('mb-4 grid gap-3', mobile ? 'grid-cols-1' : 'grid-cols-[repeat(auto-fit,minmax(180px,1fr))]')}>
           {strategies.strategies.map((row) => (
-            <div key={row.strategy} className="rounded-xl border border-border bg-muted/50 p-3.5">
+            <div key={row.strategy} className="card-hover rounded-xl border border-border bg-muted/50 p-3.5">
               <div className="mb-1.5 text-xs text-muted-foreground">{row.strategy}</div>
               <div className="mb-2.5 text-[22px] font-bold text-foreground">{row.record}</div>
               <div className="mt-1.5 flex items-center justify-between gap-2 text-xs">
@@ -409,18 +451,30 @@ export default function NHLModel({ mobile }: { mobile: boolean }) {
             </div>
           ))}
         </div>
-        <ChartPanel title="Strategy ROI" height={mobile ? 280 : 320}>
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={strategies.strategies}>
-              <CartesianGrid stroke="hsl(var(--border))" vertical={false} />
-              <XAxis dataKey="strategy" stroke="hsl(var(--muted-foreground))" tick={{ fontSize: 11 }} />
-              <YAxis stroke="hsl(var(--muted-foreground))" tick={{ fontSize: 11 }} tickFormatter={(value) => `${value}%`} />
-              <Tooltip contentStyle={chartTooltipStyle} formatter={(value) => fmtPct(Number(value), 2)} />
-              <Bar dataKey="roi" radius={[6, 6, 0, 0]}>
-                {strategies.strategies.map((row) => <Cell key={row.strategy} fill={row.roi >= 0 ? 'hsl(var(--success))' : 'hsl(var(--destructive))'} />)}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+        <ChartPanel
+          title="Strategy ROI"
+          height={mobile ? 280 : 320}
+          actions={
+            <ChartControls
+              exportData={() => downloadCSV(strategies.strategies as unknown as Record<string, unknown>[], 'strategy-performance.csv')}
+            />
+          }
+        >
+          <InteractiveBarChart
+            data={strategies.strategies}
+            bars={[{
+              dataKey: 'roi',
+              color: 'hsl(var(--chart-1))',
+              label: 'ROI',
+              colorByValue: true,
+              positiveColor: 'hsl(var(--success))',
+              negativeColor: 'hsl(var(--destructive))',
+            }]}
+            xKey="strategy"
+            formatY={(v) => `${v.toFixed(1)}%`}
+            height={mobile ? 260 : 300}
+            showSortToggle
+          />
         </ChartPanel>
       </section>
 
@@ -431,7 +485,12 @@ export default function NHLModel({ mobile }: { mobile: boolean }) {
           <div className="text-xs text-muted-foreground">Source {odds.source} &middot; Snapshot {odds.snapshot_date || '\u2014'}</div>
         </div>
         <div className="flex flex-col gap-3">
-          {odds.games.length === 0 && <div className="text-muted-foreground">No odds snapshot available.</div>}
+          {odds.games.length === 0 && (
+            <div className="flex flex-col items-center gap-2 py-8 text-center">
+              <div className="text-3xl">📊</div>
+              <div className="text-sm text-muted-foreground">No odds snapshot available</div>
+            </div>
+          )}
           {odds.games.map((game) => (
             <div key={game.game} className="rounded-xl border border-border bg-muted/50 p-3.5">
               <div className="mb-2.5 text-base font-bold text-foreground">{game.game}</div>
@@ -450,7 +509,7 @@ export default function NHLModel({ mobile }: { mobile: boolean }) {
                           <div
                             key={`${offer.book}-${offer.side}-${idx}`}
                             className={cn(
-                              'rounded-lg border p-2.5',
+                              'card-hover rounded-lg border p-2.5',
                               isBest
                                 ? 'border-success bg-success/[0.08]'
                                 : 'border-border bg-card'
@@ -472,18 +531,6 @@ export default function NHLModel({ mobile }: { mobile: boolean }) {
           ))}
         </div>
       </section>
-
-      {/* TODO Phase 2: LLM Model Interpretation
-         - Call /api/nhl/model/interpret endpoint
-         - Send raw model outputs (feature importances, today's picks, edges) to NVIDIA NIM or OpenRouter LLM
-         - LLM generates plain-English interpretation of:
-           1. Why the model likes certain picks (which features drove the prediction)
-           2. Risk factors and confidence assessment
-           3. Market context (line movement, sharp book signals)
-         - Display in a "AI Analysis" card below the raw model outputs
-         - Two views: "Raw Model Output" (data) + "AI Interpretation" (narrative)
-         - Use NVIDIA_API_KEY from .env for LLM calls (same key as code review)
-      */}
     </div>
   )
 }
