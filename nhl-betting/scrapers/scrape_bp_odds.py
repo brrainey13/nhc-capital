@@ -15,6 +15,7 @@ Usage:
 
 import argparse
 import logging
+import os
 import sys
 import time
 from datetime import datetime, timedelta
@@ -34,7 +35,7 @@ log = logging.getLogger(__name__)
 
 # --- Config ---
 API_BASE = "https://api.bettingpros.com/v3"
-API_KEY = "CHi8Hy5CEE4khd46XNYL23dCFX96oUdw6qOt1Dnh"
+API_KEY = os.environ.get("BETTINGPROS_API_KEY", "")
 SPORT = "NHL"
 LOCATION = "OH"
 HEADERS = {"x-api-key": API_KEY, "User-Agent": "Mozilla/5.0"}
