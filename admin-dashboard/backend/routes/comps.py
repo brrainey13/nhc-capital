@@ -1,13 +1,12 @@
 """
-Sales Comp Engine v2 — radius + property class + size band + outlier detection + scoring.
-
-Replaces the old street-name matching with a proper comp methodology:
-1. Find candidate parcels (radius when coords available, else same-town)
-2. Filter by property class and size band
-3. Join to sales history
-4. Detect and flag outliers
-5. Score each comp by similarity to subject
-6. Return ranked results
+Sales Comp Engine v3 — Ian's spec:
+1. Same property type
+2. ±50% sqft band (if subject has sqft; otherwise skip size filter)
+3. 0.25mi radius, auto-expand to 0.5mi then 1.0mi if <5 comps
+4. ALL historical data (no recency cutoff), weighted by recency in scoring
+5. Exclude distressed sales ($0, $1, sub-$10K transfers)
+6. Outlier detection + flagging
+7. Similarity scoring with era labels (last 12mo, 1-3yr, 3-5yr, 5+yr)
 """
 
 from db import pools
@@ -19,15 +18,15 @@ router = APIRouter(prefix="/api/real-estate", tags=["comps-v2"])
 
 # ── Constants ──
 
-DEFAULT_RADIUS_MI = 0.5
-MAX_RADIUS_MI = 2.0
-SQFT_BAND_PCT = 0.25  # ±25% of subject sqft
-BED_BAND = 1  # ±1 bedroom
-YEAR_BUILT_BAND = 20  # ±20 years
-RECENCY_YEARS = 5  # prefer sales within last N years
+INITIAL_RADIUS_MI = 0.25
+EXPAND_RADIUS_MI = 0.5
+MAX_RADIUS_MI = 1.0
+MIN_COMPS_BEFORE_EXPAND = 5
+SQFT_BAND_PCT = 0.50  # ±50% of subject sqft
+BED_BAND = 1  # ±1 bedroom (fallback not used per Ian — just skip if no sqft)
 OUTLIER_FLOOR_PCT = 0.35  # flag if sale < 35% of median $/sqft
-OUTLIER_CEILING_PCT = 5.0  # flag if sale > 500% of median $/sqft (generous for high-variance towns)
-MIN_SALE_PRICE = 10000  # ignore sales under $10K (likely transfers)
+OUTLIER_CEILING_PCT = 5.0  # flag if sale > 500% of median $/sqft
+MIN_SALE_PRICE = 10000  # exclude distressed / non-arm's-length transfers
 
 
 def _haversine_sql(lat1: str, lng1: str, lat2: str, lng2: str) -> str:
@@ -59,7 +58,6 @@ def _property_class(use_code: str | None, use_desc: str | None, unit_count: int 
         return "commercial"
     if "single" in desc or code.startswith("10") or code.startswith("20"):
         return "single_family"
-    # Default to single family for residential
     if "res" in desc:
         return "single_family"
     return "other"
@@ -78,25 +76,69 @@ def _infer_subject_class(property_type: str | None) -> str | None:
         return "condo"
     if "commercial" in p or "mixed" in p:
         return "commercial"
-    return "single_family"  # default for residential
+    return "single_family"
+
+
+def _sale_era(sale_date) -> str:
+    """Categorize a sale date into era bucket."""
+    if not sale_date:
+        return "unknown"
+    from datetime import date
+    days = (date.today() - sale_date).days
+    if days <= 365:
+        return "last_12mo"
+    if days <= 365 * 3:
+        return "1_3yr"
+    if days <= 365 * 5:
+        return "3_5yr"
+    return "5plus_yr"
+
+
+def _class_filter_sql(subject_class: str | None) -> str:
+    """Build SQL WHERE clause fragment for property class matching."""
+    if subject_class == "single_family":
+        return """
+        AND COALESCE(vp.unit_count, 1) <= 1
+        AND (vp.use_desc ILIKE '%single%' OR vp.use_desc ILIKE '%res%'
+             OR vp.use_code LIKE '10%' OR vp.use_code LIKE '20%')
+        AND vp.use_desc NOT ILIKE '%condo%'
+        AND vp.use_desc NOT ILIKE '%multi%'
+        AND vp.use_desc NOT ILIKE '%two fam%'
+        AND vp.use_desc NOT ILIKE '%three fam%'
+        AND vp.use_desc NOT ILIKE '%four fam%'
+        """
+    elif subject_class == "small_multi_2_4":
+        return """
+        AND (COALESCE(vp.unit_count, 1) BETWEEN 2 AND 4
+             OR vp.use_desc ILIKE '%two fam%'
+             OR vp.use_desc ILIKE '%three fam%'
+             OR vp.use_desc ILIKE '%four fam%')
+        """
+    elif subject_class == "multifamily_5plus":
+        return "AND COALESCE(vp.unit_count, 1) >= 5"
+    elif subject_class == "condo":
+        return "AND vp.use_desc ILIKE '%condo%'"
+    elif subject_class == "commercial":
+        return "AND (vp.use_desc ILIKE '%commercial%' OR vp.use_desc ILIKE '%mixed%')"
+    return ""
 
 
 @router.get("/comps")
 async def foreclosure_comps(
     foreclosure_id: int,
-    radius_mi: float = Query(DEFAULT_RADIUS_MI, ge=0.1, le=MAX_RADIUS_MI),
-    sqft_band: float = Query(SQFT_BAND_PCT, ge=0.1, le=1.0),
-    recency_years: int = Query(RECENCY_YEARS, ge=1, le=30),
-    limit: int = Query(500, ge=1, le=5000),
+    limit: int = Query(1000, ge=1, le=10000),
     include_outliers: bool = Query(True),
 ):
     """
-    Find sales comps for a foreclosure listing.
+    Find sales comps for a CT foreclosure listing.
 
-    Strategy:
-    - If subject has coords: radius search on parcels with coords + town fallback for rest
-    - If no coords: town-wide search filtered by property class + size
-    - All results scored by similarity and outliers flagged
+    Rules (Ian's spec):
+    - Same property type
+    - ±50% sqft band (skip if no sqft data)
+    - 0.25mi → 0.5mi → 1.0mi radius (auto-expand if <5 comps)
+    - ALL historical data (no recency cutoff)
+    - Exclude distressed sales (<$10K)
+    - Outlier detection, recency weighting
     """
     p = pools["real_estate"]
 
@@ -115,20 +157,13 @@ async def foreclosure_comps(
     subject_class = _infer_subject_class(f["property_type"])
     has_coords = f["lat"] is not None and f["lng"] is not None
 
-    # Try to get subject property details from parcels (sqft, beds, year_built)
+    # ── 2. Get subject property details from parcels ──
     subject_details = None
     if has_coords:
         subject_details = await p.fetchrow(
             f"""
-            SELECT
-                pid,
-                living_area_sqft,
-                total_bedrooms,
-                total_bathrooms,
-                year_built,
-                unit_count,
-                use_code,
-                use_desc
+            SELECT pid, living_area_sqft, total_bedrooms, total_bathrooms,
+                   year_built, unit_count, use_code, use_desc
             FROM ct_vision_parcels
             WHERE town = $1 AND lat IS NOT NULL
             ORDER BY {_haversine_sql('$2', '$3', 'lat', 'lng')}
@@ -136,7 +171,6 @@ async def foreclosure_comps(
             """,
             town, f["lat"], f["lng"],
         )
-        # Only use if very close (within 0.02 miles ~ 100ft)
         if subject_details:
             dist_check = await p.fetchval(
                 f"""
@@ -149,22 +183,14 @@ async def foreclosure_comps(
                 subject_details = None
 
     if not subject_details:
-        # Try address match — normalize punctuation and common abbreviations
         import re
         addr_clean = (f["address"] or "").split(",")[0].strip().upper()
         addr_clean = re.sub(r'[^A-Z0-9 ]', '', addr_clean).strip()
         if addr_clean:
             subject_details = await p.fetchrow(
                 """
-                SELECT
-                    pid,
-                    living_area_sqft,
-                    total_bedrooms,
-                    total_bathrooms,
-                    year_built,
-                    unit_count,
-                    use_code,
-                    use_desc
+                SELECT pid, living_area_sqft, total_bedrooms, total_bathrooms,
+                       year_built, unit_count, use_code, use_desc
                 FROM ct_vision_parcels
                 WHERE town = $1
                   AND REGEXP_REPLACE(UPPER(address), '[^A-Z0-9 ]', '', 'g') = $2
@@ -177,53 +203,23 @@ async def foreclosure_comps(
     subject_beds = subject_details["total_bedrooms"] if subject_details else None
     subject_year = subject_details["year_built"] if subject_details else None
 
-    # Refine class from actual parcel data if available
     if subject_details:
         subject_class = _property_class(
             subject_details["use_code"], subject_details["use_desc"], subject_details["unit_count"]
         )
 
-    # ── 2. Build property class filter SQL ──
-    class_filter = ""
-    if subject_class == "single_family":
-        class_filter = """
-        AND COALESCE(vp.unit_count, 1) <= 1
-        AND (vp.use_desc ILIKE '%single%' OR vp.use_desc ILIKE '%res%'
-             OR vp.use_code LIKE '10%' OR vp.use_code LIKE '20%')
-        AND vp.use_desc NOT ILIKE '%condo%'
-        AND vp.use_desc NOT ILIKE '%multi%'
-        AND vp.use_desc NOT ILIKE '%two fam%'
-        AND vp.use_desc NOT ILIKE '%three fam%'
-        AND vp.use_desc NOT ILIKE '%four fam%'
-        """
-    elif subject_class == "small_multi_2_4":
-        class_filter = """
-        AND (COALESCE(vp.unit_count, 1) BETWEEN 2 AND 4
-             OR vp.use_desc ILIKE '%two fam%'
-             OR vp.use_desc ILIKE '%three fam%'
-             OR vp.use_desc ILIKE '%four fam%')
-        """
-    elif subject_class == "multifamily_5plus":
-        class_filter = "AND COALESCE(vp.unit_count, 1) >= 5"
-    elif subject_class == "condo":
-        class_filter = "AND vp.use_desc ILIKE '%condo%'"
-    elif subject_class == "commercial":
-        class_filter = "AND (vp.use_desc ILIKE '%commercial%' OR vp.use_desc ILIKE '%mixed%')"
+    # ── 3. Build filters ──
+    class_filter = _class_filter_sql(subject_class)
 
-    # ── 3. Build size band + bedroom filter ──
+    # ±50% sqft band — only if subject has sqft data
     sqft_filter = ""
     if subject_sqft and subject_sqft > 0:
-        min_sqft = int(subject_sqft * (1 - sqft_band))
-        max_sqft = int(subject_sqft * (1 + sqft_band))
+        min_sqft = int(subject_sqft * (1 - SQFT_BAND_PCT))
+        max_sqft = int(subject_sqft * (1 + SQFT_BAND_PCT))
         sqft_filter = f"AND vp.living_area_sqft BETWEEN {min_sqft} AND {max_sqft}"
 
-    bed_filter = ""
-    if subject_beds and subject_beds > 0:
-        bed_filter = f"AND vp.total_bedrooms BETWEEN {subject_beds - BED_BAND} AND {subject_beds + BED_BAND}"
-
-    # ── 4. Find comp candidates + sales ──
-    # Hybrid: radius for parcels with coords, town-wide for the rest
-    distance_col = "'no_coords'"
+    # ── 4. Query ALL historical comps (no recency cutoff) ──
+    distance_col = "NULL::float"
     if has_coords:
         distance_col = f"""
         CASE WHEN vp.lat IS NOT NULL THEN
@@ -232,69 +228,83 @@ async def foreclosure_comps(
         """
 
     query = f"""
-    WITH comp_sales AS (
-        SELECT
-            vp.pid,
-            vp.town,
-            vp.address AS parcel_address,
-            vp.use_code,
-            vp.use_desc,
-            vp.living_area_sqft,
-            vp.total_bedrooms,
-            vp.total_bathrooms,
-            vp.year_built,
-            vp.unit_count,
-            vp.lat AS parcel_lat,
-            vp.lng AS parcel_lng,
-            vs.sale_price,
-            vs.sale_date,
-            vs.owner,
-            vs.book_page,
-            vs.instrument,
-            vs.living_area_sqft AS sale_sqft,
-            {distance_col} AS distance_mi
-        FROM ct_vision_parcels vp
-        JOIN ct_vision_sales vs ON vs.town = vp.town AND vs.pid = vp.pid
-        WHERE vp.town = $1
-          AND vs.sale_price >= {MIN_SALE_PRICE}
-          AND vs.sale_date >= (CURRENT_DATE - INTERVAL '{recency_years} years')
-          {class_filter}
-          {sqft_filter}
-          {bed_filter}
-    )
-    SELECT *,
-        CASE WHEN living_area_sqft > 0 THEN
-            ROUND((sale_price / living_area_sqft)::numeric, 2)
+    SELECT
+        vp.pid,
+        vp.town,
+        vp.address AS parcel_address,
+        vp.use_code,
+        vp.use_desc,
+        vp.living_area_sqft,
+        vp.total_bedrooms,
+        vp.total_bathrooms,
+        vp.year_built,
+        vp.unit_count,
+        vp.lat AS parcel_lat,
+        vp.lng AS parcel_lng,
+        vs.sale_price,
+        vs.sale_date,
+        vs.owner,
+        vs.book_page,
+        vs.instrument,
+        vs.living_area_sqft AS sale_sqft,
+        {distance_col} AS distance_mi,
+        CASE WHEN vp.living_area_sqft > 0 THEN
+            ROUND((vs.sale_price / vp.living_area_sqft)::numeric, 2)
         ELSE NULL END AS price_per_sqft
-    FROM comp_sales
-    ORDER BY sale_date DESC
+    FROM ct_vision_parcels vp
+    JOIN ct_vision_sales vs ON vs.town = vp.town AND vs.pid = vp.pid
+    WHERE vp.town = $1
+      AND vs.sale_price >= {MIN_SALE_PRICE}
+      {class_filter}
+      {sqft_filter}
+    ORDER BY vs.sale_date DESC
     """
 
     rows = await p.fetch(query, town)
 
-    # ── 5. Filter by radius if coords available ──
-    results = []
-    for r in rows:
-        d = dict(r)
-        if has_coords and d["distance_mi"] is not None:
-            if float(d["distance_mi"]) > radius_mi:
-                continue
-            d["distance_mi"] = round(float(d["distance_mi"]), 3)
-        else:
-            d["distance_mi"] = None
-        results.append(d)
+    # ── 5. Radius filtering with auto-expand ──
+    def filter_by_radius(all_rows, radius):
+        results = []
+        for r in all_rows:
+            d = dict(r)
+            if has_coords and d["distance_mi"] is not None:
+                if float(d["distance_mi"]) > radius:
+                    continue
+                d["distance_mi"] = round(float(d["distance_mi"]), 3)
+            else:
+                d["distance_mi"] = None
+            results.append(d)
+        return results
+
+    used_radius = INITIAL_RADIUS_MI
+    results = filter_by_radius(rows, INITIAL_RADIUS_MI)
+
+    if len(results) < MIN_COMPS_BEFORE_EXPAND and has_coords:
+        results = filter_by_radius(rows, EXPAND_RADIUS_MI)
+        used_radius = EXPAND_RADIUS_MI
+
+    if len(results) < MIN_COMPS_BEFORE_EXPAND and has_coords:
+        results = filter_by_radius(rows, MAX_RADIUS_MI)
+        used_radius = MAX_RADIUS_MI
+
+    # If still no results and no coords, include all town results
+    if not results and not has_coords:
+        results = [dict(r) for r in rows]
 
     # ── 6. Outlier detection ──
-    # Calculate median $/sqft
-    ppsf_values = [float(r["price_per_sqft"]) for r in results if r["price_per_sqft"] and r["price_per_sqft"] > 0]
+    ppsf_values = [
+        float(r["price_per_sqft"]) for r in results
+        if r["price_per_sqft"] and r["price_per_sqft"] > 0
+    ]
     median_ppsf = None
     if ppsf_values:
         sorted_ppsf = sorted(ppsf_values)
         mid = len(sorted_ppsf) // 2
-        if len(sorted_ppsf) % 2:
-            median_ppsf = float(sorted_ppsf[mid])
-        else:
-            median_ppsf = float((sorted_ppsf[mid - 1] + sorted_ppsf[mid]) / 2)
+        median_ppsf = (
+            float(sorted_ppsf[mid])
+            if len(sorted_ppsf) % 2
+            else float((sorted_ppsf[mid - 1] + sorted_ppsf[mid]) / 2)
+        )
 
     for r in results:
         r["is_outlier"] = False
@@ -313,28 +323,15 @@ async def foreclosure_comps(
                 r["is_outlier"] = True
                 r["outlier_reason"] = f"Price/sqft ${ppsf} is {ratio:.1f}x median — extreme outlier"
 
-        # Same-PID same-date anomaly
-        if r["sale_date"]:
-            same_pid_same_date = [
-                x for x in results
-                if x["pid"] == r["pid"] and x["sale_date"] == r["sale_date"] and x["sale_price"] != r["sale_price"]
-            ]
-            if same_pid_same_date:
-                other_price = same_pid_same_date[0]["sale_price"]
-                if float(r["sale_price"]) < float(other_price) * 0.3:
-                    r["is_outlier"] = True
-                    r["outlier_reason"] = (
-                        f"Same property sold for ${float(other_price):,.0f} "
-                        "on the same date; likely a partial interest or correction"
-                    )
+    # ── 7. Similarity scoring (recency-weighted) ──
+    from datetime import date
 
-    # ── 7. Similarity scoring ──
     for r in results:
         score = 100.0
 
-        # Distance penalty (if available): -10 per 0.1 mile
+        # Distance penalty: -10 per 0.1 mile
         if r["distance_mi"] is not None:
-            score -= float(r["distance_mi"]) * 100  # -10 per 0.1mi
+            score -= float(r["distance_mi"]) * 100
 
         # Sqft similarity: -1 per 1% difference
         if subject_sqft and r["living_area_sqft"] and subject_sqft > 0:
@@ -349,18 +346,18 @@ async def foreclosure_comps(
         if subject_year and r["year_built"]:
             score -= abs(r["year_built"] - subject_year) / 5
 
-        # Recency bonus: -5 per year old
+        # Recency: -3 per year old (gentler than before since we include all history)
         if r["sale_date"]:
-            from datetime import date
             days_old = (date.today() - r["sale_date"]).days
             years_old = days_old / 365.25
-            score -= years_old * 5
+            score -= years_old * 3
 
         # Outlier penalty
         if r["is_outlier"]:
             score -= 50
 
         r["comp_score"] = round(max(0, score), 1)
+        r["sale_era"] = _sale_era(r.get("sale_date"))
 
     # Sort by score (best first), outliers last
     results.sort(key=lambda r: (-1 if r["is_outlier"] else 0, -r["comp_score"]))
@@ -370,10 +367,16 @@ async def foreclosure_comps(
 
     results = results[:limit]
 
-    # ── 8. Summary stats (excluding outliers) ──
+    # ── 8. Summary stats ──
     clean = [r for r in results if not r["is_outlier"] and r["price_per_sqft"] and r["price_per_sqft"] > 0]
     clean_prices = [float(r["sale_price"]) for r in clean if r["sale_price"]]
     clean_ppsf = [float(r["price_per_sqft"]) for r in clean if r["price_per_sqft"]]
+
+    # Era breakdown
+    era_counts = {}
+    for r in results:
+        era = r.get("sale_era", "unknown")
+        era_counts[era] = era_counts.get(era, 0) + 1
 
     summary = {
         "total_comps": len(results),
@@ -386,9 +389,10 @@ async def foreclosure_comps(
         "avg_ppsf": round(sum(clean_ppsf) / len(clean_ppsf), 2) if clean_ppsf else None,
         "min_ppsf": round(min(clean_ppsf), 2) if clean_ppsf else None,
         "max_ppsf": round(max(clean_ppsf), 2) if clean_ppsf else None,
+        "era_breakdown": era_counts,
+        "radius_used_mi": used_radius if has_coords else None,
     }
 
-    # Subject property info
     subject = {
         "id": f["id"],
         "town": f["town"],
@@ -409,12 +413,13 @@ async def foreclosure_comps(
         "subject": subject,
         "summary": summary,
         "config": {
-            "radius_mi": radius_mi if has_coords else None,
-            "sqft_band_pct": sqft_band,
-            "recency_years": recency_years,
+            "initial_radius_mi": INITIAL_RADIUS_MI,
+            "radius_used_mi": used_radius if has_coords else None,
+            "sqft_band_pct": SQFT_BAND_PCT,
             "min_sale_price": MIN_SALE_PRICE,
             "outlier_floor_pct": OUTLIER_FLOOR_PCT,
             "outlier_ceiling_pct": OUTLIER_CEILING_PCT,
+            "auto_expanded": used_radius > INITIAL_RADIUS_MI if has_coords else False,
         },
         "comps": [
             {
@@ -434,6 +439,7 @@ async def foreclosure_comps(
                 "book_page": r["book_page"],
                 "distance_mi": r["distance_mi"],
                 "comp_score": r["comp_score"],
+                "sale_era": r["sale_era"],
                 "is_outlier": r["is_outlier"],
                 "outlier_reason": r["outlier_reason"],
             }

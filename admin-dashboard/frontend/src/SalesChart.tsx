@@ -33,6 +33,7 @@ interface Comp {
   book_page: string
   distance_mi: number | null
   comp_score: number
+  sale_era: string | null
   is_outlier: boolean
   outlier_reason: string | null
 }
@@ -62,6 +63,8 @@ interface Summary {
   avg_ppsf: number | null
   min_ppsf: number | null
   max_ppsf: number | null
+  era_breakdown?: Record<string, number>
+  radius_used_mi?: number | null
 }
 
 const fmt = (v: number) => `$${Math.round(v).toLocaleString()}`
@@ -283,6 +286,39 @@ export default function SalesChart({
         </div>
       )}
 
+      {/* Era breakdown + radius info */}
+      {summary && (summary.era_breakdown || summary.radius_used_mi) && (
+        <div className="mb-4 flex flex-wrap items-center gap-2 text-xs">
+          {summary.radius_used_mi && (
+            <span className="rounded-md border border-border bg-muted px-2 py-1 text-muted-foreground">
+              📍 {summary.radius_used_mi}mi radius
+              {summary.radius_used_mi > 0.25 && <span className="ml-1 text-warning">(auto-expanded)</span>}
+            </span>
+          )}
+          {summary.era_breakdown && Object.entries(summary.era_breakdown).map(([era, count]) => {
+            const labels: Record<string, string> = {
+              'last_12mo': '< 1yr',
+              '1_3yr': '1-3yr',
+              '3_5yr': '3-5yr',
+              '5plus_yr': '5+ yr',
+              'unknown': '?',
+            }
+            const colors: Record<string, string> = {
+              'last_12mo': 'border-success/50 text-success',
+              '1_3yr': 'border-[hsl(var(--chart-2))]/50 text-[hsl(var(--chart-2))]',
+              '3_5yr': 'border-warning/50 text-warning',
+              '5plus_yr': 'border-muted-foreground/50 text-muted-foreground',
+              'unknown': 'border-border text-muted-foreground',
+            }
+            return (
+              <span key={era} className={cn('rounded-md border bg-muted px-2 py-1 font-semibold', colors[era] || '')}>
+                {labels[era] || era}: {count}
+              </span>
+            )
+          })}
+        </div>
+      )}
+
       {/* Controls */}
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <div className="flex">
@@ -449,7 +485,7 @@ export default function SalesChart({
             <table className="w-full border-collapse text-sm">
               <thead>
                 <tr>
-                  {['Score', 'Address', 'Price', '$/SqFt', 'SqFt', 'Beds', 'Year', 'Date', ...(mobile ? [] : ['Dist'])].map((h) => (
+                  {['Score', 'Address', 'Price', '$/SqFt', 'SqFt', 'Beds', 'Year', 'Date', 'Era', ...(mobile ? [] : ['Dist'])].map((h) => (
                     <th key={h} className="sticky top-0 z-[1] whitespace-nowrap border-b-2 border-border bg-card px-2 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                       {h}
                     </th>
@@ -511,6 +547,12 @@ export default function SalesChart({
                         isOutlier ? 'text-muted-foreground' : 'text-foreground'
                       )}>
                         {c.sale_date ? new Date(c.sale_date).toLocaleDateString() : '-'}
+                      </td>
+                      <td className="border-b border-border px-2 py-2 text-[10px]">
+                        {c.sale_era === 'last_12mo' && <span className="text-success font-semibold">{'<1yr'}</span>}
+                        {c.sale_era === '1_3yr' && <span className="text-[hsl(var(--chart-2))] font-semibold">1-3yr</span>}
+                        {c.sale_era === '3_5yr' && <span className="text-warning">3-5yr</span>}
+                        {c.sale_era === '5plus_yr' && <span className="text-muted-foreground">5+yr</span>}
                       </td>
                       {!mobile && (
                         <td className="border-b border-border px-2 py-2 text-[11px] text-muted-foreground">
