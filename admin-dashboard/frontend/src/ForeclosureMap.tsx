@@ -181,9 +181,13 @@ export default function ForeclosureMap({ onOpenComps }: { onOpenComps?: (foreclo
           <option value="IL">🏠 Illinois</option>
           <option value="both">🏠 CT + IL</option>
         </select>
-        <span>CT: {foreclosures.length}</span>
-        <span>•</span>
-        <span>IL: {ilLoading ? '...' : ilForeclosures.length}</span>
+        {(stateFilter === 'CT' || stateFilter === 'both') && (
+          <span>CT: {foreclosures.length}</span>
+        )}
+        {stateFilter === 'both' && <span>•</span>}
+        {(stateFilter === 'IL' || stateFilter === 'both') && (
+          <span>IL: {ilLoading ? '...' : ilForeclosures.length}</span>
+        )}
         {stateFilter !== 'IL' && (
           <>
             <span>•</span>
@@ -199,7 +203,7 @@ export default function ForeclosureMap({ onOpenComps }: { onOpenComps?: (foreclo
           <option value="multifamily">Multi-Family by Town</option>
           <option value="both">Both layers</option>
         </select>
-        {layerMode !== 'foreclosures' && (
+        {layerMode !== 'foreclosures' && stateFilter !== 'IL' && (
           <>
             <select
               value={selectedTown}
@@ -253,6 +257,7 @@ export default function ForeclosureMap({ onOpenComps }: { onOpenComps?: (foreclo
           url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
         />
 
+        {/* CT Foreclosures (red) */}
         {(layerMode === 'foreclosures' || layerMode === 'both') && (stateFilter === 'CT' || stateFilter === 'both') && foreclosures.map((f) => (
           <CircleMarker
             key={`f-${f.id}`}
@@ -314,6 +319,7 @@ export default function ForeclosureMap({ onOpenComps }: { onOpenComps?: (foreclo
           </CircleMarker>
         ))}
 
+        {/* IL Foreclosures (orange) */}
         {(layerMode === 'foreclosures' || layerMode === 'both') && (stateFilter === 'IL' || stateFilter === 'both') && ilForeclosures.map((f) => (
           <CircleMarker
             key={`il-${f.id}`}
@@ -357,6 +363,7 @@ export default function ForeclosureMap({ onOpenComps }: { onOpenComps?: (foreclo
                 )}
                 <div style={{ marginBottom: 4 }}>
                   <strong>Type:</strong> {f.sale_type || 'N/A'}
+                  {f.status ? ` — ${f.status}` : ''}
                 </div>
                 {f.plaintiff && (
                   <div style={{ marginBottom: 4, fontSize: 11 }}>
@@ -382,6 +389,7 @@ export default function ForeclosureMap({ onOpenComps }: { onOpenComps?: (foreclo
           </CircleMarker>
         ))}
 
+        {/* Multi-Family (blue, CT only) */}
         {(layerMode === 'multifamily' || layerMode === 'both') && multiFamily.map((m) => (
           <CircleMarker
             key={`m-${m.town}-${m.pid}`}
