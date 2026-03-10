@@ -16,6 +16,28 @@ interface Foreclosure {
   photo_url: string | null;
 }
 
+interface ILForeclosure {
+  id: number;
+  source: string;
+  case_number: string;
+  address: string;
+  city: string | null;
+  county: string | null;
+  zip: string | null;
+  sale_date: string | null;
+  sale_time: string | null;
+  sale_type: string | null;
+  opening_bid: number | null;
+  judgment_amount: number | null;
+  status: string | null;
+  plaintiff: string | null;
+  firm_name: string | null;
+  auction_com_id: string | null;
+  photo_url: string | null;
+  lat: number;
+  lng: number;
+}
+
 interface MultiFamilyPoint {
   town: string;
   pid: number;
@@ -54,6 +76,9 @@ export default function ForeclosureMap({ onOpenComps }: { onOpenComps?: (foreclo
   const [selectedTown, setSelectedTown] = useState<string>('');
   const [soldEra, setSoldEra] = useState<'all' | 'pre2000' | '2000s' | '2010s' | '2020s'>('all');
   const [multiLoading, setMultiLoading] = useState(false);
+  const [stateFilter, setStateFilter] = useState<'CT' | 'IL' | 'both'>('CT');
+  const [ilForeclosures, setIlForeclosures] = useState<ILForeclosure[]>([]);
+  const [ilLoading, setIlLoading] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -76,6 +101,24 @@ export default function ForeclosureMap({ onOpenComps }: { onOpenComps?: (foreclo
     };
     fetchData();
   }, []);
+
+  useEffect(() => {
+    if (stateFilter === 'CT') {
+      setIlForeclosures([]);
+      return;
+    }
+    setIlLoading(true);
+    fetch('/api/real-estate/il-foreclosures?limit=2000')
+      .then((r) => r.json())
+      .then((data) => {
+        const withCoords = (Array.isArray(data) ? data : []).filter(
+          (r: ILForeclosure) => r.lat != null && r.lng != null,
+        );
+        setIlForeclosures(withCoords);
+      })
+      .catch(() => setIlForeclosures([]))
+      .finally(() => setIlLoading(false));
+  }, [stateFilter]);
 
   useEffect(() => {
     fetch('/api/real-estate/towns')
@@ -122,13 +165,31 @@ export default function ForeclosureMap({ onOpenComps }: { onOpenComps?: (foreclo
   }
 
   const CT_CENTER: [number, number] = [41.55, -72.65];
+  const IL_CENTER: [number, number] = [41.85, -87.75];
+  const mapCenter = stateFilter === 'IL' ? IL_CENTER : stateFilter === 'both' ? [41.7, -80.0] as [number, number] : CT_CENTER;
+  const mapZoom = stateFilter === 'both' ? 6 : 9;
 
   return (
     <div className="h-full w-full relative">
       <div className="absolute top-3 left-3 right-3 sm:left-[60px] sm:right-auto z-[1000] bg-card/90 backdrop-blur px-3 py-2 rounded-lg border border-border shadow-lg flex gap-2 flex-wrap items-center text-foreground text-xs font-semibold">
-        <span>Foreclosures: {foreclosures.length}</span>
+        <select
+          value={stateFilter}
+          onChange={(e) => setStateFilter(e.target.value as 'CT' | 'IL' | 'both')}
+          className="bg-muted text-foreground border border-border rounded-md px-2 py-1.5 text-xs min-h-[36px] font-bold"
+        >
+          <option value="CT">🏠 Connecticut</option>
+          <option value="IL">🏠 Illinois</option>
+          <option value="both">🏠 CT + IL</option>
+        </select>
+        <span>CT: {foreclosures.length}</span>
         <span>•</span>
-        <span>Multi-Family: {multiLoading ? '...' : multiFamily.length}</span>
+        <span>IL: {ilLoading ? '...' : ilForeclosures.length}</span>
+        {stateFilter !== 'IL' && (
+          <>
+            <span>•</span>
+            <span>Multi-Family: {multiLoading ? '...' : multiFamily.length}</span>
+          </>
+        )}
         <select
           value={layerMode}
           onChange={(e) => setLayerMode(e.target.value as 'foreclosures' | 'multifamily' | 'both')}
@@ -181,8 +242,9 @@ export default function ForeclosureMap({ onOpenComps }: { onOpenComps?: (foreclo
         )}
       </div>
       <MapContainer
-        center={CT_CENTER}
-        zoom={9}
+        key={stateFilter}
+        center={mapCenter}
+        zoom={mapZoom}
         style={{ height: '100%', width: '100%', background: '#e8f4f8' }}
         scrollWheelZoom
       >
@@ -191,7 +253,7 @@ export default function ForeclosureMap({ onOpenComps }: { onOpenComps?: (foreclo
           url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
         />
 
-        {(layerMode === 'foreclosures' || layerMode === 'both') && foreclosures.map((f) => (
+        {(layerMode === 'foreclosures' || layerMode === 'both') && (stateFilter === 'CT' || stateFilter === 'both') && foreclosures.map((f) => (
           <CircleMarker
             key={`f-${f.id}`}
             center={[f.lat, f.lng]}
@@ -247,6 +309,74 @@ export default function ForeclosureMap({ onOpenComps }: { onOpenComps?: (foreclo
                     Full Notice →
                   </a>
                 </div>
+              </div>
+            </Popup>
+          </CircleMarker>
+        ))}
+
+        {(layerMode === 'foreclosures' || layerMode === 'both') && (stateFilter === 'IL' || stateFilter === 'both') && ilForeclosures.map((f) => (
+          <CircleMarker
+            key={`il-${f.id}`}
+            center={[f.lat, f.lng]}
+            radius={7}
+            fillColor="#ffa502"
+            fillOpacity={0.85}
+            color="#fff"
+            weight={1.5}
+          >
+            <Popup>
+              <div style={{ minWidth: 240, fontFamily: 'system-ui', fontSize: 13, lineHeight: 1.5 }}>
+                {f.photo_url && (
+                  <img
+                    src={f.photo_url}
+                    alt={f.address}
+                    style={{ width: '100%', maxHeight: 160, objectFit: 'cover', borderRadius: 6, marginBottom: 8 }}
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                  />
+                )}
+                <div style={{ fontWeight: 700, marginBottom: 4, fontSize: 14, color: '#1a1a2e' }}>
+                  {f.address}
+                </div>
+                <div style={{ marginBottom: 4, color: '#666', fontSize: 12 }}>
+                  {f.city}{f.county ? ` · ${f.county} County` : ''}{f.zip ? ` · ${f.zip}` : ''}
+                </div>
+                {f.sale_date && (
+                  <div style={{ marginBottom: 4 }}>
+                    <strong>Sale Date:</strong> {f.sale_date}{f.sale_time ? ` at ${f.sale_time}` : ''}
+                  </div>
+                )}
+                {f.opening_bid != null && (
+                  <div style={{ marginBottom: 4 }}>
+                    <strong>Opening Bid:</strong> {fmt(f.opening_bid)}
+                  </div>
+                )}
+                {f.judgment_amount != null && (
+                  <div style={{ marginBottom: 4 }}>
+                    <strong>Judgment:</strong> {fmt(f.judgment_amount)}
+                  </div>
+                )}
+                <div style={{ marginBottom: 4 }}>
+                  <strong>Type:</strong> {f.sale_type || 'N/A'}
+                </div>
+                {f.plaintiff && (
+                  <div style={{ marginBottom: 4, fontSize: 11 }}>
+                    <strong>Lender:</strong> {f.plaintiff.length > 60 ? f.plaintiff.slice(0, 60) + '…' : f.plaintiff}
+                  </div>
+                )}
+                <div style={{ marginBottom: 4, fontSize: 11 }}>
+                  <strong>Source:</strong> {f.source === 'tjsc' ? 'TJSC' : f.source === 'intercounty' ? 'Intercounty' : 'Auction.com'}
+                  {f.case_number ? ` · ${f.case_number}` : ''}
+                </div>
+                {f.auction_com_id && (
+                  <a
+                    href={`https://www.auction.com/details/${f.auction_com_id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ color: '#2e86de', fontWeight: 600, textDecoration: 'none', fontSize: 12 }}
+                  >
+                    View on Auction.com →
+                  </a>
+                )}
               </div>
             </Popup>
           </CircleMarker>
