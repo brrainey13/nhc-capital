@@ -21,6 +21,7 @@ API_KEYS = [
         os.environ.get("ODDS_API_KEY", ""),
         os.environ.get("ODDS_API_KEY_2", ""),
         os.environ.get("ODDS_API_KEY_3", ""),
+        os.environ.get("ODDS_API_KEY_4", ""),
     ] if k
 ]
 if not API_KEYS:
