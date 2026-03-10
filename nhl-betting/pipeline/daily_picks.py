@@ -18,6 +18,7 @@ import uuid
 from datetime import date
 from decimal import Decimal
 
+import psycopg2
 import requests
 from model.bankroll import append_bankroll_event, get_unit_size
 from model.db_config import get_dsn
@@ -276,6 +277,24 @@ def run_pipeline(date_str=None, max_risk=MAX_RISK, no_db=False):
         f"{len(roster_result['errors'])} errors"
     )
 
+    # === SCRAPE BETTINGPROS ===
+    print("\n" + "=" * 70)
+    print("SCRAPING BETTINGPROS ODDS")
+    print("=" * 70)
+    try:
+        from scrapers.scrape_bp_odds import scrape_date as bp_scrape
+        bp_conn = psycopg2.connect("dbname=nhl_betting user=nhc_etl")
+        bp_counts = bp_scrape(bp_conn, pick_date_str)
+        bp_conn.close()
+        if bp_counts:
+            total_bp = sum(bp_counts.values())
+            mkt_str = " | ".join(f"{m}:{n}" for m, n in sorted(bp_counts.items()))
+            print(f"  BettingPros: {total_bp} lines ({mkt_str})")
+        else:
+            print("  No BettingPros data for today (games not yet posted?)")
+    except Exception as e:
+        print(f"  ⚠️ BettingPros scrape failed (non-fatal): {e}")
+
     # === PULL ODDS ===
     print("\n" + "=" * 70)
     print("PULLING LIVE ODDS")
@@ -415,6 +434,31 @@ def run_pipeline(date_str=None, max_risk=MAX_RISK, no_db=False):
     all_picks.extend(goalscorer_deduped)
     all_picks.extend(total_picks)
     all_picks = sort_picks_by_edge(all_picks)
+
+    # === STEAM DETECTOR ===
+    print("\n" + "=" * 70)
+    print("STEAM DETECTOR")
+    print("=" * 70)
+    try:
+        from pipeline.steam_detector import (
+            annotate_picks,
+            filter_picks_by_steam,
+            get_steam_signals,
+            print_steam_report,
+        )
+        steam_signals = get_steam_signals(pick_date_str, market="points")
+        if steam_signals:
+            all_picks = annotate_picks(all_picks, steam_signals)
+            pre_filter = len(all_picks)
+            all_picks = filter_picks_by_steam(all_picks)
+            blocked = pre_filter - len(all_picks)
+            if blocked:
+                print(f"  🚫 Blocked {blocked} picks (strong fade — <36% hist. hit rate)")
+            print_steam_report(all_picks)
+        else:
+            print("  No BettingPros data available — skipping steam detection")
+    except Exception as e:
+        print(f"  ⚠️ Steam detector error (picks unaffected): {e}")
 
     raw_total_risk = sum(p.get("dollars", 0) for p in all_picks)
 
