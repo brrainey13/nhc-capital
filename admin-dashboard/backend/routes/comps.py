@@ -255,6 +255,7 @@ async def foreclosure_comps(
     JOIN ct_vision_sales vs ON vs.town = vp.town AND vs.pid = vp.pid
     WHERE vp.town = $1
       AND vs.sale_price >= {MIN_SALE_PRICE}
+      AND vs.sale_date >= '2000-01-01'
       {class_filter}
       {sqft_filter}
     ORDER BY vs.sale_date DESC
