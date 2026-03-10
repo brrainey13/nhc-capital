@@ -26,7 +26,7 @@ SQFT_BAND_PCT = 0.50  # ±50% of subject sqft
 BED_BAND = 1  # ±1 bedroom (fallback not used per Ian — just skip if no sqft)
 OUTLIER_FLOOR_PCT = 0.35  # flag if sale < 35% of median $/sqft
 OUTLIER_CEILING_PCT = 5.0  # flag if sale > 500% of median $/sqft
-MIN_SALE_PRICE = 10000  # exclude distressed / non-arm's-length transfers
+MIN_SALE_PRICE = 25000  # exclude distressed / non-arm's-length transfers
 
 
 def _haversine_sql(lat1: str, lng1: str, lat2: str, lng2: str) -> str:
@@ -64,18 +64,21 @@ def _property_class(use_code: str | None, use_desc: str | None, unit_count: int 
 
 
 def _infer_subject_class(property_type: str | None) -> str | None:
-    """Infer comp class from foreclosure property_type field."""
+    """Infer comp class from foreclosure property_type field.
+
+    Most CT foreclosures are residential (SFH/small multi).
+    Default to single_family for any residential/unknown type.
+    """
     if not property_type:
-        return None
+        return "single_family"  # safe default for residential foreclosures
     p = property_type.lower()
-    if "single" in p or "residential" in p:
-        return "single_family"
-    if "multi" in p or "apartment" in p:
-        return "small_multi_2_4"
     if "condo" in p:
         return "condo"
     if "commercial" in p or "mixed" in p:
         return "commercial"
+    if "multi" in p or "apartment" in p:
+        return "small_multi_2_4"
+    # residential, single, address, or anything else → single_family
     return "single_family"
 
 
@@ -95,32 +98,43 @@ def _sale_era(sale_date) -> str:
 
 
 def _class_filter_sql(subject_class: str | None) -> str:
-    """Build SQL WHERE clause fragment for property class matching."""
-    if subject_class == "single_family":
+    """Build SQL WHERE clause fragment for property class matching.
+
+    Ian's rules:
+    - SFH and small multi (2-4 units) comp against each other — $/sqft matters
+    - Exclude 5+ unit properties (apartments, large multi)
+    - Exclude commercial entirely
+    - Condos comp against condos only
+    """
+    if subject_class in ("single_family", "small_multi_2_4"):
+        # SFH + 2-4 unit residential — exclude 5+ units, commercial, condos
         return """
-        AND COALESCE(vp.unit_count, 1) <= 1
-        AND (vp.use_desc ILIKE '%single%' OR vp.use_desc ILIKE '%res%'
-             OR vp.use_code LIKE '10%' OR vp.use_code LIKE '20%')
+        AND COALESCE(vp.unit_count, 1) <= 4
+        AND vp.use_desc NOT ILIKE '%commercial%'
+        AND vp.use_desc NOT ILIKE '%mixed use%'
         AND vp.use_desc NOT ILIKE '%condo%'
-        AND vp.use_desc NOT ILIKE '%multi%'
-        AND vp.use_desc NOT ILIKE '%two fam%'
-        AND vp.use_desc NOT ILIKE '%three fam%'
-        AND vp.use_desc NOT ILIKE '%four fam%'
-        """
-    elif subject_class == "small_multi_2_4":
-        return """
-        AND (COALESCE(vp.unit_count, 1) BETWEEN 2 AND 4
-             OR vp.use_desc ILIKE '%two fam%'
-             OR vp.use_desc ILIKE '%three fam%'
-             OR vp.use_desc ILIKE '%four fam%')
+        AND vp.use_desc NOT ILIKE '%apartment%'
+        AND vp.use_code NOT LIKE '2%'
         """
     elif subject_class == "multifamily_5plus":
-        return "AND COALESCE(vp.unit_count, 1) >= 5"
+        # 5+ units comp against other 5+ (rare for foreclosures)
+        return """
+        AND COALESCE(vp.unit_count, 1) >= 5
+        AND vp.use_desc NOT ILIKE '%commercial%'
+        """
     elif subject_class == "condo":
         return "AND vp.use_desc ILIKE '%condo%'"
     elif subject_class == "commercial":
+        # Commercial excluded from residential foreclosure comps
         return "AND (vp.use_desc ILIKE '%commercial%' OR vp.use_desc ILIKE '%mixed%')"
-    return ""
+    # Default for residential foreclosures: SFH + small multi, no commercial
+    return """
+    AND COALESCE(vp.unit_count, 1) <= 4
+    AND vp.use_desc NOT ILIKE '%commercial%'
+    AND vp.use_desc NOT ILIKE '%mixed use%'
+    AND vp.use_desc NOT ILIKE '%condo%'
+    AND vp.use_desc NOT ILIKE '%apartment%'
+    """
 
 
 @router.get("/comps")
@@ -291,6 +305,16 @@ async def foreclosure_comps(
     # If still no results and no coords, include all town results
     if not results and not has_coords:
         results = [dict(r) for r in rows]
+
+    # ── 5b. Dedup same-PID, same-date, same-price (bulk transfer artifacts) ──
+    seen = set()
+    deduped = []
+    for r in results:
+        key = (r.get("pid"), str(r.get("sale_date")), str(r.get("sale_price")))
+        if key not in seen:
+            seen.add(key)
+            deduped.append(r)
+    results = deduped
 
     # ── 6. Outlier detection ──
     ppsf_values = [
