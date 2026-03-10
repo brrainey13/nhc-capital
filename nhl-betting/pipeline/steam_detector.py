@@ -259,7 +259,7 @@ def print_steam_report(picks: list[dict]):
 
     for pick in sorted(picks, key=lambda p: p.get("steam_move", 0)):
         player = pick.get("player", "?")
-        signal = pick.get("steam_signal", "?")
+        pick.get("steam_signal", "?")
         emoji = pick.get("steam_emoji", "?")
         move = pick.get("steam_move", 0)
         hr_edge = pick.get("hr_edge")
