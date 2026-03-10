@@ -83,8 +83,20 @@ fi
 
 [ -f "$PYTHON" ] || { echo "❌ Python not found: $PYTHON"; exit 1; }
 
+# Load .env if present (gitignored — contains secrets)
+ENV_FILE="$REPO_ROOT/admin-dashboard/.env"
+if [ -f "$ENV_FILE" ]; then
+  set -a
+  # shellcheck disable=SC1090
+  . "$ENV_FILE"
+  set +a
+fi
+
 # Run with nhc_etl credentials (password from .env or environment)
 # On localhost with trust auth, PGPASSWORD is optional but kept for portability
+if [ -z "${NHC_ETL_PASSWORD:-}" ]; then
+  echo "⚠️  NHC_ETL_PASSWORD not set — relying on trust auth (localhost only)"
+fi
 export PGUSER="nhc_etl"
 export PGPASSWORD="${NHC_ETL_PASSWORD:-}"
 export DATABASE_USER="nhc_etl"
