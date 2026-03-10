@@ -1,6 +1,7 @@
 """
 Fast bulk scraper — uses psycopg2 for batch inserts, only hits dates with known games.
 """
+import os
 import sys
 import time
 from pathlib import Path
@@ -14,7 +15,7 @@ from lib.db import get_conn
 
 PSQL = '/opt/homebrew/Cellar/postgresql@17/17.8/bin/psql'
 DB = 'nhl_betting'
-API_KEY = 'CHi8Hy5CEE4khd46XNYL23dCFX96oUdw6qOt1Dnh'
+API_KEY = os.environ.get("BETTINGPROS_API_KEY", "")
 HEADERS = {'x-api-key': API_KEY}
 BASE_URL = 'https://api.bettingpros.com/v3'
 
