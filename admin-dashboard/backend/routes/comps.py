@@ -21,7 +21,7 @@ router = APIRouter(prefix="/api/real-estate", tags=["comps-v2"])
 INITIAL_RADIUS_MI = 0.25
 EXPAND_RADIUS_MI = 0.5
 MAX_RADIUS_MI = 1.0
-MIN_COMPS_BEFORE_EXPAND = 5
+MIN_COMPS_BEFORE_EXPAND = 10
 SQFT_BAND_PCT = 0.50  # ±50% of subject sqft
 BED_BAND = 1  # ±1 bedroom (fallback not used per Ian — just skip if no sqft)
 OUTLIER_FLOOR_PCT = 0.35  # flag if sale < 35% of median $/sqft
