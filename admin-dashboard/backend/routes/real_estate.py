@@ -389,10 +389,14 @@ async def list_il_foreclosures(
     params: list = []
     idx = 1
 
+    # Default to upcoming only (exclude completed/cancelled) — same as CT endpoint
     if status:
         clauses.append(f"status = ${idx}")
         params.append(status)
         idx += 1
+    else:
+        clauses.append("status = 'upcoming'")
+
     if county:
         clauses.append(f"LOWER(county) = LOWER(${idx})")
         params.append(county)
