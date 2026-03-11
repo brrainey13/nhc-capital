@@ -292,7 +292,11 @@ async def foreclosure_comps(
     ORDER BY vs.sale_date DESC
     """
 
-    rows = await p.fetch(query, town)
+    # Only pass town param when the query uses $1 (no-coords fallback)
+    if has_coords:
+        rows = await p.fetch(query)
+    else:
+        rows = await p.fetch(query, town)
 
     # ── 5. Radius filtering with auto-expand ──
     def filter_by_radius(all_rows, radius):
