@@ -245,7 +245,6 @@ async def foreclosure_comps(
     # At CT latitude (~41°N), 1 mile ≈ 0.0145° lat, ≈ 0.0193° lng.
     # Use MAX_RADIUS + 0.5mi buffer for the bounding box.
     bbox_filter = ""
-    bbox_params: list = []
     if has_coords:
         bbox_margin_lat = (MAX_RADIUS_MI + 0.5) * 0.0145
         bbox_margin_lng = (MAX_RADIUS_MI + 0.5) * 0.0193
