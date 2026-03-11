@@ -30,6 +30,7 @@ async def get_bankroll():
         """
         SELECT balance, event_date, created_at
         FROM bankroll
+        WHERE COALESCE(notes, '') != 'ARCHIVED'
         ORDER BY id DESC
         LIMIT 1
         """
@@ -39,6 +40,7 @@ async def get_bankroll():
         SELECT id, event_date, event_type, amount, balance, pick_id,
                sportsbook, notes, created_at
         FROM bankroll
+        WHERE COALESCE(notes, '') != 'ARCHIVED'
         ORDER BY id DESC
         LIMIT 100
         """
