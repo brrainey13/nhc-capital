@@ -9,7 +9,8 @@ def normalize_town(town: str | None) -> str | None:
     """
     if not town:
         return None
-    normalized = town.strip().replace(" ", "")
-    if normalized.lower().endswith("ct"):
-        return normalized
-    return f"{normalized}CT"
+    stripped = town.strip()
+    # Check suffix on original (before space removal) to preserve casing
+    if stripped.lower().endswith("ct"):
+        return stripped.replace(" ", "")
+    return f"{stripped.replace(' ', '')}CT"
