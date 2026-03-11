@@ -359,9 +359,17 @@ async def foreclosure_photo(foreclosure_id: int):
         return Response(status_code=404)
 
     # Download and cache
+    # CT court server uses legacy TLS — need to relax SSL verification
+    import ssl
+
+    ssl_ctx = ssl.create_default_context()
+    ssl_ctx.set_ciphers("DEFAULT:@SECLEVEL=1")
+    ssl_ctx.check_hostname = False
+    ssl_ctx.verify_mode = ssl.CERT_NONE
+
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.get(row["photo_url"])
+        async with httpx.AsyncClient(timeout=10, verify=ssl_ctx) as client:
+            resp = await client.get(row["photo_url"], follow_redirects=True)
             if resp.status_code == 200:
                 with open(real_cache, "wb") as f:
                     f.write(resp.content)
