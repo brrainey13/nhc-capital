@@ -41,13 +41,19 @@ def query(sql):
     return pd.read_csv(StringIO(r.stdout))
 
 
+def _sanitize_name(name: str) -> str:
+    """Sanitize player name for safe SQL dollar-quoting."""
+    # Strip dollar signs to prevent $$ escape, strip control chars
+    return "".join(c for c in name if c.isalnum() or c in " .'-")
+
+
 def get_player_team(name):
     """Look up player's current team tri_code from DB."""
-    safe_name = name.replace("'", "''")
+    safe_name = _sanitize_name(name)
     result = query(
         f"SELECT t.tri_code FROM players p JOIN teams t "
         f"ON p.current_team_id = t.team_id "
-        f"WHERE p.first_name || ' ' || p.last_name = '{safe_name}' "
+        f"WHERE p.first_name || ' ' || p.last_name = $${safe_name}$$ "
         f"LIMIT 1"
     )
     if not result.empty:
@@ -59,8 +65,8 @@ def get_player_team(name):
         result = query(
             f"SELECT t.tri_code FROM players p JOIN teams t "
             f"ON p.current_team_id = t.team_id "
-            f"WHERE p.last_name = '{last_name}' "
-            f"AND p.first_name LIKE '{first_initial}%' "
+            f"WHERE p.last_name = $${last_name}$$ "
+            f"AND p.first_name LIKE $${first_initial}%$$ "
             f"LIMIT 1"
         )
         if not result.empty:
