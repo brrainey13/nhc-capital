@@ -178,9 +178,18 @@ def upsert_listing(conn, record):
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
             ON CONFLICT (source, case_number) DO UPDATE SET
                 address=EXCLUDED.address, city=EXCLUDED.city, county=EXCLUDED.county,
-                zip=EXCLUDED.zip, sale_date=EXCLUDED.sale_date, sale_time=EXCLUDED.sale_time,
+                zip=EXCLUDED.zip,
+                -- If rescheduled (upcoming with newer date), use the upcoming data
+                sale_date=CASE WHEN EXCLUDED.status = 'upcoming' AND EXCLUDED.sale_date > il_foreclosures.sale_date
+                           THEN EXCLUDED.sale_date ELSE il_foreclosures.sale_date END,
+                sale_time=CASE WHEN EXCLUDED.status = 'upcoming' AND EXCLUDED.sale_date > il_foreclosures.sale_date
+                           THEN EXCLUDED.sale_time ELSE il_foreclosures.sale_time END,
                 sale_type=EXCLUDED.sale_type, opening_bid=EXCLUDED.opening_bid,
-                judgment_amount=EXCLUDED.judgment_amount, status=EXCLUDED.status,
+                judgment_amount=EXCLUDED.judgment_amount,
+                -- Upcoming always wins over completed (rescheduled sales)
+                status=CASE WHEN EXCLUDED.status = 'upcoming' THEN 'upcoming'
+                            WHEN il_foreclosures.status = 'upcoming' THEN 'upcoming'
+                            ELSE EXCLUDED.status END,
                 plaintiff=EXCLUDED.plaintiff, firm_name=EXCLUDED.firm_name,
                 file_number=EXCLUDED.file_number, auction_com_id=EXCLUDED.auction_com_id,
                 photo_url=EXCLUDED.photo_url,

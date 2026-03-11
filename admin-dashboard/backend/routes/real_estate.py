@@ -359,9 +359,23 @@ async def foreclosure_photo(foreclosure_id: int):
         return Response(status_code=404)
 
     # Download and cache
+    # CT court server (sso.eservices.jud.ct.gov) uses legacy TLS ciphers that
+    # fail with default httpx/OpenSSL settings. Relax cipher level ONLY for
+    # that domain. Photos are public data — no sensitive payload.
+    import ssl
+    from urllib.parse import urlparse
+
+    photo_url = row["photo_url"]
+    court_domain = "sso.eservices.jud.ct.gov"
+    verify: ssl.SSLContext | bool = True
+    if urlparse(photo_url).hostname == court_domain:
+        ctx = ssl.create_default_context()
+        ctx.set_ciphers("DEFAULT:@SECLEVEL=1")
+        verify = ctx
+
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.get(row["photo_url"])
+        async with httpx.AsyncClient(timeout=10, verify=verify) as client:
+            resp = await client.get(photo_url, follow_redirects=True)
             if resp.status_code == 200:
                 with open(real_cache, "wb") as f:
                     f.write(resp.content)
