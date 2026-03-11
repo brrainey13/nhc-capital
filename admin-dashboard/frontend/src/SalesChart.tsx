@@ -33,6 +33,7 @@ interface Comp {
   book_page: string
   distance_mi: number | null
   comp_score: number
+  sale_era: string | null
   is_outlier: boolean
   outlier_reason: string | null
 }
@@ -62,6 +63,8 @@ interface Summary {
   avg_ppsf: number | null
   min_ppsf: number | null
   max_ppsf: number | null
+  era_breakdown?: Record<string, number>
+  radius_used_mi?: number | null
 }
 
 const fmt = (v: number) => `$${Math.round(v).toLocaleString()}`
@@ -280,6 +283,16 @@ export default function SalesChart({
             <div className="mb-1 text-[10px] font-semibold uppercase text-muted-foreground">Price Range</div>
             <div className="text-base font-bold text-muted-foreground">{summary.min_price && summary.max_price ? `${fmtK(summary.min_price)} – ${fmtK(summary.max_price)}` : 'N/A'}</div>
           </div>
+        </div>
+      )}
+
+      {/* Radius info */}
+      {summary?.radius_used_mi && (
+        <div className="mb-4 flex flex-wrap items-center gap-2 text-xs">
+          <span className="rounded-md border border-border bg-muted px-2 py-1 text-muted-foreground">
+            📍 {summary.radius_used_mi}mi radius
+            {summary.radius_used_mi > 0.25 && <span className="ml-1 text-warning">(auto-expanded)</span>}
+          </span>
         </div>
       )}
 

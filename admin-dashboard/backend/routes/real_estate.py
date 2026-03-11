@@ -374,55 +374,47 @@ async def foreclosure_photo(foreclosure_id: int):
     return Response(status_code=404)
 
 
+# ---------- IL Foreclosures ----------
+
+
 @router.get("/il-foreclosures")
 async def list_il_foreclosures(
-    limit: int = Query(500, ge=1, le=5000),
-    county: str = Query(None),
-    status: str = Query(None),
-    source: str = Query(None),
+    limit: int = 2000,
+    status: str | None = None,
+    county: str | None = None,
+    source: str | None = None,
 ):
-    """List IL foreclosure listings from all sources."""
-    p = pools["real_estate"]
-    conditions = ["address IS NOT NULL"]
-    params = []
+    """Return IL foreclosure listings with coordinates."""
+    clauses = ["lat IS NOT NULL", "lng IS NOT NULL"]
+    params: list = []
     idx = 1
 
-    if county:
-        conditions.append(f"LOWER(county) = LOWER(${idx})")
-        params.append(county)
-        idx += 1
     if status:
-        conditions.append(f"status = ${idx}")
+        clauses.append(f"status = ${idx}")
         params.append(status)
         idx += 1
+    if county:
+        clauses.append(f"LOWER(county) = LOWER(${idx})")
+        params.append(county)
+        idx += 1
     if source:
-        conditions.append(f"source = ${idx}")
+        clauses.append(f"source = ${idx}")
         params.append(source)
         idx += 1
 
-    where = " AND ".join(conditions)
-    params.append(limit)
-
-    rows = await p.fetch(
-        f"""
+    where = " AND ".join(clauses)
+    query = f"""
         SELECT id, source, case_number, address, city, county, zip,
-               sale_date, sale_time, sale_type, opening_bid, judgment_amount,
-               status, plaintiff, firm_name, auction_com_id,
-               photo_url, lat, lng
+               sale_date::text, sale_time, sale_type, opening_bid,
+               judgment_amount, status, plaintiff, firm_name,
+               auction_com_id, photo_url, lat, lng
         FROM il_foreclosures
         WHERE {where}
-        ORDER BY sale_date ASC NULLS LAST, id
+        ORDER BY sale_date ASC NULLS LAST
         LIMIT ${idx}
-        """,
-        *params,
-    )
-    results = []
-    for r in rows:
-        d = dict(r)
-        if d.get("sale_date"):
-            d["sale_date"] = str(d["sale_date"])
-        for key in ("opening_bid", "judgment_amount"):
-            if d.get(key) is not None:
-                d[key] = float(d[key])
-        results.append(d)
-    return results
+    """
+    params.append(limit)
+
+    p = pools["real_estate"]
+    rows = await p.fetch(query, *params)
+    return [dict(r) for r in rows]
