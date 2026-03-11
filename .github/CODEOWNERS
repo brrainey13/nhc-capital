@@ -1,4 +1,5 @@
 # NHC Capital — Code Owners
-# brrainey13 is auto-requested as reviewer on every PR
+# These users are auto-requested as reviewers on every PR
+# Any one approval from a code owner satisfies the branch protection rule
 
-* @brrainey13
+* @brrainey13 @connorsrainey-dev @house-dewey93 @yshahin14
