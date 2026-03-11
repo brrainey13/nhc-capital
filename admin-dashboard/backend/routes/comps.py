@@ -241,6 +241,23 @@ async def foreclosure_comps(
         ELSE NULL END
         """
 
+    # Bounding box pre-filter for cross-town radius queries.
+    # At CT latitude (~41°N), 1 mile ≈ 0.0145° lat, ≈ 0.0193° lng.
+    # Use MAX_RADIUS + 0.5mi buffer for the bounding box.
+    bbox_filter = ""
+    if has_coords:
+        bbox_margin_lat = (MAX_RADIUS_MI + 0.5) * 0.0145
+        bbox_margin_lng = (MAX_RADIUS_MI + 0.5) * 0.0193
+        lat_val = float(f["lat"])
+        lng_val = float(f["lng"])
+        bbox_filter = f"""
+        AND vp.lat BETWEEN {lat_val - bbox_margin_lat} AND {lat_val + bbox_margin_lat}
+        AND vp.lng BETWEEN {lng_val - bbox_margin_lng} AND {lng_val + bbox_margin_lng}
+        """
+    else:
+        # No coords — fall back to same-town query
+        bbox_filter = "AND vp.town = $1"
+
     query = f"""
     SELECT
         vp.pid,
@@ -267,9 +284,9 @@ async def foreclosure_comps(
         ELSE NULL END AS price_per_sqft
     FROM ct_vision_parcels vp
     JOIN ct_vision_sales vs ON vs.town = vp.town AND vs.pid = vp.pid
-    WHERE vp.town = $1
-      AND vs.sale_price >= {MIN_SALE_PRICE}
+    WHERE vs.sale_price >= {MIN_SALE_PRICE}
       AND vs.sale_date >= '2000-01-01'
+      {bbox_filter}
       {class_filter}
       {sqft_filter}
     ORDER BY vs.sale_date DESC
