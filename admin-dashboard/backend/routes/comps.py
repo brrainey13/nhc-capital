@@ -414,8 +414,12 @@ async def foreclosure_comps(
     results = results[:limit]
 
     # ── 8. Summary stats ──
+    # "clean" = non-outlier comps with ppsf (used for ppsf stats)
     clean = [r for r in results if not r["is_outlier"] and r["price_per_sqft"] and r["price_per_sqft"] > 0]
-    clean_prices = [float(r["sale_price"]) for r in clean if r["sale_price"]]
+    # "non_outlier" = ALL non-outlier comps (used for price stats even without sqft)
+    non_outlier = [r for r in results if not r["is_outlier"]]
+    non_outlier_prices = [float(r["sale_price"]) for r in non_outlier if r["sale_price"]]
+    clean_prices = non_outlier_prices  # price stats from all non-outliers
     clean_ppsf = [float(r["price_per_sqft"]) for r in clean if r["price_per_sqft"]]
 
     # Era breakdown
@@ -426,7 +430,7 @@ async def foreclosure_comps(
 
     summary = {
         "total_comps": len(results),
-        "clean_comps": len(clean),
+        "clean_comps": len(non_outlier),
         "outliers": sum(1 for r in results if r["is_outlier"]),
         "median_ppsf": round(median_ppsf, 2) if median_ppsf else None,
         "min_price": min(clean_prices) if clean_prices else None,
