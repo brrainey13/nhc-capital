@@ -137,20 +137,23 @@ export default function SalesChart({
 
   const chartData = useMemo(() => {
     const clean = visibleComps.filter(c => !c.is_outlier)
-    const byYear: Record<string, { totalPrice: number; totalPpsf: number; count: number }> = {}
+    const byYear: Record<string, { totalPrice: number; totalPpsf: number; count: number; ppsfCount: number }> = {}
     for (const s of clean) {
-      if (!s.sale_date || !s.price_per_sqft || s.price_per_sqft <= 0) continue
+      if (!s.sale_date || !s.sale_price) continue
       const year = s.sale_date.substring(0, 4)
-      if (!byYear[year]) byYear[year] = { totalPrice: 0, totalPpsf: 0, count: 0 }
+      if (!byYear[year]) byYear[year] = { totalPrice: 0, totalPpsf: 0, count: 0, ppsfCount: 0 }
       byYear[year].totalPrice += s.sale_price
-      byYear[year].totalPpsf += s.price_per_sqft
       byYear[year].count += 1
+      if (s.price_per_sqft && s.price_per_sqft > 0) {
+        byYear[year].totalPpsf += s.price_per_sqft
+        byYear[year].ppsfCount += 1
+      }
     }
     return Object.entries(byYear)
       .map(([year, d]) => ({
         year,
         avgPrice: Math.round(d.totalPrice / d.count),
-        avgPpsf: Math.round(d.totalPpsf / d.count),
+        avgPpsf: d.ppsfCount > 0 ? Math.round(d.totalPpsf / d.ppsfCount) : null,
         count: d.count,
       }))
       .sort((a, b) => a.year.localeCompare(b.year))
