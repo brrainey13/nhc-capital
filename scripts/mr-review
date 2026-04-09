@@ -212,7 +212,8 @@ def analyze_diff(diff_text: str, changes: list[dict], risk: dict) -> list[dict]:
                  "Possible hardcoded token"),
             ]
             for pattern, msg in secret_patterns:
-                if re.search(pattern, diff, re.IGNORECASE):
+                added_lines = "\n".join(l[1:] for l in diff.splitlines() if l.startswith("+"))
+                if re.search(pattern, added_lines, re.IGNORECASE):
                     findings.append({
                         "file": filepath,
                         "line": line_number,
